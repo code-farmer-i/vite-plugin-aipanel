@@ -75,20 +75,21 @@ ${logFileConfig.description}
           directory: context.directory,
         });
 
+        const requestedLimit = limit ?? 50;
+
         const entries = await readLogFileTail({
           name: logFileConfig.name,
           filePath: logFileConfig.path,
           projectRoot: process.cwd(),
-          lines: limit ? Math.max(limit, 200) : 200,
+          lines: Math.max(requestedLimit * 3, 500),
           level: level
             ? (level.split(",").map((l) => l.trim()) as ("info" | "warn" | "error")[])
             : undefined,
           since,
+          limit: requestedLimit,
         });
 
-        const filteredEntries = entries.slice(0, limit ?? 50);
-
-        if (filteredEntries.length === 0) {
+        if (entries.length === 0) {
           return `当前没有符合条件的日志。
 
 建议：
@@ -96,7 +97,7 @@ ${logFileConfig.description}
 - 使用 level=error,warn 获取错误和警告`;
         }
 
-        const formattedLogs = filteredEntries
+        const formattedLogs = entries
           .map((entry: FileLogEntry) => {
             const time = new Date(entry.timestamp).toLocaleTimeString();
             const levelIcon = entry.level === "error" ? "❌" : entry.level === "warn" ? "⚠️" : "ℹ️";
@@ -104,7 +105,7 @@ ${logFileConfig.description}
           })
           .join("\n");
 
-        return `${logFileConfig.name} 日志（${filteredEntries.length} 条）：
+        return `${logFileConfig.name} 日志（${entries.length} 条）：
 
 ${formattedLogs}`;
       },

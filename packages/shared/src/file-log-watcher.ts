@@ -79,12 +79,18 @@ export async function readLogFile(
 
     const entries: FileLogEntry[] = [];
     const sinceDate = since ? new Date(since) : null;
+    let lastTimestamp: string | null = null;
 
     for (const line of lines) {
+      const parsedTimestamp = parseLogTimestamp(line);
+      if (parsedTimestamp) {
+        lastTimestamp = parsedTimestamp;
+      }
+
       const entry: FileLogEntry = {
         level: detectLogLevel(line),
         message: line,
-        timestamp: parseLogTimestamp(line) || new Date().toISOString(),
+        timestamp: parsedTimestamp || lastTimestamp || new Date().toISOString(),
         source: `file:${name}`,
       };
 

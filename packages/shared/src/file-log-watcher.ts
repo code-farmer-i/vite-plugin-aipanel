@@ -7,7 +7,6 @@ const log = createLogger("FileLogReader");
 export interface FileLogEntry {
   level: "info" | "warn" | "error";
   message: string;
-  timestamp: string;
   source: string;
 }
 
@@ -30,41 +29,14 @@ function detectLogLevel(line: string): "info" | "warn" | "error" {
   return "info";
 }
 
-function parseLogTimestamp(line: string): string | null {
-  const timestampPatterns = [
-    /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2})/,
-    /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z?)/,
-    /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/,
-    /(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/,
-    /(\d{2}\/\w{3}\/\d{4}:\d{2}:\d{2}:\d{2} [+-]\d{4})/,
-    /(\d{2}\/\d{2}\/\d{4},\s*\d{1,2}:\d{2}:\d{2}\s*(?:AM|PM))/i,
-    /([A-Z]{3}, \d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2} GMT)/,
-    /(\[([^\]]+)\])/,
-  ];
-
-  for (const pattern of timestampPatterns) {
-    const match = line.match(pattern);
-    if (match) {
-      const timestampStr = match[1];
-      const date = new Date(timestampStr);
-      if (!isNaN(date.getTime())) {
-        return date.toISOString();
-      }
-    }
-  }
-
-  return null;
-}
-
 export async function readLogFile(
   options: LogFileOptions & {
     projectRoot?: string;
     level?: ("info" | "warn" | "error") | ("info" | "warn" | "error")[];
     limit?: number;
-    since?: string;
   },
 ): Promise<FileLogEntry[]> {
-  const { name, filePath, projectRoot, level, limit, since } = options;
+  const { name, filePath, projectRoot, level, limit } = options;
 
   const resolvedPath = resolvePath(filePath, projectRoot);
 
@@ -78,25 +50,13 @@ export async function readLogFile(
     const lines = content.split("\n").filter((line) => line.trim());
 
     const entries: FileLogEntry[] = [];
-    const sinceDate = since ? new Date(since) : null;
-    let lastTimestamp: string | null = null;
 
     for (const line of lines) {
-      const parsedTimestamp = parseLogTimestamp(line);
-      if (parsedTimestamp) {
-        lastTimestamp = parsedTimestamp;
-      }
-
       const entry: FileLogEntry = {
         level: detectLogLevel(line),
         message: line,
-        timestamp: parsedTimestamp || lastTimestamp || new Date().toISOString(),
         source: `file:${name}`,
       };
-
-      if (sinceDate && new Date(entry.timestamp) < sinceDate) {
-        continue;
-      }
 
       if (level) {
         const levels = Array.isArray(level) ? level : [level];
@@ -125,10 +85,9 @@ export async function readLogFileTail(
     lines?: number;
     limit?: number;
     level?: ("info" | "warn" | "error") | ("info" | "warn" | "error")[];
-    since?: string;
   },
 ): Promise<FileLogEntry[]> {
-  const { name, filePath, projectRoot, lines = 200, limit, level, since } = options;
+  const { name, filePath, projectRoot, lines = 200, limit, level } = options;
 
   const resolvedPath = resolvePath(filePath, projectRoot);
 
@@ -179,19 +138,13 @@ export async function readLogFileTail(
     const logLines = content.split("\n").filter((line) => line.trim());
 
     const entries: FileLogEntry[] = [];
-    const sinceDate = since ? new Date(since) : null;
 
     for (const line of logLines) {
       const entry: FileLogEntry = {
         level: detectLogLevel(line),
         message: line,
-        timestamp: parseLogTimestamp(line) || new Date().toISOString(),
         source: `file:${name}`,
       };
-
-      if (sinceDate && new Date(entry.timestamp) < sinceDate) {
-        continue;
-      }
 
       if (level) {
         const levels = Array.isArray(level) ? level : [level];

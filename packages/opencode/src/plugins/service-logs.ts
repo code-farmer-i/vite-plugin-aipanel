@@ -61,13 +61,9 @@ ${logFileConfig.description}
           .optional()
           .default(50)
           .describe("返回条数，默认 50，最大 200"),
-        since: tool.schema
-          .string()
-          .optional()
-          .describe("起始时间（ISO 格式），获取此时间之后的日志"),
       },
       async execute(args, context) {
-        const { level, limit, since } = args;
+        const { level, limit } = args;
 
         log.debug(`${toolName} called`, {
           args,
@@ -85,7 +81,6 @@ ${logFileConfig.description}
           level: level
             ? (level.split(",").map((l) => l.trim()) as ("info" | "warn" | "error")[])
             : undefined,
-          since,
           limit: requestedLimit,
         });
 
@@ -99,9 +94,8 @@ ${logFileConfig.description}
 
         const formattedLogs = entries
           .map((entry: FileLogEntry) => {
-            const time = new Date(entry.timestamp).toLocaleTimeString();
             const levelIcon = entry.level === "error" ? "❌" : entry.level === "warn" ? "⚠️" : "ℹ️";
-            return `${time} ${levelIcon} ${entry.message}`;
+            return `${levelIcon} ${entry.message}`;
           })
           .join("\n");
 

@@ -12,8 +12,8 @@ importers:
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.2.0)
       '@pagoda-cli/core':
-        specifier: ^1.0.0
-        version: 1.0.5(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(@pnpm/logger@1000.0.0)(@types/markdown-it@14.1.2)(@types/node@20.19.39)(@vue/compiler-sfc@3.5.32)(@vueuse/core@12.0.0(typescript@5.9.3))(markdown-it@14.1.1)(vue@3.5.32(typescript@5.9.3))(yaml@2.8.3)
+        specifier: ^1.0.6
+        version: 1.0.6(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(@pnpm/logger@1000.0.0)(@types/markdown-it@14.1.2)(@types/node@20.19.39)(@vue/compiler-sfc@3.5.32)(@vueuse/core@12.0.0(typescript@5.9.3))(markdown-it@14.1.1)(vue@3.5.32(typescript@5.9.3))(yaml@2.8.3)
       '@pnpm/logger':
         specifier: 1000.0.0
         version: 1000.0.0
@@ -866,8 +866,8 @@ packages:
   '@oxc-project/types@0.122.0':
     resolution: {integrity: sha512-oLAl5kBpV4w69UtFZ9xqcmTi+GENWOcPF7FCrczTiBbmC0ibXxCwyvZGbO39rCVEuLGAZM84DH0pUIyyv/YJzA==}
 
-  '@pagoda-cli/core@1.0.5':
-    resolution: {integrity: sha512-UsIBIDzq5ZUiP1riDO7FWa1zYk9wyvgMoOwcUQQ4vdi69YSz6IbAmJnXVg8wO7rvQe+DNbu05CGNHa1ZV9WMgg==, tarball: https://baiguokeji-npm.pkg.coding.net/UEDYHSJ/pagoda-npm/@pagoda-cli/core/-/@pagoda-cli/core-1.0.5.tgz}
+  '@pagoda-cli/core@1.0.6':
+    resolution: {integrity: sha512-DwN5IaqcdiXW42YJsDtLxY7hguQdVB7XmVFH20A8YCdq9UXq1TOmx9NQE1GOqpS2w5zsIGHA7SgZwBSKPGPkdQ==}
     engines: {node: ^14.16.0 || >=16.0.0}
     hasBin: true
 
@@ -3027,7 +3027,7 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Glob versions prior to v9 are no longer supported
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   global-dirs@0.1.1:
     resolution: {integrity: sha512-NknMLn7F2J7aflwFOlGdNIuCDpN3VGoSoB+aap3KABFWbHVn1TCgFC+np23J8W2BiZbjfEw3BFBycSMv1AFblg==}
@@ -5194,6 +5194,7 @@ packages:
 
   uuid@9.0.1:
     resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uvu@0.5.6:
@@ -6158,7 +6159,7 @@ snapshots:
 
   '@oxc-project/types@0.122.0': {}
 
-  '@pagoda-cli/core@1.0.5(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(@pnpm/logger@1000.0.0)(@types/markdown-it@14.1.2)(@types/node@20.19.39)(@vue/compiler-sfc@3.5.32)(@vueuse/core@12.0.0(typescript@5.9.3))(markdown-it@14.1.1)(vue@3.5.32(typescript@5.9.3))(yaml@2.8.3)':
+  '@pagoda-cli/core@1.0.6(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(@pnpm/logger@1000.0.0)(@types/markdown-it@14.1.2)(@types/node@20.19.39)(@vue/compiler-sfc@3.5.32)(@vueuse/core@12.0.0(typescript@5.9.3))(markdown-it@14.1.1)(vue@3.5.32(typescript@5.9.3))(yaml@2.8.3)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/preset-typescript': 7.28.5(@babel/core@7.29.0)
@@ -6248,7 +6249,7 @@ snapshots:
   '@pnpm/catalogs.resolver@1000.0.2':
     dependencies:
       '@pnpm/catalogs.protocol-parser': 1000.0.0
-      '@pnpm/error': 1000.0.2
+      '@pnpm/error': 1000.1.0
 
   '@pnpm/catalogs.resolver@1000.0.5':
     dependencies:

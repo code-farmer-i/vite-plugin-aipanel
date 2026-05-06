@@ -1,9 +1,9 @@
 {
   "name": "@vite-plugin-opencode-assistant/opencode",
-  "version": "1.0.63",
+  "version": "1.0.66",
   "type": "module",
-  "main": "lib/index.cjs",
-  "module": "es/index.mjs",
+  "main": "lib/index.js",
+  "module": "es/index.js",
   "types": "es/index.d.ts",
   "files": [
     "es",
@@ -12,8 +12,8 @@
   "exports": {
     ".": {
       "types": "./es/index.d.ts",
-      "import": "./es/index.mjs",
-      "require": "./lib/index.cjs"
+      "import": "./es/index.js",
+      "require": "./lib/index.js"
     }
   },
   "publishConfig": {
@@ -21,7 +21,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "pagoda-cli build && vite build -c vite.plugin.config.ts",
+    "build": "pagoda-cli build",
     "typecheck": "tsc -p tsconfig.declaration.json --noEmit"
   },
   "dependencies": {

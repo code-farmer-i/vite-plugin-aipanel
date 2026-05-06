@@ -161,8 +161,7 @@ function resolveSourcePluginsDir(): string {
 }
 
 function copyPluginFiles(sourceDir: string, targetDir: string): void {
-  // Copy all .js files from source to target
-  const files = fs.readdirSync(sourceDir).filter((f) => f.endsWith(".js"));
+  const files = fs.readdirSync(sourceDir).filter((f) => f.endsWith(".js") || f.endsWith(".d.ts"));
 
   for (const file of files) {
     const sourcePath = path.join(sourceDir, file);

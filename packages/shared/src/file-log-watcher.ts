@@ -103,7 +103,7 @@ export async function readLogFileTail(
     const chunkSize = 16 * 1024;
     let position = stat.size;
     let buffer = Buffer.alloc(0);
-    const lineCount = 0;
+    let lineCount = 0;
 
     while (position > 0 && lineCount <= lines) {
       const readSize = Math.min(chunkSize, position);
@@ -115,6 +115,7 @@ export async function readLogFileTail(
       buffer = Buffer.concat([chunk, buffer]);
 
       const newLineCount = buffer.filter((byte) => byte === 10).length;
+      lineCount = newLineCount;
       if (newLineCount >= lines) {
         const linesArray = buffer.toString("utf-8").split("\n");
         const excessLines = newLineCount - lines;

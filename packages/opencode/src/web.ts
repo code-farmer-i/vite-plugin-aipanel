@@ -146,10 +146,7 @@ function resolvePackageDir(): string {
 }
 
 function resolveSourcePluginsDir(): string {
-  const candidatePaths = [
-    path.join(packageDir, "es", "plugins"),
-    path.join(packageDir, "lib", "plugins"),
-  ];
+  const candidatePaths = [path.join(packageDir, "es", "plugins")];
 
   for (const candidatePath of candidatePaths) {
     if (fs.existsSync(candidatePath)) {

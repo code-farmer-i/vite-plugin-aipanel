@@ -8,5 +8,8 @@ export default defineConfig({
     platform: "node",
     umd: false,
     packageManager: "pnpm",
+    extensions: {
+      cjs: ".cjs",
+    },
   },
 });

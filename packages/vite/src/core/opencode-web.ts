@@ -142,7 +142,7 @@ function createStateDirectory(cwd: string): string {
 
 function resolvePackageDir(): string {
   const entryPath = require.resolve("@vite-plugin-opencode-assistant/opencode");
-  return path.resolve(path.dirname(entryPath), "..");
+  return path.dirname(path.dirname(entryPath));
 }
 
 function resolveSourcePluginsDir(): string {

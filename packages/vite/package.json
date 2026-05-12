@@ -1,6 +1,6 @@
 {
   "name": "vite-plugin-opencode-assistant",
-  "version": "1.0.67",
+  "version": "1.0.71",
   "description": "Embed OpenCode Web UI in your Vite dev server for real-time code modification and preview",
   "type": "module",
   "main": "lib/index.cjs",
@@ -44,17 +44,10 @@
     "@vite-plugin-opencode-assistant/components": "workspace:*",
     "@vite-plugin-opencode-assistant/opencode": "workspace:*",
     "@vite-plugin-opencode-assistant/shared": "workspace:*",
-    "unplugin-vue-inspector": "^2.4.0"
+    "unplugin-vue-inspector": "^2.4.0",
+    "execa": "^9.6.1"
   },
   "peerDependencies": {
     "vite": ">=4.0.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-vue": "^5.0.0",
-    "execa": "^9.6.1",
-    "typescript": "^5.9.3",
-    "vite": "^5.0.0",
-    "vue": "^3.5.32",
-    "vue-tsc": "^2.2.12"
   }
 }

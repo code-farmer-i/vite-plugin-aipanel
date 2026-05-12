@@ -1,7 +1,7 @@
 import type { ResultPromise } from "execa";
 import type http from "http";
 import type { ModelInfo } from "@vite-plugin-opencode-assistant/shared";
-import { prepareOpenCodeRuntime, startOpenCodeWeb } from "@vite-plugin-opencode-assistant/opencode";
+import { prepareOpenCodeRuntime, startOpenCodeWeb } from "./opencode-web";
 import type { OpenCodeOptions, ServiceStartupTask } from "@vite-plugin-opencode-assistant/shared";
 import {
   DEFAULT_PROXY_PORT,

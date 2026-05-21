@@ -22,6 +22,7 @@
   },
   "scripts": {
     "build": "pagoda-cli build",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.declaration.json --noEmit"
   }
 }

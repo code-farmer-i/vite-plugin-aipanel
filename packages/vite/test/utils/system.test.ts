@@ -2,13 +2,22 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import http from "http";
 import net from "net";
+import path from "path";
+import fs from "fs";
 import { spawn } from "child_process";
 import { EventEmitter } from "events";
-import { waitForServer, checkOpenCodeInstalled, isPortAvailable } from "../../src/utils/system.js";
+import {
+  waitForServer,
+  checkOpenCodeInstalled,
+  isPortAvailable,
+  findAvailablePort,
+  findGitRoot,
+} from "../../src/utils/system.js";
 
 vi.mock("http");
 vi.mock("net");
 vi.mock("child_process");
+vi.mock("fs");
 
 describe("system utility", () => {
   beforeEach(() => {
@@ -105,6 +114,63 @@ describe("system utility", () => {
       setTimeout(() => mockServer.emit("error", new Error("EADDRINUSE")), 10);
 
       await expect(promise).resolves.toBe(false);
+    });
+  });
+
+  describe("findAvailablePort", () => {
+    it("should return start port when available", async () => {
+      const mockServer = new EventEmitter() as any;
+      mockServer.listen = vi.fn();
+      mockServer.close = vi.fn();
+      vi.mocked(net.createServer).mockReturnValue(mockServer);
+
+      const promise = findAvailablePort(3000, "localhost", 3);
+      setTimeout(() => mockServer.emit("listening"), 10);
+
+      const port = await promise;
+      expect(port).toBe(3000);
+    });
+
+    it("should try multiple ports when busy", async () => {
+      let listenCalls = 0;
+      const mockServer = new EventEmitter() as any;
+      mockServer.listen = vi.fn();
+      mockServer.close = vi.fn();
+
+      vi.mocked(net.createServer).mockImplementation(() => {
+        const server = new EventEmitter() as any;
+        server.listen = vi.fn();
+        server.close = vi.fn();
+
+        listenCalls++;
+        if (listenCalls <= 2) {
+          setTimeout(() => server.emit("error", new Error("EADDRINUSE")), 5);
+        } else {
+          setTimeout(() => server.emit("listening"), 5);
+        }
+        return server;
+      });
+
+      const port = await findAvailablePort(3000, "localhost", 5);
+      expect(port).toBe(3002);
+    });
+  });
+
+  describe("findGitRoot", () => {
+    it("should return directory containing .git", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p: fs.PathLike) => {
+        return p.toString().includes(path.join("project", ".git"));
+      });
+
+      const root = findGitRoot("/home/user/project/src/components", 10);
+      expect(root).toContain("project");
+    });
+
+    it("should fallback to startDir when no .git found", () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      const root = findGitRoot("/home/user/project/src", 3);
+      expect(root).toBe("/home/user/project/src");
     });
   });
 });

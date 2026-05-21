@@ -8,12 +8,16 @@ vi.mock("http");
 
 describe("OpenCodeAPI", () => {
   let api: OpenCodeAPI;
-  let mockReq: EventEmitter & { write: any; end: any };
+  let mockReq: EventEmitter & { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> };
   let mockRes: EventEmitter & { statusCode: number };
 
   beforeEach(() => {
     vi.resetAllMocks();
-    api = new OpenCodeAPI("127.0.0.1", () => 12345);
+    api = new OpenCodeAPI(
+      "127.0.0.1",
+      () => 12345,
+      () => 12346,
+    );
 
     mockReq = new EventEmitter() as any;
     mockReq.write = vi.fn();
@@ -24,7 +28,6 @@ describe("OpenCodeAPI", () => {
 
     vi.mocked(http.request).mockImplementation(((options: any, callback?: any) => {
       if (callback) {
-        // Schedule callback to simulate async response
         setTimeout(() => callback(mockRes), 0);
       }
       return mockReq as any;
@@ -35,21 +38,21 @@ describe("OpenCodeAPI", () => {
     it("should return sessions on success", async () => {
       const mockSessions = [{ id: "sess-1", directory: "/tmp" }];
 
-      const promise = api.getSessions(1);
+      const promise = api.getSessions("/tmp", 1);
 
-      // Simulate data stream
       setTimeout(() => {
         mockRes.emit("data", Buffer.from(JSON.stringify(mockSessions)));
         mockRes.emit("end");
       }, 10);
 
       const result = await promise;
-      expect(result).toEqual(mockSessions);
+      expect(result[0].id).toBe(mockSessions[0].id);
+      expect(result[0].directory).toBe(mockSessions[0].directory);
       expect(http.request).toHaveBeenCalledWith(
         expect.objectContaining({
           hostname: "127.0.0.1",
           port: 12345,
-          path: "/session",
+          path: expect.stringContaining("/session"),
         }),
         expect.any(Function),
       );
@@ -63,7 +66,7 @@ describe("OpenCodeAPI", () => {
         return mockReq as any;
       }) as any);
 
-      await expect(api.getSessions(2)).rejects.toThrow("Network Error");
+      await expect(api.getSessions("/tmp", 2)).rejects.toThrow("Network Error");
       expect(http.request).toHaveBeenCalledTimes(2);
     });
   });
@@ -72,7 +75,7 @@ describe("OpenCodeAPI", () => {
     it("should send POST request to create a session", async () => {
       const mockSession = { id: "sess-2", title: "Test Session" };
 
-      const promise = api.createSession(1, "Test Session");
+      const promise = api.createSession("/tmp", 1, "Test Session");
 
       setTimeout(() => {
         mockRes.emit("data", Buffer.from(JSON.stringify(mockSession)));
@@ -80,7 +83,8 @@ describe("OpenCodeAPI", () => {
       }, 10);
 
       const result = await promise;
-      expect(result).toEqual(mockSession);
+      expect(result.id).toBe(mockSession.id);
+      expect(result.title).toBe(mockSession.title);
       expect(mockReq.write).toHaveBeenCalledWith(JSON.stringify({ title: "Test Session" }));
       expect(http.request).toHaveBeenCalledWith(
         expect.objectContaining({

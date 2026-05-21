@@ -17,7 +17,8 @@ describe("injectWidget", () => {
     expect(match?.[1]).toBeTruthy();
 
     const decoded = JSON.parse(Buffer.from(match![1], "base64").toString("utf8"));
-    expect(decoded.webUrl).toBe("http://127.0.0.1:4097");
+    expect(decoded.theme).toBe("auto");
+    expect(decoded.open).toBe(false);
     expect(decoded.hotkey).toBe("ctrl+k");
   });
 });

@@ -13,6 +13,7 @@ vi.mock("../../src/open-code-widget/src/context", () => ({
 describe("SessionList.vue", () => {
   const mockSessions: OpenCodeWidgetSessionItem[] = [
     {
+      id: "1",
       key: "1",
       title: "Session 1",
       meta: "2 mins ago",
@@ -20,6 +21,7 @@ describe("SessionList.vue", () => {
       session: { id: "session-1", title: "Session 1" },
     },
     {
+      id: "2",
       key: "2",
       title: "Session 2",
       meta: "1 hr ago",
@@ -31,6 +33,8 @@ describe("SessionList.vue", () => {
   const defaultContext = {
     sessionListCollapsed: ref(false),
     sessionItems: ref(mockSessions),
+    showSessionListSkeleton: ref(false),
+    loadingSessionList: ref(false),
     handleCreateSession: vi.fn(),
     handleSelectSession: vi.fn(),
     handleDeleteSession: vi.fn(),

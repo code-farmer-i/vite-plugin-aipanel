@@ -11,12 +11,14 @@ vi.mock("../../src/open-code-widget/src/context", () => ({
 
 describe("Frame.vue", () => {
   const defaultContext = {
-    loading: ref(false),
+    frameLoading: ref(false),
     showEmptyState: ref(false),
+    showError: ref(false),
     iframeSource: ref("https://example.com"),
     emptyStateText: ref("No Data"),
     emptyStateActionText: ref("Retry"),
     handleEmptyAction: vi.fn(),
+    handleFrameLoaded: vi.fn(),
   };
 
   beforeEach(() => {
@@ -64,7 +66,7 @@ describe("Frame.vue", () => {
   it("should show loading overlay when loading is true", () => {
     vi.mocked(contextModule.useOpenCodeWidgetContext).mockReturnValue({
       ...defaultContext,
-      loading: ref(true),
+      frameLoading: ref(true),
     } as unknown as OpenCodeWidgetContext);
 
     const wrapper = mount(Frame);

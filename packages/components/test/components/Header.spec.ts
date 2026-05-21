@@ -10,20 +10,33 @@ vi.mock("../../src/open-code-widget/src/context", () => ({
 }));
 
 describe("Header.vue", () => {
-  const defaultContext = {
+  const createContext = (overrides: Partial<OpenCodeWidgetContext> = {}) => ({
     title: ref("Trae AI 助手"),
     sessionListTitle: ref("展开会话列表"),
     sessionListCollapsed: ref(true),
     selectMode: ref(false),
     selectEnabled: ref(true),
+    theme: ref("auto" as const),
+    resolvedTheme: ref("light" as const),
+    minimized: ref(false),
+    promptDockVisible: ref(false),
+    mode: ref("bubble" as const),
+    displayMode: ref("bubble" as const),
+    splitPosition: ref("right" as const),
     handleToggleSessionList: vi.fn(),
     handleToggleSelectMode: vi.fn(),
+    handleToggleTheme: vi.fn(),
+    handleToggleDisplayMode: vi.fn(),
+    handleToggleSplitPosition: vi.fn(),
     handleClose: vi.fn(),
-  };
+    handleToggleMinimize: vi.fn(),
+    handleTogglePromptDock: vi.fn(),
+    ...overrides,
+  });
 
   beforeEach(() => {
     vi.mocked(contextModule.useOpenCodeWidgetContext).mockReturnValue(
-      defaultContext as unknown as OpenCodeWidgetContext,
+      createContext() as unknown as OpenCodeWidgetContext,
     );
   });
 
@@ -44,11 +57,12 @@ describe("Header.vue", () => {
   });
 
   it("should reflect sessionListCollapsed state", () => {
-    vi.mocked(contextModule.useOpenCodeWidgetContext).mockReturnValue({
-      ...defaultContext,
-      sessionListCollapsed: ref(false),
-      sessionListTitle: ref("收起会话列表"),
-    } as unknown as OpenCodeWidgetContext);
+    vi.mocked(contextModule.useOpenCodeWidgetContext).mockReturnValue(
+      createContext({
+        sessionListCollapsed: ref(false),
+        sessionListTitle: ref("收起会话列表"),
+      }) as unknown as OpenCodeWidgetContext,
+    );
 
     const wrapper = mount(Header);
     const sessionToggle = wrapper.find(".session-toggle");
@@ -57,11 +71,12 @@ describe("Header.vue", () => {
   });
 
   it("should reflect selectMode and selectEnabled states", () => {
-    vi.mocked(contextModule.useOpenCodeWidgetContext).mockReturnValue({
-      ...defaultContext,
-      selectMode: ref(true),
-      selectEnabled: ref(false),
-    } as unknown as OpenCodeWidgetContext);
+    vi.mocked(contextModule.useOpenCodeWidgetContext).mockReturnValue(
+      createContext({
+        selectMode: ref(true),
+        selectEnabled: ref(false),
+      }) as unknown as OpenCodeWidgetContext,
+    );
 
     const wrapper = mount(Header);
     const selectBtn = wrapper.find(".select-btn");
@@ -76,12 +91,13 @@ describe("Header.vue", () => {
     const handleToggleSelectMode = vi.fn();
     const handleClose = vi.fn();
 
-    vi.mocked(contextModule.useOpenCodeWidgetContext).mockReturnValue({
-      ...defaultContext,
-      handleToggleSessionList,
-      handleToggleSelectMode,
-      handleClose,
-    } as unknown as OpenCodeWidgetContext);
+    vi.mocked(contextModule.useOpenCodeWidgetContext).mockReturnValue(
+      createContext({
+        handleToggleSessionList,
+        handleToggleSelectMode,
+        handleClose,
+      }) as unknown as OpenCodeWidgetContext,
+    );
 
     const wrapper = mount(Header);
 

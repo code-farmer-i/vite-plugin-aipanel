@@ -71,7 +71,10 @@ export function extractTextFromResponse(data: unknown): string | null {
   const obj = data as Record<string, unknown>;
   if (obj.parts && Array.isArray(obj.parts)) {
     const textParts = obj.parts
-      .filter((p: unknown) => p && typeof p === "object" && (p as Record<string, unknown>).type === "text")
+      .filter(
+        (p: unknown) =>
+          p && typeof p === "object" && (p as Record<string, unknown>).type === "text",
+      )
       .map((p: unknown) => (p as Record<string, unknown>).text as string)
       .filter(Boolean);
     if (textParts.length > 0) return textParts.join("");
@@ -106,17 +109,18 @@ export function extractTextFromResponse(data: unknown): string | null {
  * @returns Chrome DevTools 是否可用
  */
 export async function checkChromeDevToolsAvailable(
-  timeout = CHROME_DEVTOOLS_CHECK_TIMEOUT
+  port = CHROME_DEVTOOLS_PORT,
+  timeout = CHROME_DEVTOOLS_CHECK_TIMEOUT,
 ): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = new net.Socket();
-    
+
     const timer = setTimeout(() => {
       socket.destroy();
       resolve(false);
     }, timeout);
 
-    socket.connect(CHROME_DEVTOOLS_PORT, "localhost", () => {
+    socket.connect(port, "localhost", () => {
       clearTimeout(timer);
       socket.removeAllListeners();
       socket.destroy();

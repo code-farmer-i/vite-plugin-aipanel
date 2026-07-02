@@ -143,6 +143,7 @@ export const DEFAULT_CONFIG = {
   verbose: false,
   hotkey: "ctrl+k",
   warmupChromeMcp: true,
+  chromeDevtoolsPort: CHROME_DEVTOOLS_PORT,
   displayMode: "bubble" as const,
   splitMode: undefined as
     | {

@@ -22,6 +22,7 @@ export class OpenCodeAPI {
     private getPort: () => number,
     private getProxyPort: () => number,
     private warmupChromeMcpConfig: boolean = false,
+    private chromeDevtoolsPort: number = CHROME_DEVTOOLS_PORT,
   ) {}
 
   private createHttpRequest<T>(
@@ -292,15 +293,15 @@ export class OpenCodeAPI {
     const timer = log.timer(`${operation}WarmupChromeMcp`, { viteOrigin, operation });
     let warmupSessionId: string | null = null;
 
-    const chromeAvailable = await checkChromeDevToolsAvailable();
+    const chromeAvailable = await checkChromeDevToolsAvailable(this.chromeDevtoolsPort);
     if (!chromeAvailable) {
       const error = new ChromeMcpWarmupError(
         ChromeMcpWarmupErrorType.CHROME_NOT_CONNECTED,
         "Chrome DevTools Protocol is not available",
-        "Chrome remote debugging is not enabled or not running on port 9222. Please enable Chrome remote debugging first.",
+        `Chrome remote debugging is not enabled or not running on port ${this.chromeDevtoolsPort}. Please enable Chrome remote debugging first.`,
       );
       log.warn(`Chrome DevTools not available for ${operation}`, {
-        port: CHROME_DEVTOOLS_PORT,
+        port: this.chromeDevtoolsPort,
         hint: "Enable Chrome remote debugging at chrome://inspect/#remote-debugging",
       });
       timer.end(`Chrome DevTools not available for ${operation}`);

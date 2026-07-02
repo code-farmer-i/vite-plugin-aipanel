@@ -145,6 +145,8 @@ export interface OpenCodeOptions {
   hotkey?: string;
   /** 服务启动后是否立即预热 Chrome MCP，默认 true */
   warmupChromeMcp?: boolean;
+  /** Chrome DevTools Protocol 端口，默认 9222 */
+  chromeDevtoolsPort?: number;
   /** 展示模式，默认 'bubble' */
   displayMode?: DisplayMode;
   /** 分屏模式配置 */

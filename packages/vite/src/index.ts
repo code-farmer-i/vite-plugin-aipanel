@@ -54,6 +54,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
     () => actualWebPort,
     () => actualProxyPort,
     config.warmupChromeMcp,
+    config.chromeDevtoolsPort,
   );
   const service = new OpenCodeService(
     config,

@@ -325,8 +325,20 @@ onUnmounted(() => {
 });
 
 watch(
-  [windowWidth, windowHeight, gapX, gapY, () => props.offset],
+  [windowWidth, windowHeight, gapX, gapY],
   updateState,
+);
+
+watch(
+  () => props.offset,
+  (newOffset) => {
+    // offset prop 变化时（如状态恢复），重置磁性吸附偏好，
+    // 让位置由外部传入的 offset 决定，而非之前拖拽形成的偏好
+    if (newOffset) {
+      magneticSide.value = null;
+    }
+    updateState();
+  },
   { deep: true }
 );
 

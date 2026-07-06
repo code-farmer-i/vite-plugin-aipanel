@@ -173,6 +173,9 @@ function generateBridgeScript(options: ProxyServerOptions): string {
 
   // === 最小化状态样式 ===
   const minimizeStyles = \`
+    #root header {
+      display: none !important;
+    }
     .opencode-minimized [data-dock-surface="tray"]:not([data-slot="permission-footer"]) {
       display: none !important;
     }

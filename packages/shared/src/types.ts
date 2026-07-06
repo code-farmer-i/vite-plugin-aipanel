@@ -87,7 +87,7 @@ export interface OpenCodeSettings {
 /**
  * 展示模式类型
  */
-export type DisplayMode = "bubble" | "split" | "auto";
+export type DisplayMode = "bubble" | "split" | "auto" | "extension";
 
 /**
  * 分屏模式配置
@@ -429,6 +429,8 @@ export interface OpenCodeWidgetProps {
   splitMode?: SplitModeOptions;
   /** 分屏面板宽度（运行时状态） */
   splitPanelWidth?: number;
+  /** 隐藏悬浮气泡（浏览器扩展模式下使用） */
+  hideBubble?: boolean;
 }
 
 /**

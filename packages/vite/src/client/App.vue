@@ -241,6 +241,10 @@ onMounted(() => {
     serverSSE.connect();
     opencodeSSE.connect();
     updateContext(true);
+  } else if (serviceStatus.value === "idle") {
+    // sidepanel / tab 切换重连场景：主动加载会话并连接 SSE
+    loadSessions();
+    serverSSE.connect();
   }
   if (autoOpen && serviceStatus.value === "ready") {
     setTimeout(() => {

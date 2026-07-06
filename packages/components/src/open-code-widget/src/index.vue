@@ -42,6 +42,7 @@ const props = withDefaults(defineProps<OpenCodeWidgetProps>(), {
   displayMode: "bubble",
   splitMode: undefined,
   splitPanelWidth: 500,
+  hideBubble: false,
 });
 
 const emit = defineEmits<OpenCodeWidgetEmits>();
@@ -137,6 +138,7 @@ watch(
 );
 
 const handleToggleDisplayMode = () => {
+  if (localDisplayMode.value === "extension") return;
   const modes: ("bubble" | "split" | "auto")[] = ["bubble", "split", "auto"];
   const currentIndex = modes.indexOf(localDisplayMode.value);
   const nextIndex = (currentIndex + 1) % modes.length;
@@ -243,6 +245,7 @@ const bubbleOffset = ref<FloatingBubbleOffset | undefined>(undefined);
 const {
   effectiveMode,
   isSplitMode,
+  isExtensionMode,
   panelWidth,
   splitConfig,
   splitPosition,
@@ -559,9 +562,9 @@ defineExpose({
 </script>
 
 <template>
-  <div :class="containerClasses">
+  <div :class="[...containerClasses, { 'extension-mode': isExtensionMode }]">
     <Trigger
-      v-if="!isSplitMode"
+      v-if="!isSplitMode && !props.hideBubble"
       ref="triggerRef"
       @drag-start="handleDragStart"
       @drag-end="handleDragEnd"
@@ -593,6 +596,7 @@ defineExpose({
       :thinking="thinking"
       :resolved-theme="resolvedTheme"
       :split-position="splitPosition"
+      :extension="isExtensionMode"
       @resize="handleResize"
       @resize-start="handleResizeStart"
       @resize-end="handleResizeEnd"
@@ -1105,5 +1109,12 @@ body.has-opencode-split-right {
 
 body.has-opencode-split-left {
   padding-left: var(--opencode-split-width, 500px);
+}
+
+.opencode-widget.extension-mode {
+  position: static;
+  width: 100%;
+  height: 100%;
+  display: flex;
 }
 </style>

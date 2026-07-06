@@ -29,6 +29,7 @@ const props = withDefaults(
     thinking?: boolean;
     resolvedTheme?: "light" | "dark";
     splitPosition?: "left" | "right";
+    extension?: boolean;
   }>(),
   {
     mode: "bubble",
@@ -48,6 +49,7 @@ const props = withDefaults(
     thinking: false,
     resolvedTheme: "light",
     splitPosition: "right",
+    extension: false,
   }
 );
 
@@ -88,6 +90,9 @@ const handleToggle = () => {
 };
 
 const panelStyle = computed(() => {
+  if (props.extension) {
+    return {};
+  }
   if (props.mode === "split") {
     return {
       width: `${props.panelWidth}px`,
@@ -104,8 +109,9 @@ const panelClasses = computed(() => [
     dragging: props.dragging,
     "no-transition": props.noTransition,
     "split-mode": props.mode === "split",
-    "split-left": props.mode === "split" && props.splitPosition === "left",
-    "split-right": props.mode === "split" && props.splitPosition === "right",
+    "split-left": props.mode === "split" && props.splitPosition === "left" && !props.extension,
+    "split-right": props.mode === "split" && props.splitPosition === "right" && !props.extension,
+    "extension-mode": props.extension,
   },
 ]);
 </script>
@@ -127,7 +133,7 @@ const panelClasses = computed(() => [
     />
 
     <button
-      v-if="mode === 'split'"
+      v-if="mode === 'split' && resizable"
       type="button"
       :class="['opencode-split-toggle-btn', { open: props.open, thinking: props.thinking, 'opencode-theme-dark': resolvedTheme === 'dark', 'split-left': splitPosition === 'left' }]"
       :aria-expanded="open"
@@ -332,6 +338,24 @@ const panelClasses = computed(() => [
 
 .opencode-chat.dragging .opencode-iframe {
   pointer-events: none;
+}
+
+/* === Extension 模式 === */
+.opencode-chat.extension-mode {
+  position: static;
+  width: 100%;
+  height: 100%;
+  bottom: auto;
+  left: auto;
+  right: auto;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  max-height: none;
+  box-shadow: none;
+  transform: none;
+  opacity: 1;
+  visibility: visible;
 }
 
 .opencode-chat:not(.split-mode) {

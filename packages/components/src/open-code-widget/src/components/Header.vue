@@ -50,6 +50,7 @@ const displayModeIconTitle = computed(() => {
     bubble: "气泡模式",
     split: "分屏模式",
     auto: "自动模式",
+    extension: "扩展模式",
   };
   return `展示模式: ${displayModeLabels[displayMode.value]}`;
 });
@@ -59,11 +60,12 @@ const displayModeIconLabel = computed(() => {
     bubble: "气泡模式",
     split: "分屏模式",
     auto: "自动模式",
+    extension: "扩展模式",
   };
   const modes = ["bubble", "split", "auto"];
-  const currentIndex = modes.indexOf(displayMode.value);
-  const nextMode = modes[(currentIndex + 1) % modes.length];
-  return `切换展示模式 - 下一个: ${displayModeLabels[nextMode as keyof typeof displayModeLabels]}`;
+  const currentIndex = modes.indexOf(displayMode.value as "bubble" | "split" | "auto");
+  const nextMode = modes[(currentIndex + 1) % modes.length] as keyof typeof displayModeLabels;
+  return `切换展示模式 - 下一个: ${displayModeLabels[nextMode]}`;
 });
 
 const splitPositionIconTitle = computed(() => {
@@ -264,6 +266,7 @@ const splitPositionIconLabel = computed(() => {
       </button>
 
       <button
+        v-if="displayMode !== 'extension'"
         class="opencode-header-btn display-mode-btn"
         type="button"
         :title="displayModeIconTitle"
@@ -374,7 +377,7 @@ const splitPositionIconLabel = computed(() => {
 
     <div class="opencode-chat-header-actions">
       <button
-        v-if="isSplitMode"
+        v-if="isSplitMode && displayMode !== 'extension'"
         class="opencode-header-btn split-position-btn"
         type="button"
         :title="splitPositionIconTitle"

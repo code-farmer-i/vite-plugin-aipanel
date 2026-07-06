@@ -35,7 +35,10 @@ defineExpose({
 
 <template>
   <div class="opencode-iframe-container">
-    <div class="opencode-empty-state-overlay" :class="{ visible: showEmptyState }">
+    <div
+      class="opencode-empty-state-overlay"
+      :class="{ visible: showEmptyState }"
+    >
       <slot name="empty-state">
         <div class="opencode-empty-state-icon">
           <svg
@@ -55,20 +58,30 @@ defineExpose({
           </svg>
         </div>
         <div class="opencode-empty-state-text">{{ emptyStateText }}</div>
-        <button class="opencode-empty-state-btn" type="button" @click="handleEmptyAction">
+        <button
+          class="opencode-empty-state-btn"
+          type="button"
+          @click="handleEmptyAction"
+        >
           {{ emptyStateActionText }}
         </button>
       </slot>
     </div>
 
-    <div class="opencode-loading-overlay" :class="{ visible: frameLoading }">
+    <div
+      class="opencode-loading-overlay"
+      :class="{ visible: frameLoading }"
+    >
       <slot name="loading">
         <div class="opencode-loading-spinner" />
         <div class="opencode-loading-text">加载中...</div>
       </slot>
     </div>
 
-    <div class="opencode-error-overlay" :class="{ visible: showError }">
+    <div
+      class="opencode-error-overlay"
+      :class="{ visible: showError }"
+    >
       <slot name="error" />
     </div>
 
@@ -91,7 +104,6 @@ defineExpose({
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  margin-top: -42px;
 }
 
 .opencode-loading-overlay {
@@ -141,7 +153,6 @@ defineExpose({
   right: 0;
   bottom: 0;
   z-index: 15;
-  margin-top: 42px;
   display: none;
 }
 
@@ -162,7 +173,6 @@ defineExpose({
   justify-content: center;
   z-index: 5;
   transition: opacity 0.3s ease;
-  margin-top: 42px;
 }
 
 .opencode-empty-state-overlay.visible {

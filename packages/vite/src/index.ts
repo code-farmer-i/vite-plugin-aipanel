@@ -101,6 +101,12 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         get currentTask() {
           return service.currentTask;
         },
+        get actualProxyPort() {
+          return actualProxyPort;
+        },
+        get actualWebPort() {
+          return actualWebPort;
+        },
         getSessions: () => api.getSessions(service.workspaceRoot!),
         createSession: () => api.createSession(service.workspaceRoot!),
         deleteSession: (id) => api.deleteSession(id),
@@ -172,6 +178,8 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
     },
 
     transformIndexHtml(html) {
+      if (config.displayMode === "extension") return html;
+
       const timer = log.timer("transformIndexHtml");
 
       const widget = injectWidget({

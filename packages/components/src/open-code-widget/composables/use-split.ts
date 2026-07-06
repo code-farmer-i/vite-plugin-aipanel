@@ -18,15 +18,18 @@ export function useSplitMode(options: UseSplitModeOptions) {
 
   const localSplitPosition = ref(options.splitPosition?.value ?? "right");
 
+  const isExtensionMode = computed(() => options.displayMode.value === "extension");
+
   const splitConfig = computed(() => {
     const config = options.splitMode.value || {};
+    const isExt = isExtensionMode.value;
     return {
       width: config.width ?? 500,
       minWidth: config.minWidth ?? 400,
       maxWidth: config.maxWidth ?? 800,
-      resizable: config.resizable ?? true,
-      shrinkPage: config.shrinkPage ?? true,
-      defaultOpen: config.defaultOpen ?? true,
+      resizable: isExt ? false : (config.resizable ?? true),
+      shrinkPage: isExt ? false : (config.shrinkPage ?? true),
+      defaultOpen: isExt ? true : (config.defaultOpen ?? true),
       position: config.position ?? localSplitPosition.value,
     };
   });
@@ -34,6 +37,7 @@ export function useSplitMode(options: UseSplitModeOptions) {
   const panelWidth = ref(splitConfig.value.width);
 
   const effectiveMode = computed((): "bubble" | "split" => {
+    if (isExtensionMode.value) return "split";
     if (options.displayMode.value === "bubble") {
       return "bubble";
     }
@@ -71,6 +75,8 @@ export function useSplitMode(options: UseSplitModeOptions) {
 
   const updateBodyClass = () => {
     if (typeof document === "undefined") return;
+    // extension 模式下不修改 body class
+    if (isExtensionMode.value) return;
 
     const shouldShrink = isSplitMode.value && options.open.value && splitConfig.value.shrinkPage;
 
@@ -115,7 +121,7 @@ export function useSplitMode(options: UseSplitModeOptions) {
   onMounted(() => {
     if (typeof window !== "undefined") {
       window.addEventListener("resize", handleWindowResize);
-      if (isSplitMode.value && splitConfig.value.defaultOpen && !options.open.value) {
+      if (!isExtensionMode.value && isSplitMode.value && splitConfig.value.defaultOpen && !options.open.value) {
         options.onOpenChange?.(true);
       }
     }
@@ -124,16 +130,20 @@ export function useSplitMode(options: UseSplitModeOptions) {
   onUnmounted(() => {
     if (typeof window !== "undefined") {
       window.removeEventListener("resize", handleWindowResize);
-      document.body.classList.remove("has-opencode-split");
-      document.body.classList.remove("has-opencode-split-left");
-      document.body.classList.remove("has-opencode-split-right");
-      document.body.style.removeProperty("--opencode-split-width");
+      // extension 模式下跳过 body class 清理
+      if (!isExtensionMode.value) {
+        document.body.classList.remove("has-opencode-split");
+        document.body.classList.remove("has-opencode-split-left");
+        document.body.classList.remove("has-opencode-split-right");
+        document.body.style.removeProperty("--opencode-split-width");
+      }
     }
   });
 
   return {
     effectiveMode,
     isSplitMode,
+    isExtensionMode,
     panelWidth,
     splitConfig,
     splitPosition,

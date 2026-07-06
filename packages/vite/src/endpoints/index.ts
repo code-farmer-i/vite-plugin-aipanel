@@ -14,7 +14,7 @@ export { LOGS_API_PATH };
 export function setupMiddlewares(server: ViteDevServer, ctx: EndpointContext) {
   setupWidgetEndpoints(server, ctx);
   setupContextEndpoint(server, ctx);
-  setupStartEndpoint(server);
+  setupStartEndpoint(server, ctx);
   setupSseEndpoint(server, ctx);
   setupSessionsEndpoint(server, ctx);
   setupWarmupEndpoint(server, ctx);

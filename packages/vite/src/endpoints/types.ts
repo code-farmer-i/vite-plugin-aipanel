@@ -13,6 +13,8 @@ export interface EndpointContext {
   set pageContext(ctx: PageContext);
   get isServiceStarted(): boolean;
   get currentTask(): { task: ServiceStartupTask; data?: Record<string, unknown> } | null;
+  get actualProxyPort(): number;
+  get actualWebPort(): number;
   getSessions: () => Promise<SessionInfo[]>;
   createSession: () => Promise<SessionInfo>;
   deleteSession: (id: string) => Promise<void>;

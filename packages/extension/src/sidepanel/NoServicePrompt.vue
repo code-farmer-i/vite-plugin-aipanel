@@ -1,25 +1,70 @@
 <script setup lang="ts">
-defineEmits<{
-  refresh: [];
+import { ref } from "vue";
+
+const props = defineProps<{
+  onRefresh: () => Promise<boolean>;
 }>();
+
+const checking = ref(false);
+const resultMsg = ref("");
+
+async function handleRefresh() {
+  if (checking.value) return;
+  checking.value = true;
+  resultMsg.value = "";
+
+  try {
+    // 保证最小 loading 时长，让用户能感知
+    const minDelay = new Promise((r) => setTimeout(r, 600));
+    const [found] = await Promise.all([props.onRefresh(), minDelay]);
+    if (!found) {
+      resultMsg.value = "仍未检测到服务，请确认 localhost 页面已打开";
+    }
+  } finally {
+    checking.value = false;
+  }
+}
 </script>
 
 <template>
   <div class="opencode-no-service">
     <div class="opencode-no-service-icon">
-      <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+      <svg
+        viewBox="0 0 1024 1024"
+        xmlns="http://www.w3.org/2000/svg"
+        width="64"
+        height="64"
+      >
         <defs>
-          <linearGradient id="ns-g" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" style="stop-color: #667eea" />
-            <stop offset="100%" style="stop-color: #764ba2" />
+          <linearGradient
+            id="ns-g"
+            x1="0%"
+            y1="0%"
+            x2="100%"
+            y2="100%"
+          >
+            <stop
+              offset="0%"
+              style="stop-color: #667eea"
+            />
+            <stop
+              offset="100%"
+              style="stop-color: #764ba2"
+            />
           </linearGradient>
         </defs>
         <path
           d="M512 981.33H85.34c-15.85 0-30.38-8.77-37.77-22.81a42.624 42.624 0 0 1 2.6-44.02L135 791.08C75.25 710.5 42.67 612.6 42.67 512 42.67 253.21 253.21 42.67 512 42.67S981.34 253.21 981.34 512 770.8 981.33 512 981.33zM166.44 896H512c211.73 0 384-172.27 384-384S723.73 128 512 128 128 300.27 128 512c0 91.29 32.83 179.9 92.46 249.46 12.58 14.69 13.73 36 2.77 51.94L166.44 896z"
           fill="url(#ns-g)"
         />
-        <path d="M384 448m-64 0a64 64 0 1 0 128 0 64 64 0 1 0 -128 0Z" fill="url(#ns-g)" />
-        <path d="M640 448m-64 0a64 64 0 1 0 128 0 64 64 0 1 0 -128 0Z" fill="url(#ns-g)" />
+        <path
+          d="M384 448m-64 0a64 64 0 1 0 128 0 64 64 0 1 0 -128 0Z"
+          fill="url(#ns-g)"
+        />
+        <path
+          d="M640 448m-64 0a64 64 0 1 0 128 0 64 64 0 1 0 -128 0Z"
+          fill="url(#ns-g)"
+        />
       </svg>
     </div>
     <h2 class="opencode-no-service-title">OpenCode Assistant</h2>
@@ -28,13 +73,30 @@ defineEmits<{
       <p>请打开使用 <code>vite-plugin-opencode-assistant</code> 的 localhost 页面</p>
       <p class="opencode-no-service-hint">例如：<code>http://localhost:5173</code></p>
     </div>
-    <button class="opencode-no-service-refresh" @click="$emit('refresh')">
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+    <button
+      class="opencode-no-service-refresh"
+      :class="{ 'opencode-no-service-refresh--loading': checking }"
+      :disabled="checking"
+      @click="handleRefresh"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        :class="{ 'opencode-spin': checking }"
+      >
         <polyline points="23,4 23,10 17,10" />
         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
       </svg>
-      重新检测
+      {{ checking ? '检测中...' : '重新检测' }}
     </button>
+    <p
+      v-if="resultMsg"
+      class="opencode-no-service-result"
+    >{{ resultMsg }}</p>
   </div>
 </template>
 
@@ -84,10 +146,12 @@ defineEmits<{
 }
 
 @keyframes opencode-ns-float {
+
   0%,
   100% {
     transform: translateY(0);
   }
+
   50% {
     transform: translateY(-6px);
   }
@@ -167,5 +231,43 @@ defineEmits<{
 
 .opencode-no-service-refresh svg {
   flex-shrink: 0;
+}
+
+.opencode-no-service-refresh--loading {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.opencode-no-service-result {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #f59e0b;
+  animation: opencode-fade-in 0.3s ease;
+}
+
+@keyframes opencode-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.opencode-spin {
+  animation: opencode-spin 0.8s linear infinite;
+}
+
+@keyframes opencode-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

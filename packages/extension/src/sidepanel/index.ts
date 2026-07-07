@@ -89,7 +89,7 @@ async function initContainers() {
   // 挂载无服务提示 Vue 组件
   const { createApp } = await import("vue");
   const { default: NoServicePrompt } = await import("./NoServicePrompt.vue");
-  createApp(NoServicePrompt).mount(noServiceEl);
+  createApp(NoServicePrompt, { onRefresh: mountApp }).mount(noServiceEl);
 
   appRootEl = document.createElement("div");
   appRootEl.id = "opencode-sidepanel-root";
@@ -97,14 +97,14 @@ async function initContainers() {
   document.body.appendChild(appRootEl);
 }
 
-/** 创建 Vue 应用（仅首次） */
-async function mountApp() {
-  if (appMounted) return;
+/** 创建 Vue 应用（仅首次），返回 true 表示成功检测到服务 */
+async function mountApp(): Promise<boolean> {
+  if (appMounted) return true;
 
   const info = await fetchPort();
   if (!info) {
     showNoServiceOverlay();
-    return;
+    return false;
   }
   ports.proxyPort = info.proxyPort;
   ports.vitePort = info.vitePort;
@@ -130,6 +130,7 @@ async function mountApp() {
   showApp();
   appMounted = true;
   console.log("[OpenCode SP] App 已挂载");
+  return true;
 }
 
 /** 根据端口是否变化决定重载 App 还是仅显示 */

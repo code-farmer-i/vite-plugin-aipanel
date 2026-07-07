@@ -1060,6 +1060,7 @@ defineExpose({
   box-shadow: var(--oc-shadow-md);
   max-width: 300px;
   pointer-events: none;
+  line-height: 1;
 }
 
 .opencode-tooltip-tag {

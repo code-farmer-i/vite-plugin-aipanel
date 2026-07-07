@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
-import { ref, watch, onMounted, onUnmounted, type Ref } from "vue";
+import { ref, watch, onMounted, onUnmounted, nextTick, type Ref } from "vue";
 import { truncate } from "@vite-plugin-opencode-assistant/shared";
 import getCssSelector from "css-selector-generator";
 import type { OpenCodeSelectedElement } from "../src/types";
@@ -399,40 +399,117 @@ export function useInspector(options: UseInspectorOptions) {
         };
       }
 
-      const tooltipHeight = 50;
-      const tooltipWidth = 200;
-      const margin = 10;
-
-      let tooltipTop = rect.top - tooltipHeight - 8;
-      let tooltipLeft = rect.left;
-
-      if (tooltipTop < margin) {
-        tooltipTop = rect.bottom + 8;
-      }
-
-      if (tooltipTop + tooltipHeight > window.innerHeight - margin) {
-        tooltipTop = Math.max(margin, rect.top - tooltipHeight - 8);
-      }
-
-      if (tooltipLeft < margin) {
-        tooltipLeft = margin;
-      }
-      if (tooltipLeft + tooltipWidth > window.innerWidth - margin) {
-        tooltipLeft = window.innerWidth - tooltipWidth - margin;
-      }
-
-      const newTooltipTop = `${tooltipTop}px`;
-      const newTooltipLeft = `${tooltipLeft}px`;
-
-      if (tooltipStyle.value.top !== newTooltipTop || tooltipStyle.value.left !== newTooltipLeft) {
-        tooltipStyle.value = {
-          top: newTooltipTop,
-          left: newTooltipLeft,
-        };
-      }
-
+      // 标记 highlight 可见
       highlightVisible.value = true;
       tooltipVisible.value = true;
+
+      // 等 Vue 把新内容渲染到 DOM 后，再读取真实尺寸并计算位置
+      // 这样多行换行的 tooltip 也能精确避让选中元素
+      void nextTick(() => {
+        const tooltipEl = document.querySelector(".opencode-element-tooltip") as HTMLElement | null;
+        if (!tooltipEl) return;
+
+        const tooltipWidth = tooltipEl.offsetWidth;
+        const tooltipHeight = tooltipEl.offsetHeight;
+        if (tooltipWidth === 0 || tooltipHeight === 0) return;
+
+        const margin = 10;
+        const gap = 4;
+
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        const clampLeft = (left: number) =>
+          Math.max(margin, Math.min(left, viewportWidth - tooltipWidth - margin));
+        const clampTop = (top: number) =>
+          Math.max(margin, Math.min(top, viewportHeight - tooltipHeight - margin));
+
+        const candidateTop = rect.top - tooltipHeight - gap;
+        const candidateBottom = rect.bottom + gap;
+        const candidateRight = rect.right + gap;
+        const candidateLeft = rect.left - tooltipWidth - gap;
+        const verticalCenter = rect.top + (rect.height - tooltipHeight) / 2;
+
+        let tooltipTop = 0;
+        let tooltipLeft = 0;
+        let placed = false;
+
+        // 1) 元素上方
+        if (candidateTop >= margin) {
+          tooltipTop = candidateTop;
+          tooltipLeft = clampLeft(rect.left);
+          placed = true;
+        }
+
+        // 2) 元素下方
+        if (!placed && candidateBottom + tooltipHeight <= viewportHeight - margin) {
+          tooltipTop = candidateBottom;
+          tooltipLeft = clampLeft(rect.left);
+          placed = true;
+        }
+
+        // 3) 元素右侧
+        if (!placed && candidateRight + tooltipWidth <= viewportWidth - margin) {
+          tooltipLeft = candidateRight;
+          tooltipTop = clampTop(verticalCenter);
+          placed = true;
+        }
+
+        // 4) 元素左侧
+        if (!placed && candidateLeft >= margin) {
+          tooltipLeft = candidateLeft;
+          tooltipTop = clampTop(verticalCenter);
+          placed = true;
+        }
+
+        // 5) 兜底：选择与元素不重叠的视口角落
+        if (!placed) {
+          const corners: Array<{ top: number; left: number }> = [
+            { top: margin, left: margin },
+            { top: margin, left: viewportWidth - tooltipWidth - margin },
+            { top: viewportHeight - tooltipHeight - margin, left: margin },
+            {
+              top: viewportHeight - tooltipHeight - margin,
+              left: viewportWidth - tooltipWidth - margin,
+            },
+          ];
+
+          for (const corner of corners) {
+            const tooltipRight = corner.left + tooltipWidth;
+            const tooltipBottom = corner.top + tooltipHeight;
+            const overlaps =
+              tooltipRight <= rect.left ||
+              rect.right <= corner.left ||
+              tooltipBottom <= rect.top ||
+              rect.bottom <= corner.top;
+
+            if (overlaps) {
+              tooltipTop = corner.top;
+              tooltipLeft = corner.left;
+              placed = true;
+              break;
+            }
+          }
+
+          if (!placed) {
+            tooltipTop = margin;
+            tooltipLeft = margin;
+          }
+        }
+
+        const newTooltipTop = `${tooltipTop}px`;
+        const newTooltipLeft = `${tooltipLeft}px`;
+
+        if (
+          tooltipStyle.value.top !== newTooltipTop ||
+          tooltipStyle.value.left !== newTooltipLeft
+        ) {
+          tooltipStyle.value = {
+            top: newTooltipTop,
+            left: newTooltipLeft,
+          };
+        }
+      });
     } else {
       highlightVisible.value = false;
       tooltipVisible.value = false;

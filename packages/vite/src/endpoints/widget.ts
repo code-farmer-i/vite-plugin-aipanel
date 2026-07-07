@@ -1,6 +1,6 @@
 import type { ViteDevServer } from "vite";
 import fs from "fs";
-import { WIDGET_SCRIPT_PATH } from "@vite-plugin-opencode-assistant/shared";
+import { WIDGET_SCRIPT_PATH, WIDGET_STYLE_PATH } from "@vite-plugin-opencode-assistant/shared";
 import { RequestContext } from "@vite-plugin-opencode-assistant/shared";
 import type { EndpointContext } from "./types";
 
@@ -21,7 +21,6 @@ export function setupWidgetEndpoints(server: ViteDevServer, ctx: EndpointContext
     }
   });
 
-  const WIDGET_STYLE_PATH = "/__opencode_widget__.css";
   server.middlewares.use(WIDGET_STYLE_PATH, async (_req, res) => {
     const reqCtx = new RequestContext("GET", WIDGET_STYLE_PATH);
     const stylePath = ctx.resolveWidgetStylePath();

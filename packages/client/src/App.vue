@@ -7,6 +7,7 @@ import type {
   ModelInfo,
 } from "@vite-plugin-opencode-assistant/shared";
 import type { WidgetOptions } from "@vite-plugin-opencode-assistant/shared";
+import { WIDGET_MSG, WARMUP_API_PATH, START_API_PATH } from "@vite-plugin-opencode-assistant/shared";
 
 import { useHotkey } from "./composables/useHotkey";
 import { useServerSSE } from "./composables/useServerSSE";
@@ -15,7 +16,10 @@ import { useSessions } from "./composables/useSessions";
 import { useTheme } from "./composables/useTheme";
 import { useSelectedElements } from "./composables/useSelectedElements";
 import { useServiceStatus } from "./composables/useServiceStatus";
-import { useContext } from "./composables/useContext";
+import { usePageContext } from "./composables/usePageContext";
+import { useExtensionContext } from "./composables/useExtensionContext";
+import { useExtensionMode } from "./composables/useExtensionMode";
+import { useExtensionSelectorMode } from "./composables/useExtensionSelectorMode";
 import LoadingContent from "./components/LoadingContent.vue";
 import ChromeWarmupError from "./components/ChromeWarmupError.vue";
 
@@ -46,6 +50,13 @@ const splitPanelWidth = ref(splitMode?.width ?? 500);
 
 const isExtensionMode = displayMode === "extension";
 const isExtensionSelectorMode = displayMode === "extension-selector";
+
+// 扩展模式 composable 返回值（在 composable 调用后填充）
+const ext = {
+  onSelectModeChange: null as ((val: boolean) => void) | null,
+  notifySelectionResult: null as ((element: OpenCodeSelectedElement) => void) | null,
+  notifySelectModeChange: null as ((val: boolean) => void) | null,
+};
 
 // 构建 proxy base URL
 const proxyBaseUrl = computed(() => {
@@ -86,7 +97,9 @@ const {
   updateSessionInfo,
 } = useSessions({ showNotification });
 
-const { updateContext } = useContext(serviceStatus, selectedElements, displayMode);
+const { updateContext } = isExtensionMode
+  ? useExtensionContext(serviceStatus, selectedElements)
+  : usePageContext(serviceStatus, selectedElements);
 
 // Server SSE: 监听 Vite server 事件 (服务启动状态)
 const serverSSE = useServerSSE({
@@ -139,7 +152,7 @@ const retryWarmup = async (selectedModel?: { providerID: string; modelID: string
   retryingWarmup.value = true;
 
   try {
-    const res = await fetch("/__opencode_warmup__", {
+    const res = await fetch(WARMUP_API_PATH, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: selectedModel ? JSON.stringify(selectedModel) : "",
@@ -174,7 +187,7 @@ const retryWarmup = async (selectedModel?: { providerID: string; modelID: string
 
 const fetchAvailableModels = async () => {
   try {
-    const res = await fetch("/__opencode_warmup__", { method: "GET" });
+    const res = await fetch(WARMUP_API_PATH, { method: "GET" });
     const data = await res.json();
     if (data.success && data.models) {
       availableModels.value = data.models;
@@ -188,7 +201,7 @@ const fetchAvailableModels = async () => {
 const ensureServicesStarted = async () => {
   if (serviceStatus.value !== "idle") return true;
   try {
-    const res = await fetch("/__opencode_start__");
+    const res = await fetch(START_API_PATH);
     const data = await res.json();
     if (data.success) {
       setStarting();
@@ -205,18 +218,6 @@ useHotkey(hotkey, (e) => {
   e.preventDefault();
   handleToggle(!open.value);
 });
-
-/** 扩展模式下向目标页面发送选择指令 */
-async function sendToActiveTab(msg: Record<string, unknown>) {
-  try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tabs[0]?.id) {
-      await chrome.tabs.sendMessage(tabs[0].id, msg);
-    }
-  } catch {
-    // ignore - chrome API 仅在扩展上下文可用
-  }
-}
 
 const toggleSelectMode = () => {
   if (isExtensionMode) {
@@ -258,44 +259,12 @@ watch(chromeMcpFailed, (failed) => {
   }
 });
 
-// 扩展模式消息监听回调
-const handleExtensionMessage = (msg: { type: string; filePath?: string; line?: number; column?: number; innerText?: string; description?: string; pageUrl?: string; pageTitle?: string; }) => {
-  if (msg.type === "OPENCODE_ELEMENT_SELECTED") {
-    handleSelectNode({
-      filePath: msg.filePath ?? null,
-      line: msg.line ?? null,
-      column: msg.column ?? null,
-      innerText: msg.innerText ?? "",
-      description: msg.description,
-    }, msg.pageUrl, msg.pageTitle);
-  }
-  if (msg.type === "OPENCODE_SELECTION_CANCELLED") {
-    selectMode.value = false;
-  }
-  if (msg.type === "OPENCODE_SELECTOR_START") {
-    selectMode.value = true;
-  }
-  if (msg.type === "OPENCODE_SELECTOR_STOP") {
-    selectMode.value = false;
-  }
-};
-
-// extension-selector 模式 postMessage 监听回调
-const handleExtensionSelectorMessage = (event: MessageEvent) => {
-  const type = event.data?.type;
-  if (type === "OPENCODE_SELECTOR_START") {
-    handleSelectModeChange(true);
-  } else if (type === "OPENCODE_SELECTOR_STOP") {
-    handleSelectModeChange(false);
-  }
-};
-
 // iframe 消息监听回调
 const handleIframeMessage = (event: MessageEvent) => {
-  if (event.data?.type === "OPENCODE_READY") {
+  if (event.data?.type === WIDGET_MSG.READY) {
     sendThemeToIframe();
   }
-  if (event.data?.type === "OPENCODE_KEYDOWN") {
+  if (event.data?.type === WIDGET_MSG.KEYDOWN) {
     if (event.data.key === "Escape" && selectMode.value) {
       handleSelectModeChange(false);
     }
@@ -322,27 +291,11 @@ onMounted(() => {
     }, 1000);
   }
 
-  // 扩展模式：监听来自目标页面的选择结果
-  if (isExtensionMode) {
-    chrome.runtime.onMessage.addListener(handleExtensionMessage);
-  }
-
-  // extension-selector 模式：监听 postMessage 选择指令
-  if (isExtensionSelectorMode) {
-    window.addEventListener("message", handleExtensionSelectorMessage);
-  }
-
   // 监听 iframe 消息（主题同步和键盘事件）
   window.addEventListener("message", handleIframeMessage);
 });
 
 onUnmounted(() => {
-  if (isExtensionMode) {
-    chrome.runtime.onMessage.removeListener(handleExtensionMessage);
-  }
-  if (isExtensionSelectorMode) {
-    window.removeEventListener("message", handleExtensionSelectorMessage);
-  }
   window.removeEventListener("message", handleIframeMessage);
 });
 
@@ -365,15 +318,8 @@ const handleToggle = async (val: boolean) => {
 
 const handleSelectNode = async (element: OpenCodeSelectedElement, pageUrl?: string, pageTitle?: string) => {
   if (isExtensionSelectorMode) {
-    // extension-selector 模式：通过 postMessage 回传选中结果
-    window.postMessage({
-      type: "OPENCODE_ELEMENT_SELECTED",
-      filePath: element.filePath,
-      line: element.line,
-      column: element.column,
-      innerText: element.innerText,
-      description: element.description,
-    }, "*");
+
+    ext.notifySelectionResult?.(element);
     showNotification("元素已选中", { mode: "page" });
     return;
   }
@@ -384,7 +330,7 @@ const handleSelectNode = async (element: OpenCodeSelectedElement, pageUrl?: stri
     previewPageTitle: isExtensionMode && pageTitle ? pageTitle : document.title,
   };
 
-  widgetRef.value?.sendMessageToIframe("OPENCODE_INSERT_FILE_PART", {
+  widgetRef.value?.sendMessageToIframe(WIDGET_MSG.INSERT_FILE_PART, {
     element: elementWithContext,
   });
 
@@ -401,12 +347,11 @@ const handleSelectModeChange = (val: boolean) => {
   if (selectMode.value === val) return;
   selectMode.value = val;
 
-  // 扩展模式：发送选择指令到目标页面
   if (isExtensionMode) {
-    sendToActiveTab({ type: val ? "SELECTION_START" : "SELECTION_STOP" });
+    ext.onSelectModeChange?.(val);
   }
 
-  widgetRef.value?.sendMessageToIframe("OPENCODE_SELECT_MODE_CHANGE", {
+  widgetRef.value?.sendMessageToIframe(WIDGET_MSG.SELECT_MODE_CHANGE, {
     selectMode: val,
   });
   const isSplit = widgetRef.value?.isSplitMode;
@@ -416,13 +361,21 @@ const handleSelectModeChange = (val: boolean) => {
   if (!val && !open.value) {
     open.value = true;
   }
-  // extension-selector 模式：通知 Side Panel 选择模式变化
   if (isExtensionSelectorMode) {
-    window.postMessage({
-      type: val ? "OPENCODE_SELECTOR_START" : "OPENCODE_SELECTOR_STOP",
-    }, "*");
+    ext.notifySelectModeChange?.(val);
   }
 };
+
+// 扩展模式 composable 调用（必须在 handler 函数定义之后）
+if (isExtensionMode) {
+  const result = useExtensionMode({ selectMode, onElementSelected: handleSelectNode });
+  ext.onSelectModeChange = result.onSelectModeChange;
+}
+if (isExtensionSelectorMode) {
+  const result = useExtensionSelectorMode({ onSelectModeChange: handleSelectModeChange });
+  ext.notifySelectionResult = result.notifySelectionResult;
+  ext.notifySelectModeChange = result.notifySelectModeChange;
+}
 
 const handleSessionListCollapsedChange = (val: boolean) => {
   sessionListCollapsed.value = val;

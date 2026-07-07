@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && npx tsx scripts/build-bg-cs.ts",
     "dev": "vite build --watch"
   },
   "dependencies": {
+    "@vite-plugin-opencode-assistant/client": "workspace:*",
     "@vite-plugin-opencode-assistant/components": "workspace:*",
     "@vite-plugin-opencode-assistant/shared": "workspace:*",
     "vue": "^3.5.32"
@@ -15,7 +16,7 @@
   "devDependencies": {
     "@types/chrome": "^0.0.268",
     "@vitejs/plugin-vue": "^5.0.0",
-    "sharp": "^0.35.3",
+    "tsx": "^4.0.0",
     "typescript": "^5.9.3",
     "vite": "^5.0.0"
   }

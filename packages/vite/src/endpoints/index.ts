@@ -6,7 +6,8 @@ import { setupStartEndpoint } from "./start";
 import { setupSseEndpoint } from "./sse";
 import { setupSessionsEndpoint } from "./sessions";
 import { setupWarmupEndpoint } from "./warmup";
-import { setupLogsEndpoint, LOGS_API_PATH } from "./logs";
+import { setupLogsEndpoint } from "./logs";
+import { LOGS_API_PATH } from "@vite-plugin-opencode-assistant/shared";
 
 export * from "./types";
 export { LOGS_API_PATH };

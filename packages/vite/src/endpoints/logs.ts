@@ -4,16 +4,14 @@
  */
 
 import type { ViteDevServer } from "vite";
+import { getProcessLogBuffer, type ProcessLogEntry } from "@vite-plugin-opencode-assistant/shared";
 import {
-  getProcessLogBuffer,
-  type ProcessLogEntry,
+  RequestContext,
+  createLogger,
+  LOGS_API_PATH,
 } from "@vite-plugin-opencode-assistant/shared";
-import { RequestContext, createLogger } from "@vite-plugin-opencode-assistant/shared";
 
 const log = createLogger("Endpoints:Logs");
-
-/** 日志 API 路径 */
-export const LOGS_API_PATH = "/__opencode_process_logs__";
 
 /**
  * 设置日志端点

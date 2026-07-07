@@ -12,6 +12,7 @@ import { useSplitMode } from "../composables/use-split";
 import type { OpenCodeWidgetEmits, OpenCodeWidgetProps } from "./types";
 import { provideOpenCodeWidgetContext } from "./context";
 import type { FloatingBubbleOffset } from "./components/FloatingBubble/types";
+import { WIDGET_MSG } from "@vite-plugin-opencode-assistant/shared";
 
 defineOptions({
   name: "OpencodeWidget",
@@ -106,8 +107,8 @@ const splitPanelWidth = ref(props.splitPanelWidth);
 
 const syncStateToIframe = () => {
   if (!iframeLoaded.value) return;
-  sendMessageToIframe("prompt-dock-visibility-change", { visible: promptDockVisible.value });
-  sendMessageToIframe("minimize-state-change", { minimized: minimized.value });
+  sendMessageToIframe(WIDGET_MSG.PROMPT_DOCK_VISIBILITY, { visible: promptDockVisible.value });
+  sendMessageToIframe(WIDGET_MSG.MINIMIZE_STATE, { minimized: minimized.value });
 };
 
 const handleFrameLoaded = () => {
@@ -334,13 +335,13 @@ usePersistState({
 const handleToggleMinimize = () => {
   minimized.value = !minimized.value;
   promptDockVisible.value = !minimized.value;
-  sendMessageToIframe("prompt-dock-visibility-change", { visible: promptDockVisible.value });
-  sendMessageToIframe("minimize-state-change", { minimized: minimized.value });
+  sendMessageToIframe(WIDGET_MSG.PROMPT_DOCK_VISIBILITY, { visible: promptDockVisible.value });
+  sendMessageToIframe(WIDGET_MSG.MINIMIZE_STATE, { minimized: minimized.value });
 };
 
 const handleTogglePromptDock = () => {
   promptDockVisible.value = !promptDockVisible.value;
-  sendMessageToIframe("prompt-dock-visibility-change", { visible: promptDockVisible.value });
+  sendMessageToIframe(WIDGET_MSG.PROMPT_DOCK_VISIBILITY, { visible: promptDockVisible.value });
 };
 
 const handleRefresh = () => {

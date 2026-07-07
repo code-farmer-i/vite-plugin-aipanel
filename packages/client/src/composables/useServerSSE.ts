@@ -1,4 +1,5 @@
 import { ServiceStartupTask } from "@vite-plugin-opencode-assistant/shared";
+import { SSE_EVENTS_PATH } from "@vite-plugin-opencode-assistant/shared";
 import { useSSE } from "./useSSE";
 
 /**
@@ -55,7 +56,7 @@ export function useServerSSE(options: ServerSSEOptions = {}) {
   const { onStatusSync, onTaskUpdate, onClearElements, onConnected } = options;
 
   const { status, isConnected, connect, disconnect } = useSSE({
-    endpoint: "/__opencode_events__",
+    endpoint: SSE_EVENTS_PATH,
     autoConnect: false,
     onMessage: (data) => {
       const message = data as ServerSSEMessage;

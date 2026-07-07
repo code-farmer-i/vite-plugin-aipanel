@@ -2,10 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
     "types": ["chrome", "vite/client"],
     "paths": {
-      "@opencode-client/*": ["../vite/src/client/*"]
+      "@vite-plugin-opencode-assistant/client/*": ["../client/src/*"]
     }
   },
   "include": ["src"]

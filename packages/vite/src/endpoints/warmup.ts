@@ -1,11 +1,11 @@
 import type { ViteDevServer } from "vite";
-import { createLogger } from "@vite-plugin-opencode-assistant/shared";
+import { createLogger, WARMUP_API_PATH } from "@vite-plugin-opencode-assistant/shared";
 import type { EndpointContext } from "./types";
 
 const log = createLogger("Endpoints:Warmup");
 
 export function setupWarmupEndpoint(server: ViteDevServer, ctx: EndpointContext) {
-  server.middlewares.use("/__opencode_warmup__", async (req, res) => {
+  server.middlewares.use(WARMUP_API_PATH, async (req, res) => {
     if (req.method === "GET") {
       try {
         const models = await ctx.getAvailableModels();

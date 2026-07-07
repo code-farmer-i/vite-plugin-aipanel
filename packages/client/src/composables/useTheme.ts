@@ -1,5 +1,6 @@
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import type { OpenCodeWidgetTheme } from "@vite-plugin-opencode-assistant/shared";
+import { WIDGET_MSG } from "@vite-plugin-opencode-assistant/shared";
 
 interface WidgetRef {
   sendMessageToIframe: (type: string, data?: Record<string, unknown>) => void;
@@ -19,7 +20,7 @@ export function useTheme(
   });
 
   const sendThemeToIframe = () => {
-    widgetRef.value?.sendMessageToIframe("OPENCODE_SET_THEME", {
+    widgetRef.value?.sendMessageToIframe(WIDGET_MSG.SET_THEME, {
       theme: resolvedTheme.value,
     });
   };

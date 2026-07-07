@@ -41,6 +41,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@vite-plugin-opencode-assistant/client": "workspace:*",
     "@vite-plugin-opencode-assistant/components": "workspace:*",
     "@vite-plugin-opencode-assistant/opencode": "workspace:*",
     "@vite-plugin-opencode-assistant/shared": "workspace:*",

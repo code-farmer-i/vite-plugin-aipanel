@@ -8,7 +8,7 @@ export default defineConfig({
     target: "es2020",
     minify: "esbuild",
     lib: {
-      entry: resolve(__dirname, "src/client/index.ts"),
+      entry: resolve(__dirname, "../client/src/index.ts"),
       name: "OpenCodeWidgetClient",
       fileName: "client",
       formats: ["es"],

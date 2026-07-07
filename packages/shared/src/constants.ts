@@ -96,6 +96,48 @@ export const CHROME_DEVTOOLS_PORT = 9222;
 /** Chrome DevTools 检查超时时间（毫秒） */
 export const CHROME_DEVTOOLS_CHECK_TIMEOUT = 2000;
 
+/** ==================== 扩展消息类型 ==================== */
+
+/** Chrome 扩展内部消息类型（chrome.runtime.sendMessage） */
+export const EXT_MSG = {
+  GET_PORT_INFO: "GET_PORT_INFO",
+  PAGE_CONTEXT: "PAGE_CONTEXT",
+  TAB_SWITCHED: "TAB_SWITCHED",
+  SELECTION_START: "SELECTION_START",
+  SELECTION_STOP: "SELECTION_STOP",
+} as const;
+
+/** ==================== Widget PostMessage 类型 ==================== */
+
+/** Widget iframe postMessage 消息类型 */
+export const WIDGET_MSG = {
+  READY: "OPENCODE_READY",
+  KEYDOWN: "OPENCODE_KEYDOWN",
+  SET_THEME: "OPENCODE_SET_THEME",
+  INSERT_FILE_PART: "OPENCODE_INSERT_FILE_PART",
+  SELECT_MODE_CHANGE: "OPENCODE_SELECT_MODE_CHANGE",
+  ELEMENT_SELECTED: "OPENCODE_ELEMENT_SELECTED",
+  SELECTION_CANCELLED: "OPENCODE_SELECTION_CANCELLED",
+  SELECTOR_START: "OPENCODE_SELECTOR_START",
+  SELECTOR_STOP: "OPENCODE_SELECTOR_STOP",
+  MINIMIZE_STATE: "minimize-state-change",
+  PROMPT_DOCK_VISIBILITY: "prompt-dock-visibility-change",
+} as const;
+
+/** ==================== API 路径补充 ==================== */
+
+/** OpenCode 预热 API 路径 */
+export const WARMUP_API_PATH = "/__opencode_warmup__";
+
+/** Bridge 脚本路径 */
+export const BRIDGE_SCRIPT_PATH = "/__opencode_bridge__.js";
+
+/** 进程日志 API 路径 */
+export const LOGS_API_PATH = "/__opencode_process_logs__";
+
+/** Widget 样式路径 */
+export const WIDGET_STYLE_PATH = "/__opencode_widget__.css";
+
 /** ==================== OpenCode localStorage 键 ==================== */
 
 /** OpenCode localStorage 配置键 */

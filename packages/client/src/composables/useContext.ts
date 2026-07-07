@@ -3,6 +3,7 @@ import type {
   OpenCodeSelectedElement,
   ServiceStatus,
 } from "@vite-plugin-opencode-assistant/shared";
+import { CONTEXT_API_PATH, EXT_MSG } from "@vite-plugin-opencode-assistant/shared";
 
 export function useContext(
   serviceStatus: { value: ServiceStatus },
@@ -22,7 +23,7 @@ export function useContext(
     displayMode === "extension" ? extensionPageTitle.value : document.title;
 
   const sendContext = (url: string, title: string) => {
-    fetch("/__opencode_context__", {
+    fetch(CONTEXT_API_PATH, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -54,7 +55,7 @@ export function useContext(
     type: string;
     ctx?: { url: string; title: string };
   }) => {
-    if (msg.type === "PAGE_CONTEXT" && msg.ctx) {
+    if (msg.type === EXT_MSG.PAGE_CONTEXT && msg.ctx) {
       extensionPageUrl.value = msg.ctx.url;
       extensionPageTitle.value = msg.ctx.title;
       updateContext(true);

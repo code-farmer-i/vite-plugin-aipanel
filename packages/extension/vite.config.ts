@@ -25,11 +25,6 @@ function copyManifestPlugin() {
 
 export default defineConfig({
   plugins: [vue(), copyManifestPlugin()],
-  resolve: {
-    alias: {
-      "@opencode-client": resolve(__dirname, "../vite/src/client"),
-    },
-  },
   build: {
     target: "es2020",
     minify: "esbuild",
@@ -37,8 +32,6 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        content: resolve(__dirname, "src/content/index.ts"),
-        background: resolve(__dirname, "src/background/index.ts"),
         sidepanel: resolve(__dirname, "src/sidepanel/index.html"),
       },
       output: {

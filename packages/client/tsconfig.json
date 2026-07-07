@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "paths": {
+      "@vite-plugin-opencode-assistant/components": ["../components/src"],
+      "@vite-plugin-opencode-assistant/shared": ["../shared/src"]
+    }
+  },
+  "include": ["src"]
+}

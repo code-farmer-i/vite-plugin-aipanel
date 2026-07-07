@@ -3,6 +3,8 @@ import {
   createLogger,
   DEFAULT_OPENCODE_SETTINGS,
   OPENCODE_STORAGE_KEYS,
+  WIDGET_MSG,
+  BRIDGE_SCRIPT_PATH,
   type OpenCodeSettings,
   type OpenCodeLanguage,
 } from "@vite-plugin-opencode-assistant/shared";
@@ -117,23 +119,23 @@ function generateBridgeScript(options: ProxyServerOptions): string {
 
   // === 消息监听 ===
   window.addEventListener("message", function(event) {
-    if (event.data && event.data.type === "OPENCODE_SET_THEME") {
+    if (event.data && event.data.type === ${JSON.stringify(WIDGET_MSG.SET_THEME)}) {
       setTheme(event.data.theme);
     }
 
-    if (event.data && event.data.type === "OPENCODE_INSERT_FILE_PART") {
+    if (event.data && event.data.type === ${JSON.stringify(WIDGET_MSG.INSERT_FILE_PART)}) {
       insertFilePart(event.data.element);
     }
 
-    if (event.data && event.data.type === "minimize-state-change") {
+    if (event.data && event.data.type === ${JSON.stringify(WIDGET_MSG.MINIMIZE_STATE)}) {
       handleMinimizeStateChange(event.data.minimized);
     }
 
-    if (event.data && event.data.type === "prompt-dock-visibility-change") {
+    if (event.data && event.data.type === ${JSON.stringify(WIDGET_MSG.PROMPT_DOCK_VISIBILITY)}) {
       handlePromptDockVisibilityChange(event.data.visible);
     }
 
-    if (event.data && event.data.type === "OPENCODE_SELECT_MODE_CHANGE") {
+    if (event.data && event.data.type === ${JSON.stringify(WIDGET_MSG.SELECT_MODE_CHANGE)}) {
       handleSelectModeChange(event.data.selectMode);
     }
   });
@@ -147,7 +149,7 @@ function generateBridgeScript(options: ProxyServerOptions): string {
         event.stopPropagation();
         if (window.parent !== window) {
           window.parent.postMessage({
-            type: "OPENCODE_KEYDOWN",
+            type: ${JSON.stringify(WIDGET_MSG.KEYDOWN)},
             key: event.key,
             ctrlKey: event.ctrlKey,
             metaKey: event.metaKey,
@@ -158,9 +160,10 @@ function generateBridgeScript(options: ProxyServerOptions): string {
         return;
       }
       
+      
       if (window.parent !== window) {
         window.parent.postMessage({
-          type: "OPENCODE_KEYDOWN",
+          type: ${JSON.stringify(WIDGET_MSG.KEYDOWN)},
           key: event.key,
           ctrlKey: event.ctrlKey,
           metaKey: event.metaKey,
@@ -375,7 +378,7 @@ function generateBridgeScript(options: ProxyServerOptions): string {
   function init() {
     injectMinimizeStyles();
     if (window.parent !== window) {
-      window.parent.postMessage({ type: "OPENCODE_READY" }, "*");
+      window.parent.postMessage({ type: ${JSON.stringify(WIDGET_MSG.READY)} }, "*");
     }
     setupPromptInputListener();
     applySavedStates();
@@ -421,7 +424,7 @@ export function startProxyServer(
     const bridgeScript = generateBridgeScript(options);
 
     const server = http.createServer((req, res) => {
-      if (req.url === "/__opencode_bridge__.js") {
+      if (req.url === BRIDGE_SCRIPT_PATH) {
         const body = bridgeScript;
         res.writeHead(200, {
           "content-type": "application/javascript; charset=utf-8",
@@ -464,15 +467,15 @@ export function startProxyServer(
             if (body.match(/<\/head>/i)) {
               body = body.replace(
                 /<\/head>/i,
-                '<script src="/__opencode_bridge__.js"></script></head>',
+                `<script src="${BRIDGE_SCRIPT_PATH}"></script></head>`,
               );
             } else if (body.match(/<\/body>/i)) {
               body = body.replace(
                 /<\/body>/i,
-                '<script src="/__opencode_bridge__.js"></script></body>',
+                `<script src="${BRIDGE_SCRIPT_PATH}"></script></body>`,
               );
             } else {
-              body += '<script src="/__opencode_bridge__.js"></script>';
+              body += `<script src="${BRIDGE_SCRIPT_PATH}"></script>`;
             }
 
             const headers: http.OutgoingHttpHeaders = {};

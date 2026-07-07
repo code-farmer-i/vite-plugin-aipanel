@@ -87,7 +87,7 @@ export interface OpenCodeSettings {
 /**
  * 展示模式类型
  */
-export type DisplayMode = "bubble" | "split" | "auto" | "extension";
+export type DisplayMode = "bubble" | "split" | "auto" | "extension" | "extension-selector";
 
 /**
  * 分屏模式配置

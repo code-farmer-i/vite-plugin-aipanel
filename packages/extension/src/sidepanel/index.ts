@@ -6,6 +6,8 @@
  */
 console.log("[OpenCode SP] Side Panel 入口已加载");
 
+import "@opencode-client/styles.css";
+
 const ports = { proxyPort: 0, vitePort: "" };
 
 /** 从 content script 获取端口 */
@@ -143,6 +145,29 @@ function createNoServiceEl(): HTMLDivElement {
         color: var(--ns-hint);
         margin: 0;
       }
+      .opencode-no-service-refresh {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 24px;
+        padding: 8px 20px;
+        border: 1px solid var(--ns-border);
+        border-radius: 8px;
+        background: var(--ns-card-bg);
+        color: var(--ns-text);
+        font-size: 13px;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all .2s;
+      }
+      .opencode-no-service-refresh:hover {
+        border-color: #667eea;
+        color: #667eea;
+        box-shadow: 0 1px 4px rgba(102,126,234,.15);
+      }
+      .opencode-no-service-refresh svg {
+        flex-shrink: 0;
+      }
     </style>
     <div class="opencode-no-service">
       <div class="opencode-no-service-icon">
@@ -159,8 +184,24 @@ function createNoServiceEl(): HTMLDivElement {
         <p>请打开使用 <code>vite-plugin-opencode-assistant</code> 的 localhost 页面</p>
         <p class="opencode-no-service-hint">例如：<code>http://localhost:5173</code></p>
       </div>
-    </div>`;
+      <button class="opencode-no-service-refresh">
+         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+           <polyline points="23,4 23,10 17,10" />
+           <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+         </svg>
+         重新检测
+       </button>
+     </div>`;
   div.style.cssText = "display:none;width:100%;height:100%;";
+
+  // CSP 限制不能用内联 onclick，通过 JS 绑定事件
+  const refreshBtn = div.querySelector(".opencode-no-service-refresh");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => {
+      window.location.reload();
+    });
+  }
+
   return div;
 }
 

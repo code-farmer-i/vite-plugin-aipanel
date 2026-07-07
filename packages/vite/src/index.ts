@@ -178,8 +178,6 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
     },
 
     transformIndexHtml(html) {
-      if (config.displayMode === "extension") return html;
-
       const timer = log.timer("transformIndexHtml");
 
       const widget = injectWidget({
@@ -188,7 +186,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         hotkey: config.hotkey,
         proxyPort: actualProxyPort,
         proxyHost: config.hostname,
-        displayMode: config.displayMode,
+        displayMode: config.displayMode === "extension" ? "extension-selector" : config.displayMode,
         splitMode: config.splitMode,
       });
 

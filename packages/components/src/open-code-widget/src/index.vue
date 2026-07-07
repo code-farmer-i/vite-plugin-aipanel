@@ -138,7 +138,7 @@ watch(
 );
 
 const handleToggleDisplayMode = () => {
-  if (localDisplayMode.value === "extension") return;
+  if (localDisplayMode.value === "extension" || localDisplayMode.value === "extension-selector") return;
   const modes: ("bubble" | "split" | "auto")[] = ["bubble", "split", "auto"];
   const currentIndex = modes.indexOf(localDisplayMode.value);
   const nextIndex = (currentIndex + 1) % modes.length;
@@ -341,6 +341,10 @@ const handleToggleMinimize = () => {
 const handleTogglePromptDock = () => {
   promptDockVisible.value = !promptDockVisible.value;
   sendMessageToIframe("prompt-dock-visibility-change", { visible: promptDockVisible.value });
+};
+
+const handleRefresh = () => {
+  window.location.reload();
 };
 
 type BubbleQuadrant = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -551,6 +555,7 @@ provideOpenCodeWidgetContext({
   handleClearSelectedNodes,
   handleFrameLoaded,
   handleBubbleOffsetChange,
+  handleRefresh,
 });
 
 defineExpose({
@@ -563,102 +568,104 @@ defineExpose({
 
 <template>
   <div :class="[...containerClasses, { 'extension-mode': isExtensionMode }]">
-    <Trigger
-      v-if="!isSplitMode && !props.hideBubble"
-      ref="triggerRef"
-      @drag-start="handleDragStart"
-      @drag-end="handleDragEnd"
-    >
-      <template
-        v-if="slots['button-icon']"
-        #default
+    <template v-if="displayMode !== 'extension-selector'">
+      <Trigger
+        v-if="!isSplitMode && !props.hideBubble"
+        ref="triggerRef"
+        @drag-start="handleDragStart"
+        @drag-end="handleDragEnd"
       >
-        <slot name="button-icon" />
-      </template>
-    </Trigger>
+        <template
+          v-if="slots['button-icon']"
+          #default
+        >
+          <slot name="button-icon" />
+        </template>
+      </Trigger>
 
-    <ChatPanel
-      ref="frameRef"
-      :mode="effectiveMode"
-      :open="open"
-      :minimized="minimized"
-      :position-style="chatPositionStyle"
-      :animation-origin="chatAnimationOrigin"
-      :panel-width="panelWidth"
-      :resizable="splitConfig.resizable"
-      :min-width="splitConfig.minWidth"
-      :max-width="splitConfig.maxWidth"
-      :no-transition="isRestoring"
-      :dragging="isDragging"
-      :notification-visible="notificationVisible"
-      :notification-message="notificationMessage"
-      :notification-mode="notificationMode"
-      :thinking="thinking"
-      :resolved-theme="resolvedTheme"
-      :split-position="splitPosition"
-      :extension="isExtensionMode"
-      @resize="handleResize"
-      @resize-start="handleResizeStart"
-      @resize-end="handleResizeEnd"
-      @toggle="handleSplitToggle"
-    >
-      <template
-        v-if="slots['session-toggle-icon']"
-        #session-toggle-icon
+      <ChatPanel
+        ref="frameRef"
+        :mode="effectiveMode"
+        :open="open"
+        :minimized="minimized"
+        :position-style="chatPositionStyle"
+        :animation-origin="chatAnimationOrigin"
+        :panel-width="panelWidth"
+        :resizable="splitConfig.resizable"
+        :min-width="splitConfig.minWidth"
+        :max-width="splitConfig.maxWidth"
+        :no-transition="isRestoring"
+        :dragging="isDragging"
+        :notification-visible="notificationVisible"
+        :notification-message="notificationMessage"
+        :notification-mode="notificationMode"
+        :thinking="thinking"
+        :resolved-theme="resolvedTheme"
+        :split-position="splitPosition"
+        :extension="isExtensionMode"
+        @resize="handleResize"
+        @resize-start="handleResizeStart"
+        @resize-end="handleResizeEnd"
+        @toggle="handleSplitToggle"
       >
-        <slot name="session-toggle-icon" />
-      </template>
+        <template
+          v-if="slots['session-toggle-icon']"
+          #session-toggle-icon
+        >
+          <slot name="session-toggle-icon" />
+        </template>
 
-      <template
-        v-if="slots['select-icon']"
-        #select-icon
-      >
-        <slot name="select-icon" />
-      </template>
+        <template
+          v-if="slots['select-icon']"
+          #select-icon
+        >
+          <slot name="select-icon" />
+        </template>
 
-      <template
-        v-if="slots['close-icon']"
-        #close-icon
-      >
-        <slot name="close-icon" />
-      </template>
+        <template
+          v-if="slots['close-icon']"
+          #close-icon
+        >
+          <slot name="close-icon" />
+        </template>
 
-      <template #sessions-empty>
-        <slot name="sessions-empty">
-          <div class="opencode-session-empty">暂无会话</div>
-        </slot>
-      </template>
+        <template #sessions-empty>
+          <slot name="sessions-empty">
+            <div class="opencode-session-empty">暂无会话</div>
+          </slot>
+        </template>
 
-      <template
-        v-if="slots['empty-state']"
-        #empty-state
-      >
-        <slot name="empty-state" />
-      </template>
+        <template
+          v-if="slots['empty-state']"
+          #empty-state
+        >
+          <slot name="empty-state" />
+        </template>
 
-      <template
-        v-if="slots.loading"
-        #loading
-      >
-        <slot name="loading" />
-      </template>
+        <template
+          v-if="slots.loading"
+          #loading
+        >
+          <slot name="loading" />
+        </template>
 
-      <template
-        v-if="slots.error"
-        #error
-      >
-        <slot name="error" />
-      </template>
+        <template
+          v-if="slots.error"
+          #error
+        >
+          <slot name="error" />
+        </template>
 
-      <template
-        v-if="slots.content"
-        #content
-      >
-        <slot name="content" />
-      </template>
-    </ChatPanel>
+        <template
+          v-if="slots.content"
+          #content
+        >
+          <slot name="content" />
+        </template>
+      </ChatPanel>
 
-    <SelectHint />
+      <SelectHint />
+    </template>
 
     <div
       v-show="highlightVisible"

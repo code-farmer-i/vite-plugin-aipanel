@@ -23,6 +23,7 @@ const {
   handleClose,
   handleToggleMinimize,
   handleTogglePromptDock,
+  handleRefresh,
 } = useOpenCodeWidgetContext();
 
 const isSplitMode = computed(() => mode.value === "split");
@@ -46,21 +47,23 @@ const themeIconLabel = computed(() => {
 });
 
 const displayModeIconTitle = computed(() => {
-  const displayModeLabels = {
+  const displayModeLabels: Record<string, string> = {
     bubble: "气泡模式",
     split: "分屏模式",
     auto: "自动模式",
     extension: "扩展模式",
+    "extension-selector": "扩展选择器模式",
   };
   return `展示模式: ${displayModeLabels[displayMode.value]}`;
 });
 
 const displayModeIconLabel = computed(() => {
-  const displayModeLabels = {
+  const displayModeLabels: Record<string, string> = {
     bubble: "气泡模式",
     split: "分屏模式",
     auto: "自动模式",
     extension: "扩展模式",
+    "extension-selector": "扩展选择器模式",
   };
   const modes = ["bubble", "split", "auto"];
   const currentIndex = modes.indexOf(displayMode.value as "bubble" | "split" | "auto");
@@ -376,6 +379,27 @@ const splitPositionIconLabel = computed(() => {
     <span class="opencode-chat-header-title">{{ title }}</span>
 
     <div class="opencode-chat-header-actions">
+      <button
+        v-if="displayMode === 'extension'"
+        class="opencode-header-btn refresh-btn"
+        type="button"
+        title="刷新面板"
+        aria-label="刷新面板"
+        @click="handleRefresh"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          aria-hidden="true"
+        >
+          <polyline points="23,4 23,10 17,10" />
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+        </svg>
+      </button>
       <button
         v-if="isSplitMode && displayMode !== 'extension'"
         class="opencode-header-btn split-position-btn"

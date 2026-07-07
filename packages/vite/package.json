@@ -49,5 +49,8 @@
   },
   "peerDependencies": {
     "vite": ">=4.0.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268"
   }
 }

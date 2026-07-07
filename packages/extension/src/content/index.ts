@@ -1,7 +1,7 @@
 /**
  * OpenCode Assistant - Content Script
  *
- * 轻量：端口检测、页面上下文同步。
+ * 轻量：端口检测、页面上下文同步、选择模式消息中转。
  * UI 在 Side Panel 中渲染。
  */
 const INIT_MARKER = "__OPENCODE_EXTENSION_INITIALIZED__";
@@ -70,7 +70,45 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     getPortInfo().then((info) => sendResponse(info));
     return true;
   }
+
+  // 选择模式消息：转发到页面 selector
+  if (msg.type === "SELECTION_START") {
+    window.postMessage({ type: "OPENCODE_SELECTOR_START" }, "*");
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (msg.type === "SELECTION_STOP") {
+    window.postMessage({ type: "OPENCODE_SELECTOR_STOP" }, "*");
+    sendResponse({ success: true });
+    return true;
+  }
+
   return false;
+});
+
+// 监听页面 selector 的选择结果，转发到 Side Panel
+// 注意：page (MAIN world) 通过 postMessage 通信时 event.source 不 === content script 的 window
+window.addEventListener("message", (event) => {
+  // 仅接受同源消息，防止恶意页面伪造消息
+  if (event.origin !== location.origin) return;
+
+  const type = event.data?.type;
+  if (
+    type === "OPENCODE_ELEMENT_SELECTED" ||
+    type === "OPENCODE_SELECTION_CANCELLED" ||
+    type === "OPENCODE_SELECTOR_START" ||
+    type === "OPENCODE_SELECTOR_STOP"
+  ) {
+    // 附加当前页面 URL 和标题，确保 Side Panel 拿到的是用户页面的 URL 而非扩展自身 URL
+    chrome.runtime
+      .sendMessage({
+        ...event.data,
+        pageUrl: event.data.pageUrl ?? location.href,
+        pageTitle: event.data.pageTitle ?? document.title,
+      })
+      .catch(() => {});
+  }
 });
 
 // 启动页面上下文监听

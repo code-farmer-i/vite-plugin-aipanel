@@ -70,6 +70,7 @@ export interface OpenCodeWidgetContext {
   handleClearSelectedNodes: () => void;
   handleFrameLoaded: () => void;
   handleBubbleOffsetChange: (offset: FloatingBubbleOffset | undefined) => void;
+  handleRefresh: () => void;
 }
 
 const CONTEXT_KEY = Symbol("OpenCodeWidgetContext");

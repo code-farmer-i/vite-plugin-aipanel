@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { OpenCodeWidget } from "@vite-plugin-opencode-assistant/components";
 import type {
   OpenCodeWidgetTheme,
@@ -44,6 +44,9 @@ const {
 const widgetTheme = initialTheme as OpenCodeWidgetTheme;
 const splitPanelWidth = ref(splitMode?.width ?? 500);
 
+const isExtensionMode = displayMode === "extension";
+const isExtensionSelectorMode = displayMode === "extension-selector";
+
 // 构建 proxy base URL
 const proxyBaseUrl = computed(() => {
   return `http://${proxyHost}:${proxyPort}`;
@@ -83,7 +86,7 @@ const {
   updateSessionInfo,
 } = useSessions({ showNotification });
 
-const { updateContext } = useContext(serviceStatus, selectedElements);
+const { updateContext } = useContext(serviceStatus, selectedElements, displayMode);
 
 // Server SSE: 监听 Vite server 事件 (服务启动状态)
 const serverSSE = useServerSSE({
@@ -203,7 +206,24 @@ useHotkey(hotkey, (e) => {
   handleToggle(!open.value);
 });
 
+/** 扩展模式下向目标页面发送选择指令 */
+async function sendToActiveTab(msg: Record<string, unknown>) {
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs[0]?.id) {
+      await chrome.tabs.sendMessage(tabs[0].id, msg);
+    }
+  } catch {
+    // ignore - chrome API 仅在扩展上下文可用
+  }
+}
+
 const toggleSelectMode = () => {
+  if (isExtensionMode) {
+    handleSelectModeChange(!selectMode.value);
+    return;
+  }
+
   const win = window as typeof window & { __VUE_INSPECTOR__?: unknown; };
   if (win.__VUE_INSPECTOR__) {
     handleSelectModeChange(!selectMode.value);
@@ -212,10 +232,13 @@ const toggleSelectMode = () => {
   }
 };
 
-useHotkey("ctrl+p", (e) => {
-  e.preventDefault();
-  toggleSelectMode();
-});
+// Ctrl+P 热键仅在非扩展模式下注册（扩展模式在 Side Panel 中运行）
+if (!isExtensionMode) {
+  useHotkey("ctrl+p", (e) => {
+    e.preventDefault();
+    toggleSelectMode();
+  });
+}
 
 // 监听服务状态变化，启动相应的 SSE 连接
 watch(serviceStatus, (status, oldStatus) => {
@@ -235,6 +258,53 @@ watch(chromeMcpFailed, (failed) => {
   }
 });
 
+// 扩展模式消息监听回调
+const handleExtensionMessage = (msg: { type: string; filePath?: string; line?: number; column?: number; innerText?: string; description?: string; pageUrl?: string; pageTitle?: string; }) => {
+  if (msg.type === "OPENCODE_ELEMENT_SELECTED") {
+    handleSelectNode({
+      filePath: msg.filePath ?? null,
+      line: msg.line ?? null,
+      column: msg.column ?? null,
+      innerText: msg.innerText ?? "",
+      description: msg.description,
+    }, msg.pageUrl, msg.pageTitle);
+  }
+  if (msg.type === "OPENCODE_SELECTION_CANCELLED") {
+    selectMode.value = false;
+  }
+  if (msg.type === "OPENCODE_SELECTOR_START") {
+    selectMode.value = true;
+  }
+  if (msg.type === "OPENCODE_SELECTOR_STOP") {
+    selectMode.value = false;
+  }
+};
+
+// extension-selector 模式 postMessage 监听回调
+const handleExtensionSelectorMessage = (event: MessageEvent) => {
+  const type = event.data?.type;
+  if (type === "OPENCODE_SELECTOR_START") {
+    handleSelectModeChange(true);
+  } else if (type === "OPENCODE_SELECTOR_STOP") {
+    handleSelectModeChange(false);
+  }
+};
+
+// iframe 消息监听回调
+const handleIframeMessage = (event: MessageEvent) => {
+  if (event.data?.type === "OPENCODE_READY") {
+    sendThemeToIframe();
+  }
+  if (event.data?.type === "OPENCODE_KEYDOWN") {
+    if (event.data.key === "Escape" && selectMode.value) {
+      handleSelectModeChange(false);
+    }
+    if (event.data.ctrlKey && event.data.key.toLowerCase() === "p") {
+      toggleSelectMode();
+    }
+  }
+};
+
 onMounted(() => {
   if (serviceStatus.value === "ready") {
     loadSessions();
@@ -252,21 +322,28 @@ onMounted(() => {
     }, 1000);
   }
 
+  // 扩展模式：监听来自目标页面的选择结果
+  if (isExtensionMode) {
+    chrome.runtime.onMessage.addListener(handleExtensionMessage);
+  }
+
+  // extension-selector 模式：监听 postMessage 选择指令
+  if (isExtensionSelectorMode) {
+    window.addEventListener("message", handleExtensionSelectorMessage);
+  }
+
   // 监听 iframe 消息（主题同步和键盘事件）
-  const handleIframeMessage = (event: MessageEvent) => {
-    if (event.data?.type === "OPENCODE_READY") {
-      sendThemeToIframe();
-    }
-    if (event.data?.type === "OPENCODE_KEYDOWN") {
-      if (event.data.key === "Escape" && selectMode.value) {
-        handleSelectModeChange(false);
-      }
-      if (event.data.ctrlKey && event.data.key.toLowerCase() === "p") {
-        toggleSelectMode();
-      }
-    }
-  };
   window.addEventListener("message", handleIframeMessage);
+});
+
+onUnmounted(() => {
+  if (isExtensionMode) {
+    chrome.runtime.onMessage.removeListener(handleExtensionMessage);
+  }
+  if (isExtensionSelectorMode) {
+    window.removeEventListener("message", handleExtensionSelectorMessage);
+  }
+  window.removeEventListener("message", handleIframeMessage);
 });
 
 const handleToggle = async (val: boolean) => {
@@ -286,12 +363,27 @@ const handleToggle = async (val: boolean) => {
   }
 };
 
-const handleSelectNode = (element: OpenCodeSelectedElement) => {
+const handleSelectNode = async (element: OpenCodeSelectedElement, pageUrl?: string, pageTitle?: string) => {
+  if (isExtensionSelectorMode) {
+    // extension-selector 模式：通过 postMessage 回传选中结果
+    window.postMessage({
+      type: "OPENCODE_ELEMENT_SELECTED",
+      filePath: element.filePath,
+      line: element.line,
+      column: element.column,
+      innerText: element.innerText,
+      description: element.description,
+    }, "*");
+    showNotification("元素已选中", { mode: "page" });
+    return;
+  }
+
   const elementWithContext = {
     ...element,
-    previewPageUrl: window.location.href,
-    previewPageTitle: document.title,
+    previewPageUrl: isExtensionMode && pageUrl ? pageUrl : window.location.href,
+    previewPageTitle: isExtensionMode && pageTitle ? pageTitle : document.title,
   };
+
   widgetRef.value?.sendMessageToIframe("OPENCODE_INSERT_FILE_PART", {
     element: elementWithContext,
   });
@@ -306,7 +398,14 @@ const handleClearSelected = () => {
 };
 
 const handleSelectModeChange = (val: boolean) => {
+  if (selectMode.value === val) return;
   selectMode.value = val;
+
+  // 扩展模式：发送选择指令到目标页面
+  if (isExtensionMode) {
+    sendToActiveTab({ type: val ? "SELECTION_START" : "SELECTION_STOP" });
+  }
+
   widgetRef.value?.sendMessageToIframe("OPENCODE_SELECT_MODE_CHANGE", {
     selectMode: val,
   });
@@ -316,6 +415,12 @@ const handleSelectModeChange = (val: boolean) => {
   }
   if (!val && !open.value) {
     open.value = true;
+  }
+  // extension-selector 模式：通知 Side Panel 选择模式变化
+  if (isExtensionSelectorMode) {
+    window.postMessage({
+      type: val ? "OPENCODE_SELECTOR_START" : "OPENCODE_SELECTOR_STOP",
+    }, "*");
   }
 };
 

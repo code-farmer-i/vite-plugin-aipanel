@@ -150,6 +150,10 @@ importers:
       vite:
         specifier: '>=4.0.0'
         version: 5.4.21(@types/node@20.19.39)(less@4.6.4)(lightningcss@1.32.0)(sass@1.79.3)
+    devDependencies:
+      '@types/chrome':
+        specifier: ^0.0.268
+        version: 0.0.268
 
 packages:
 

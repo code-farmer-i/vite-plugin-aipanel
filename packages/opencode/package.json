@@ -1,6 +1,6 @@
 {
   "name": "@vite-plugin-opencode-assistant/opencode",
-  "version": "1.0.82",
+  "version": "1.0.83",
   "type": "module",
   "main": "lib/index.cjs",
   "module": "es/index.js",

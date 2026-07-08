@@ -257,6 +257,7 @@ if (!isExtensionMode) {
 
 // 监听服务状态变化，启动相应的 SSE 连接
 watch(serviceStatus, (status, oldStatus) => {
+  console.log("[App] serviceStatus changed:", oldStatus, "->", status);
   if (status !== "idle" && oldStatus === "idle") {
     serverSSE.connect();
     opencodeSSE.connect();
@@ -289,6 +290,7 @@ const handleIframeMessage = (event: MessageEvent) => {
 };
 
 onMounted(() => {
+  console.log("[App] mounted, serviceStatus:", serviceStatus.value, "vitePort:", vitePort, "endpoint:", viteBaseUrl.value || "/__opencode_events__");
   if (serviceStatus.value === "ready") {
     loadSessions();
     serverSSE.connect();

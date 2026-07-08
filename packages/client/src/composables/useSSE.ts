@@ -81,7 +81,8 @@ export function useSSE(options: SSEOptions) {
     }
 
     status.value = "connecting";
-    retryCount.value = 0;
+
+    console.log("[SSE] connecting to", endpoint);
 
     try {
       connection.value = new EventSource(endpoint);
@@ -89,16 +90,22 @@ export function useSSE(options: SSEOptions) {
       connection.value.onopen = () => {
         status.value = "connected";
         retryCount.value = 0;
+        console.log("[SSE] connected:", endpoint);
         onConnected?.();
       };
 
       connection.value.onmessage = handleMessage;
 
       connection.value.onerror = () => {
+        // 防止 onerror 重复触发（close() 会同步触发第二次 onerror）
+        if (!connection.value) return;
+
         const wasConnected = status.value === "connected";
         status.value = "error";
         connection.value?.close();
         connection.value = null;
+
+        console.log("[SSE] error on", endpoint, { wasConnected, retryCount: retryCount.value, maxRetries });
 
         const error = new Error(`SSE connection error: ${endpoint}`);
         onError?.(error);
@@ -107,14 +114,18 @@ export function useSSE(options: SSEOptions) {
         if (retryCount.value < maxRetries) {
           retryCount.value++;
           const delay = retryDelay * retryCount.value;
+          console.log(`[SSE] will retry #${retryCount.value} in ${delay}ms -> ${endpoint}`);
           setTimeout(() => {
-            // 只有在没有现有连接时才重试
-            if (enabled?.value !== false && !connection.value) {
+            // 只有在没有现有连接且未被手动断开时才重试
+            if (enabled?.value !== false && !connection.value && status.value !== "disconnected") {
               connect();
             }
           }, delay);
         } else if (wasConnected) {
+          console.log("[SSE] max retries reached, calling onDisconnected for", endpoint);
           onDisconnected?.();
+        } else {
+          console.log("[SSE] max retries reached, was never connected, NOT calling onDisconnected for", endpoint);
         }
       };
     } catch (e) {
@@ -127,8 +138,8 @@ export function useSSE(options: SSEOptions) {
         retryCount.value++;
         const delay = retryDelay * retryCount.value;
         setTimeout(() => {
-          // 只有在没有现有连接时才重试
-          if (!connection.value) {
+          // 只有在没有现有连接且未被手动断开时才重试
+          if (!connection.value && status.value !== "disconnected") {
             connect();
           }
         }, delay);
@@ -143,10 +154,10 @@ export function useSSE(options: SSEOptions) {
     if (connection.value) {
       connection.value.close();
       connection.value = null;
-      status.value = "disconnected";
-      retryCount.value = 0;
-      onDisconnected?.();
     }
+    status.value = "disconnected";
+    retryCount.value = 0;
+    onDisconnected?.();
   }
 
   /**

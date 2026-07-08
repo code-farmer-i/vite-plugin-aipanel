@@ -35,6 +35,7 @@ async function fetchServiceInfo(): Promise<ServiceInfo | null> {
 // === DOM 容器 ===
 interface AppInstance {
   rootEl: HTMLDivElement;
+  vueApp: ReturnType<typeof import("vue").createApp>;
   serviceInstanceId: string;
   vitePort: string;
   proxyPort: number;
@@ -81,17 +82,6 @@ function showNoServiceOverlay() {
   activeServiceId = null;
 }
 
-/** 选择下一个可用实例展示 */
-function showNextAvailable() {
-  for (const inst of appInstances.values()) {
-    if (!inst.zombie) {
-      showApp(inst.serviceInstanceId);
-      return;
-    }
-  }
-  showNoServiceOverlay();
-}
-
 /** 初始化 DOM 容器（仅一次） */
 async function initContainers() {
   document.head.insertAdjacentHTML(
@@ -114,6 +104,18 @@ async function initContainers() {
 
 /** 为指定服务创建并挂载新的 Vue App */
 async function createAppInstance(info: ServiceInfo): Promise<AppInstance> {
+  // 立即占位，防止并发 SERVICE_APPEARED 重复创建
+  const placeholder: AppInstance = {
+    rootEl: null!,
+    vueApp: null!,
+    serviceInstanceId: info.serviceInstanceId,
+    vitePort: info.vitePort,
+    proxyPort: info.proxyPort,
+    zombie: false,
+    zombieTimer: null,
+  };
+  appInstances.set(info.serviceInstanceId, placeholder);
+
   const { createApp } = await import("vue");
   const { default: App } = await import("@vite-plugin-opencode-assistant/client/App.vue");
 
@@ -138,6 +140,7 @@ async function createAppInstance(info: ServiceInfo): Promise<AppInstance> {
 
   const inst: AppInstance = {
     rootEl,
+    vueApp: app,
     serviceInstanceId: info.serviceInstanceId,
     vitePort: info.vitePort,
     proxyPort: info.proxyPort,
@@ -159,16 +162,16 @@ function destroyAppInstance(serviceInstanceId: string) {
     inst.zombieTimer = null;
   }
 
-  // 卸载 Vue App
-  inst.rootEl.innerHTML = "";
+  // 卸载 Vue App（触发 onUnmounted 清理 SSE 等资源）
+  inst.vueApp.unmount();
   inst.rootEl.remove();
 
   appInstances.delete(serviceInstanceId);
   console.log("[OpenCode SP] App 实例已销毁: %s", serviceInstanceId);
 
-  // 如果销毁的是当前显示的实例，切换到下一个
+  // 如果销毁的是当前显示的实例，显示无服务页面
   if (activeServiceId === serviceInstanceId) {
-    showNextAvailable();
+    showNoServiceOverlay();
   }
 }
 
@@ -217,9 +220,9 @@ function handleServiceGone(serviceInstanceId: string) {
   }, 3000);
   console.log("[OpenCode SP] 服务下线标记 zombie: %s (3s后销毁)", serviceInstanceId);
 
-  // 如果当前显示的就是这个实例，切换到下一个可用
+  // 如果当前显示的就是这个实例，显示无服务页面
   if (activeServiceId === serviceInstanceId) {
-    showNextAvailable();
+    showNoServiceOverlay();
   }
 }
 

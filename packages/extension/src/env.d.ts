@@ -8,7 +8,3 @@ declare module "@vite-plugin-opencode-assistant/client/App.vue" {
 }
 
 declare module "@vite-plugin-opencode-assistant/client/styles.css";
-
-interface Window {
-  __VUE_INSPECTOR__?: unknown;
-}

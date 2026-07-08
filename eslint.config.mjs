@@ -36,7 +36,7 @@ export default tseslint.config(
       ...tseslint.configs.recommended,
       ...eslintPluginVue.configs["flat/recommended"],
     ],
-    files: ["**/*.{ts,mts,cts,vue}"],
+    files: ["**/*.vue"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",
@@ -47,6 +47,21 @@ export default tseslint.config(
     },
     rules: {
       "vue/multi-word-component-names": "off",
+    },
+  },
+  {
+    extends: [
+      eslint.configs.recommended,
+      ...tseslint.configs.recommended,
+    ],
+    files: ["**/*.{ts,mts,cts}"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: sharedGlobals,
+      parserOptions: {
+        parser: tseslint.parser,
+      },
     },
   },
   eslintConfigPrettier,

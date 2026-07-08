@@ -1,4 +1,7 @@
 {
   "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
   "include": ["packages/*/src", "packages/*/site", "packages/*/test", "client.js"]
 }

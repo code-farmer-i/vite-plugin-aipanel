@@ -11,13 +11,12 @@
     "@vite-plugin-opencode-assistant/client": "workspace:*",
     "@vite-plugin-opencode-assistant/components": "workspace:*",
     "@vite-plugin-opencode-assistant/shared": "workspace:*",
-    "vue": "^3.5.32"
+    "vue": "^3.5.39"
   },
   "devDependencies": {
-    "@types/chrome": "^0.0.268",
-    "@vitejs/plugin-vue": "^5.0.0",
+    "@vitejs/plugin-vue": "^6.0.7",
     "tsx": "^4.0.0",
-    "typescript": "^5.9.3",
-    "vite": "^5.0.0"
+    "typescript": "^6.0.3",
+    "vite": "^8.1.3"
   }
 }

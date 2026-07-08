@@ -4,6 +4,13 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.32.1",
+  "pnpm": {
+    "overrides": {
+      "esbuild": "^0.28.1",
+      "typescript": "^6.0.3",
+      "vue-tsc": "^3.3.6"
+    }
+  },
   "scripts": {
     "build": "pnpm --filter @vite-plugin-opencode-assistant/shared build && pnpm --filter @vite-plugin-opencode-assistant/opencode build && pnpm --filter @vite-plugin-opencode-assistant/components build && pnpm --filter vite-plugin-opencode-assistant build && pnpm --filter @vite-plugin-opencode-assistant/extension build",
     "dev:components": "pnpm --filter @vite-plugin-opencode-assistant/components dev:site",
@@ -19,24 +26,26 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@pagoda-cli/core": "^1.0.6",
-    "@pnpm/logger": "1000.0.0",
-    "@types/node": "^20.0.0",
+    "@pagoda-cli/core": "^1.0.7",
+    "@pnpm/logger": "1100.0.0",
+    "@types/chrome": "^0.2.2",
+    "@types/node": "^26.1.1",
     "enquirer": "^2.4.1",
-    "eslint": "^10.2.0",
+    "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-vue": "^10.8.0",
-    "globals": "^17.4.0",
-    "prettier": "^3.8.1",
-    "semver": "^7.7.4",
-    "typescript-eslint": "^8.58.0",
-    "vite": "^5.0.0",
-    "@vitejs/plugin-vue": "^5.0.0",
-    "vitest": "^1.0.0",
-    "vue-eslint-parser": "^10.4.0",
-    "typescript": "^5.9.3",
-    "vue": "^3.5.32",
-    "@vue/test-utils": "^2.4.6",
-    "jsdom": "^29.0.2"
+    "eslint-plugin-vue": "^10.9.2",
+    "globals": "^17.7.0",
+    "prettier": "^3.9.4",
+    "semver": "^7.8.5",
+    "typescript-eslint": "^8.63.0",
+    "vite": "^8.1.3",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "vitest": "^4.1.0",
+    "vue-eslint-parser": "^10.4.1",
+    "vue-tsc": "^3.3.6",
+    "typescript": "^6.0.3",
+    "vue": "^3.5.39",
+    "@vue/test-utils": "^2.4.11",
+    "jsdom": "^29.1.1"
   }
 }

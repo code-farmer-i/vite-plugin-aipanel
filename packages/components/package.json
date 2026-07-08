@@ -37,6 +37,6 @@
   },
   "dependencies": {
     "@vite-plugin-opencode-assistant/shared": "workspace:*",
-    "css-selector-generator": "^3.9.1"
+    "css-selector-generator": "^3.9.2"
   }
 }

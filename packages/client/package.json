@@ -14,9 +14,6 @@
   "dependencies": {
     "@vite-plugin-opencode-assistant/components": "workspace:*",
     "@vite-plugin-opencode-assistant/shared": "workspace:*",
-    "vue": "^3.5.32"
-  },
-  "devDependencies": {
-    "@types/chrome": "^0.0.268"
+    "vue": "^3.5.39"
   }
 }

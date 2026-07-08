@@ -27,8 +27,8 @@ export function resolveWidgetPath(): string {
 
 export function resolveWidgetStylePath(): string {
   const candidatePaths = [
-    path.join(packageDir, "es", "style.css"),
-    path.join(packageDir, "lib", "style.css"),
+    path.join(packageDir, "es", "client.css"),
+    path.join(packageDir, "lib", "client.css"),
   ];
 
   for (const candidatePath of candidatePaths) {

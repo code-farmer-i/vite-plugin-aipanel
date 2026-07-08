@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
-import OpenCodeWidget from "@vite-plugin-opencode-assistant/components";
+import { OpenCodeWidget } from "@vite-plugin-opencode-assistant/components";
 import type {
   OpenCodeWidgetTheme,
   OpenCodeSelectedElement,

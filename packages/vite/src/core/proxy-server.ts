@@ -18,6 +18,8 @@ export interface ProxyServerOptions {
   language?: OpenCodeLanguage;
   /** OpenCode 内部设置 */
   settings?: OpenCodeSettings;
+  /** 绑定地址，需与端口检查使用的地址族一致，避免 IPv4/IPv6 不匹配 */
+  hostname?: string;
 }
 
 /**
@@ -524,7 +526,7 @@ export function startProxyServer(
     server.timeout = 0;
     server.keepAliveTimeout = 0;
 
-    server.listen(port, () => {
+    server.listen(port, options.hostname || undefined, () => {
       const address = server.address();
       const actualPort = typeof address === "object" && address ? address.port : port;
       log.debug(`Proxy server started on port ${actualPort} -> ${targetUrl}`);

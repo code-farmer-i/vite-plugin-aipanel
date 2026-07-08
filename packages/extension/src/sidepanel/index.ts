@@ -108,6 +108,7 @@ async function mountApp(): Promise<boolean> {
   }
   ports.proxyPort = info.proxyPort;
   ports.vitePort = info.vitePort;
+  lastVitePort = info.vitePort;
 
   console.log("[OpenCode SP] 端口已获取: vite=%s proxy=%d", ports.vitePort, ports.proxyPort);
 
@@ -123,7 +124,6 @@ async function mountApp(): Promise<boolean> {
     open: true,
   };
 
-  // 保存 Vue app 实例用于后续正确卸载
   const app = createApp(App, { config });
   app.mount(appRootEl!);
   vueApp = app;

@@ -196,6 +196,7 @@ Please install OpenCode first:
           theme: this.config.theme,
           language: this.config.language,
           settings: this.config.settings,
+          hostname: this.config.hostname,
         });
         this.proxyServer = result.server;
         if (result.actualPort !== this.actualProxyPort) {
@@ -214,6 +215,7 @@ Please install OpenCode first:
             theme: this.config.theme,
             language: this.config.language,
             settings: this.config.settings,
+            hostname: this.config.hostname,
           });
           this.proxyServer = result.server;
           this.actualProxyPort = result.actualPort;

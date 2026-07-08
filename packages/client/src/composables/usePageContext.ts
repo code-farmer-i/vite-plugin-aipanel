@@ -11,12 +11,14 @@ import { CONTEXT_API_PATH } from "@vite-plugin-opencode-assistant/shared";
 export function usePageContext(
   serviceStatus: { value: ServiceStatus },
   selectedElements: { value: OpenCodeSelectedElement[] },
+  viteBaseUrl = "",
 ) {
   let currentPageUrl = "";
   let currentPageTitle = "";
+  const basePath = (path: string) => viteBaseUrl ? `${viteBaseUrl}${path}` : path;
 
   const sendContext = (url: string, title: string) => {
-    fetch(CONTEXT_API_PATH, {
+    fetch(basePath(CONTEXT_API_PATH), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

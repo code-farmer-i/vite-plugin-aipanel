@@ -4,12 +4,17 @@ import type { OpenCodeWidgetSession, SessionInfo } from "@vite-plugin-opencode-a
 
 export interface UseSessionsOptions {
   showNotification: (msg: string) => void;
+  /** Vite 服务 base URL (如 http://127.0.0.1:5099) */
+  viteBaseUrl?: string;
   /** Session 更新回调 (从 SSE 事件接收) */
-  onSessionUpdate?: Ref<((session: { id: string; title?: string; time?: { updated?: number } }) => void) | undefined>;
+  onSessionUpdate?: Ref<
+    ((session: { id: string; title?: string; time?: { updated?: number } }) => void) | undefined
+  >;
 }
 
 export function useSessions(options: UseSessionsOptions) {
-  const { showNotification } = options;
+  const { showNotification, viteBaseUrl = "" } = options;
+  const basePath = (path: string) => (viteBaseUrl ? `${viteBaseUrl}${path}` : path);
   const sessions = ref<OpenCodeWidgetSession[]>([]);
   const loadingSessionList = ref<boolean | undefined>(undefined);
   const currentSessionId = ref<string | null>(null);
@@ -24,7 +29,7 @@ export function useSessions(options: UseSessionsOptions) {
   const loadSessions = async () => {
     loadingSessionList.value = true;
     try {
-      const response = await fetch(SESSIONS_API_PATH);
+      const response = await fetch(basePath(SESSIONS_API_PATH));
       const data: SessionInfo[] = await response.json();
       sessions.value = data
         .filter((s) => {
@@ -53,7 +58,11 @@ export function useSessions(options: UseSessionsOptions) {
    * 更新指定 session 的标题和时间
    * 从 SSE session.updated 事件触发
    */
-  const updateSessionInfo = (sessionUpdate: { id: string; title?: string; time?: { updated?: number } }) => {
+  const updateSessionInfo = (sessionUpdate: {
+    id: string;
+    title?: string;
+    time?: { updated?: number };
+  }) => {
     const index = sessions.value.findIndex((s) => s.id === sessionUpdate.id);
     if (index === -1) return;
 
@@ -69,7 +78,7 @@ export function useSessions(options: UseSessionsOptions) {
 
   const createSession = async () => {
     try {
-      const response = await fetch(SESSIONS_API_PATH, { method: "POST" });
+      const response = await fetch(basePath(SESSIONS_API_PATH), { method: "POST" });
       const newSession = await response.json();
       sessions.value.unshift({
         id: newSession.id,
@@ -87,7 +96,7 @@ export function useSessions(options: UseSessionsOptions) {
 
   const deleteSession = async (session: OpenCodeWidgetSession) => {
     try {
-      await fetch(`${SESSIONS_API_PATH}?id=${session.id}`, { method: "DELETE" });
+      await fetch(basePath(`${SESSIONS_API_PATH}?id=${session.id}`), { method: "DELETE" });
       await loadSessions();
       showNotification("会话已删除");
       if (currentSessionId.value === session.id) {

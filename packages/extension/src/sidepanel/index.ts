@@ -3,14 +3,14 @@ import { EXT_MSG } from "@vite-plugin-opencode-assistant/shared";
 /**
  * OpenCode Assistant - Side Panel
  *
- * 获取 Vite 插件端口 → monkey-patch fetch/EventSource → 挂载原始 App.vue
- * Tab 切换时通过显示/隐藏而非销毁重建，保持 iframe 状态
+ * 获取 Vite 插件端口 → 挂载原始 App.vue
+ * 多 Vite 服务独立创建 Vue 实例，通过 overflow:hidden + 定位偏移切换，不销毁不 display:none，
+ * 所有实例始终保持完整渲染和网络连接
+ * 不再依赖全局 monkey-patch，每个实例通过配置的 vitePort 构建绝对 URL
  */
 console.log("[OpenCode SP] Side Panel 入口已加载");
 
 import "@vite-plugin-opencode-assistant/client/styles.css";
-
-const ports = { proxyPort: 0, vitePort: "" };
 
 /** 从 content script 获取端口 */
 async function fetchPort(): Promise<{ proxyPort: number; vitePort: string } | null> {
@@ -26,54 +26,49 @@ async function fetchPort(): Promise<{ proxyPort: number; vitePort: string } | nu
   }
 }
 
-// === Monkey-patch: /__opencode_* → Vite server (webPort) ===
-const _fetch = window.fetch.bind(window);
-window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-  let url =
-    typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
-  if (ports.vitePort && url.startsWith("/__opencode")) {
-    url = `http://127.0.0.1:${ports.vitePort}${url}`;
-  }
-  return _fetch(url, init);
-};
-
-const _ES = window.EventSource;
-window.EventSource = class extends _ES {
-  constructor(url: string | URL, config?: EventSourceInit) {
-    const u = typeof url === "string" ? url : url.toString();
-    if (ports.vitePort && u.startsWith("/__opencode")) {
-      super(`http://127.0.0.1:${ports.vitePort}${u}`, config);
-    } else {
-      super(url, config);
-    }
-  }
-} as typeof EventSource;
-
 // === DOM 容器 ===
-let appMounted = false;
-let lastVitePort = "";
-let noServiceEl: HTMLDivElement | null = null;
-let appRootEl: HTMLDivElement | null = null;
-let vueApp: ReturnType<(typeof import("vue"))["createApp"]> | null = null;
+interface AppInstance {
+  rootEl: HTMLDivElement;
+  vitePort: string;
+}
 
-/** 创建无服务提示容器（Vue 组件将在 init 中异步挂载） */
-function createNoServiceContainer(): HTMLDivElement {
+/** vitePort → 已挂载的 App 实例 */
+const appInstances = new Map<string, AppInstance>();
+let wrapperEl: HTMLDivElement | null = null;
+let noServiceEl: HTMLDivElement | null = null;
+let activeVitePort: string | null = null;
+
+/** 创建 wrapper 容器（overflow:hidden 确保所有实例保持渲染） */
+function createWrapper(): HTMLDivElement {
   const div = document.createElement("div");
-  div.id = "opencode-no-service-root";
-  div.style.cssText = "display:none;width:100%;height:100%;";
+  div.id = "opencode-sidepanel-wrapper";
+  div.style.cssText = "width:100%;height:100%;overflow:hidden;position:relative;";
   return div;
 }
 
-/** 显示/隐藏：服务页面 */
-function showApp() {
-  if (noServiceEl) noServiceEl.style.display = "none";
-  if (appRootEl) appRootEl.style.display = "";
+/** 隐藏所有 App（移到屏幕外，但保持完整渲染） */
+function hideAllApps() {
+  appInstances.forEach((inst) => {
+    inst.rootEl.style.left = "-10000px";
+  });
 }
 
-/** 显示/隐藏：无服务提示 */
+/** 显示指定 vitePort 对应的 App */
+function showApp(vitePort: string) {
+  const inst = appInstances.get(vitePort);
+  if (inst) {
+    if (noServiceEl) noServiceEl.style.left = "-10000px";
+    hideAllApps();
+    inst.rootEl.style.left = "0";
+    activeVitePort = vitePort;
+  }
+}
+
+/** 显示无服务提示 */
 function showNoServiceOverlay() {
-  if (appRootEl) appRootEl.style.display = "none";
-  if (noServiceEl) noServiceEl.style.display = "";
+  hideAllApps();
+  if (noServiceEl) noServiceEl.style.left = "0";
+  activeVitePort = null;
 }
 
 /** 初始化 DOM 容器（仅一次） */
@@ -83,41 +78,33 @@ async function initContainers() {
     `<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden}</style>`,
   );
 
-  noServiceEl = createNoServiceContainer();
-  document.body.appendChild(noServiceEl);
+  wrapperEl = createWrapper();
+  document.body.appendChild(wrapperEl);
+
+  noServiceEl = document.createElement("div");
+  noServiceEl.id = "opencode-no-service-root";
+  noServiceEl.style.cssText = "position:absolute;top:0;left:-10000px;width:100%;height:100%;";
+  wrapperEl.appendChild(noServiceEl);
 
   // 挂载无服务提示 Vue 组件
   const { createApp } = await import("vue");
   const { default: NoServicePrompt } = await import("./NoServicePrompt.vue");
-  createApp(NoServicePrompt, { onRefresh: mountApp }).mount(noServiceEl);
-
-  appRootEl = document.createElement("div");
-  appRootEl.id = "opencode-sidepanel-root";
-  appRootEl.style.cssText = "display:none;width:100%;height:100%;";
-  document.body.appendChild(appRootEl);
+  createApp(NoServicePrompt, { onRefresh: () => mountAppForActiveTab() }).mount(noServiceEl);
 }
 
-/** 创建 Vue 应用（仅首次），返回 true 表示成功检测到服务 */
-async function mountApp(): Promise<boolean> {
-  if (appMounted) return true;
-
-  const info = await fetchPort();
-  if (!info) {
-    showNoServiceOverlay();
-    return false;
-  }
-  ports.proxyPort = info.proxyPort;
-  ports.vitePort = info.vitePort;
-  lastVitePort = info.vitePort;
-
-  console.log("[OpenCode SP] 端口已获取: vite=%s proxy=%d", ports.vitePort, ports.proxyPort);
-
+/** 为指定端口创建并挂载新的 Vue App */
+async function createAppInstance(vitePort: string, proxyPort: number): Promise<AppInstance> {
   const { createApp } = await import("vue");
   const { default: App } = await import("@vite-plugin-opencode-assistant/client/App.vue");
 
+  const rootEl = document.createElement("div");
+  rootEl.style.cssText = "position:absolute;top:0;left:-10000px;width:100%;height:100%;";
+  wrapperEl!.appendChild(rootEl);
+
   const config = {
-    proxyPort: ports.proxyPort,
+    proxyPort,
     proxyHost: "127.0.0.1",
+    vitePort, // App 内部用此构建绝对 URL，不再依赖全局 monkey-patch
     theme: "auto",
     hotkey: "",
     displayMode: "extension",
@@ -125,44 +112,54 @@ async function mountApp(): Promise<boolean> {
   };
 
   const app = createApp(App, { config });
-  app.mount(appRootEl!);
-  vueApp = app;
-  showApp();
-  appMounted = true;
-  console.log("[OpenCode SP] App 已挂载");
+  app.mount(rootEl);
+
+  const inst: AppInstance = { rootEl, vitePort };
+  appInstances.set(vitePort, inst);
+  console.log("[OpenCode SP] 新 App 实例已创建: vite=%s proxy=%d", vitePort, proxyPort);
+  return inst;
+}
+
+/** 为当前 active tab 挂载 App */
+async function mountAppForActiveTab(): Promise<boolean> {
+  const info = await fetchPort();
+  if (!info) {
+    showNoServiceOverlay();
+    return false;
+  }
+
+  if (appInstances.has(info.vitePort)) {
+    showApp(info.vitePort);
+    console.log("[OpenCode SP] 复用已有实例: vite=%s", info.vitePort);
+  } else {
+    await createAppInstance(info.vitePort, info.proxyPort);
+    showApp(info.vitePort);
+  }
   return true;
 }
 
-/** 根据端口是否变化决定重载 App 还是仅显示 */
+/** 处理服务切换 */
 function handleServiceSwitch(newVitePort: string, newProxyPort: number) {
-  const portChanged = lastVitePort !== newVitePort;
-  lastVitePort = newVitePort;
-  ports.proxyPort = newProxyPort;
-  ports.vitePort = newVitePort;
+  if (activeVitePort === newVitePort) return;
 
-  if (portChanged && appMounted) {
-    // 不同 Vite 服务 → 先正确卸载旧 Vue app，再重建
-    vueApp?.unmount();
-    vueApp = null;
-    const oldApp = appRootEl;
-    if (oldApp) {
-      oldApp.style.display = "none";
-    }
-    appMounted = false;
-    mountApp();
+  if (appInstances.has(newVitePort)) {
+    showApp(newVitePort);
+    console.log("[OpenCode SP] Tab 切换 → 已有服务: vite=%s", newVitePort);
   } else {
-    // 同一服务或首次 → 直接显示
-    showApp();
+    createAppInstance(newVitePort, newProxyPort).then(() => {
+      showApp(newVitePort);
+    });
+    console.log("[OpenCode SP] Tab 切换 → 新服务: vite=%s", newVitePort);
   }
 }
 
 // === 初始化 ===
 (async () => {
   await initContainers();
-  mountApp();
+  mountAppForActiveTab();
 })();
 
-/** 监听 Tab 切换 → 显示/隐藏 */
+/** 监听 Tab 切换 */
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === EXT_MSG.TAB_SWITCHED) {
     console.log("[OpenCode SP] Tab 切换:", msg.portInfo);

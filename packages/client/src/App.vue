@@ -43,6 +43,7 @@ const {
   proxyHost = "localhost",
   displayMode = "bubble",
   splitMode,
+  vitePort = "",
 } = props.config;
 
 const widgetTheme = initialTheme as OpenCodeWidgetTheme;
@@ -50,6 +51,12 @@ const splitPanelWidth = ref(splitMode?.width ?? 500);
 
 const isExtensionMode = displayMode === "extension";
 const isExtensionSelectorMode = displayMode === "extension-selector";
+
+// 构建绝对 URL，用于绕过全局 monkey-patch（多实例场景下每个实例有独立的 vitePort）
+const viteBaseUrl = computed(() => vitePort ? `http://127.0.0.1:${vitePort}` : "");
+
+// 构建请求 URL（扩展模式下用绝对 URL，否则用相对路径走 monkey-patch）
+const apiPath = (path: string) => viteBaseUrl.value ? `${viteBaseUrl.value}${path}` : path;
 
 // 扩展模式 composable 返回值（在 composable 调用后填充）
 const ext = {
@@ -95,14 +102,15 @@ const {
   deleteSession,
   selectSession,
   updateSessionInfo,
-} = useSessions({ showNotification });
+} = useSessions({ showNotification, viteBaseUrl: viteBaseUrl.value });
 
 const { updateContext } = isExtensionMode
-  ? useExtensionContext(serviceStatus, selectedElements)
-  : usePageContext(serviceStatus, selectedElements);
+  ? useExtensionContext(serviceStatus, selectedElements, viteBaseUrl.value)
+  : usePageContext(serviceStatus, selectedElements, viteBaseUrl.value);
 
 // Server SSE: 监听 Vite server 事件 (服务启动状态)
 const serverSSE = useServerSSE({
+  viteBaseUrl: viteBaseUrl.value,
   onStatusSync: (data) => {
     if (data.isStarted !== undefined && data.isStarted && serviceStatus.value === "idle") {
       setStarting();
@@ -152,7 +160,7 @@ const retryWarmup = async (selectedModel?: { providerID: string; modelID: string
   retryingWarmup.value = true;
 
   try {
-    const res = await fetch(WARMUP_API_PATH, {
+    const res = await fetch(apiPath(WARMUP_API_PATH), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: selectedModel ? JSON.stringify(selectedModel) : "",
@@ -187,7 +195,7 @@ const retryWarmup = async (selectedModel?: { providerID: string; modelID: string
 
 const fetchAvailableModels = async () => {
   try {
-    const res = await fetch(WARMUP_API_PATH, { method: "GET" });
+    const res = await fetch(apiPath(WARMUP_API_PATH), { method: "GET" });
     const data = await res.json();
     if (data.success && data.models) {
       availableModels.value = data.models;
@@ -201,7 +209,7 @@ const fetchAvailableModels = async () => {
 const ensureServicesStarted = async () => {
   if (serviceStatus.value !== "idle") return true;
   try {
-    const res = await fetch(START_API_PATH);
+    const res = await fetch(apiPath(START_API_PATH));
     const data = await res.json();
     if (data.success) {
       setStarting();

@@ -205,6 +205,8 @@ export interface WidgetOptions {
   displayMode?: DisplayMode;
   /** 分屏模式配置 */
   splitMode?: SplitModeOptions;
+  /** Vite 服务 Web 端口（扩展模式多实例场景用） */
+  vitePort?: string;
 }
 
 /**

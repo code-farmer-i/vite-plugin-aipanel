@@ -36,6 +36,8 @@ export type ServerSSEMessage =
  * Server SSE 配置选项
  */
 export interface ServerSSEOptions {
+  /** Vite 服务 base URL (如 http://127.0.0.1:5099) */
+  viteBaseUrl?: string;
   /** 状态同步回调 */
   onStatusSync?: (data: ServerSSEStatusSyncData) => void;
   /** 任务更新回调 */
@@ -53,10 +55,12 @@ export interface ServerSSEOptions {
  * 端点: /__opencode_events__
  */
 export function useServerSSE(options: ServerSSEOptions = {}) {
-  const { onStatusSync, onTaskUpdate, onClearElements, onConnected } = options;
+  const { viteBaseUrl = "", onStatusSync, onTaskUpdate, onClearElements, onConnected } = options;
+
+  const endpoint = viteBaseUrl ? `${viteBaseUrl}${SSE_EVENTS_PATH}` : SSE_EVENTS_PATH;
 
   const { status, isConnected, connect, disconnect } = useSSE({
-    endpoint: SSE_EVENTS_PATH,
+    endpoint,
     autoConnect: false,
     onMessage: (data) => {
       const message = data as ServerSSEMessage;

@@ -80,6 +80,10 @@ importers:
       vue:
         specifier: ^3.5.32
         version: 3.5.32(typescript@5.9.3)
+    devDependencies:
+      '@types/chrome':
+        specifier: ^0.0.268
+        version: 0.0.268
 
   packages/components:
     dependencies:

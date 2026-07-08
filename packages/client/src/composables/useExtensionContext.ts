@@ -12,6 +12,7 @@ import { EXT_MSG, CONTEXT_API_PATH } from "@vite-plugin-opencode-assistant/share
 export function useExtensionContext(
   serviceStatus: { value: ServiceStatus },
   selectedElements: { value: OpenCodeSelectedElement[] },
+  viteBaseUrl = "",
 ) {
   let currentPageUrl = "";
   let currentPageTitle = "";
@@ -19,8 +20,10 @@ export function useExtensionContext(
   const extensionPageUrl = ref("");
   const extensionPageTitle = ref("");
 
+  const basePath = (path: string) => viteBaseUrl ? `${viteBaseUrl}${path}` : path;
+
   const sendContext = (url: string, title: string) => {
-    fetch(CONTEXT_API_PATH, {
+    fetch(basePath(CONTEXT_API_PATH), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

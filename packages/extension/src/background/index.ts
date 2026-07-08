@@ -1,4 +1,6 @@
-import { EXT_MSG } from "@vite-plugin-opencode-assistant/shared";
+import { EXT_MSG, EXT_BROADCAST } from "@vite-plugin-opencode-assistant/shared";
+
+const BROADCAST_TYPES = new Set<string>(Object.values(EXT_BROADCAST));
 
 /**
  * OpenCode Assistant - Background Service Worker
@@ -33,9 +35,9 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   }
 });
 
-/** 消息转发: PAGE_CONTEXT 从 content script → Side Panel */
+/** 消息转发到 Side Panel（EXT_BROADCAST 中的类型自动转发） */
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === EXT_MSG.PAGE_CONTEXT) {
+  if (BROADCAST_TYPES.has(msg.type)) {
     chrome.runtime.sendMessage(msg).catch(() => {});
   }
 });

@@ -98,10 +98,18 @@ export const CHROME_DEVTOOLS_CHECK_TIMEOUT = 2000;
 
 /** ==================== 扩展消息类型 ==================== */
 
+/** 需要后台转发的消息类型（多实例间通信） */
+export const EXT_BROADCAST = {
+  PAGE_CONTEXT: "PAGE_CONTEXT",
+  THEME_CHANGE: "THEME_CHANGE",
+  SERVICE_APPEARED: "SERVICE_APPEARED",
+  SERVICE_GONE: "SERVICE_GONE",
+} as const;
+
 /** Chrome 扩展内部消息类型（chrome.runtime.sendMessage） */
 export const EXT_MSG = {
+  ...EXT_BROADCAST,
   GET_PORT_INFO: "GET_PORT_INFO",
-  PAGE_CONTEXT: "PAGE_CONTEXT",
   TAB_SWITCHED: "TAB_SWITCHED",
   SELECTION_START: "SELECTION_START",
   SELECTION_STOP: "SELECTION_STOP",

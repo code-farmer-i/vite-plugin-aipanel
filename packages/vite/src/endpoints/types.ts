@@ -15,6 +15,7 @@ export interface EndpointContext {
   get currentTask(): { task: ServiceStartupTask; data?: Record<string, unknown> } | null;
   get actualProxyPort(): number;
   get actualWebPort(): number;
+  get serviceInstanceId(): string;
   getSessions: () => Promise<SessionInfo[]>;
   createSession: () => Promise<SessionInfo>;
   deleteSession: (id: string) => Promise<void>;

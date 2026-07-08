@@ -1,5 +1,6 @@
 import type { Plugin, ViteDevServer } from "vite";
 import type http from "http";
+import crypto from "crypto";
 import Inspector from "unplugin-vue-inspector/vite";
 import type { OpenCodeOptions, PageContext } from "@vite-plugin-opencode-assistant/shared";
 import {
@@ -46,6 +47,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
   let actualWebPort = config.webPort;
   let actualProxyPort = config.proxyPort ?? DEFAULT_PROXY_PORT;
   let pageContext: PageContext = { url: "", title: "" };
+  const serviceInstanceId = crypto.randomUUID();
 
   const sseClients: Set<http.ServerResponse> = new Set();
 
@@ -106,6 +108,9 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         },
         get actualWebPort() {
           return actualWebPort;
+        },
+        get serviceInstanceId() {
+          return serviceInstanceId;
         },
         getSessions: () => api.getSessions(service.workspaceRoot!),
         createSession: () => api.createSession(service.workspaceRoot!),

@@ -127,6 +127,16 @@ async function main() {
         }
       });
     }
+    // Rollback manifest.json
+    const manifestPath = path.join(packagesDir, "extension", "src", "manifest.json");
+    if (fs.existsSync(manifestPath)) {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+      if (manifest.version !== version) {
+        manifest.version = version;
+        fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+        console.log(`   ✅ Rolled back manifest.json to v${version}`);
+      }
+    }
     console.log(`⏪ Rollback completed!\n`);
   };
 
@@ -183,6 +193,17 @@ async function main() {
       }
     }
   });
+
+  // 同步 Chrome 扩展 manifest.json 版本
+  const manifestPath = path.join(packagesDir, "extension", "src", "manifest.json");
+  if (fs.existsSync(manifestPath)) {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+    if (manifest.version !== targetVersion) {
+      manifest.version = targetVersion;
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+      console.log(`   ✅ Updated manifest.json to v${targetVersion}`);
+    }
+  }
 
   // 4. Build packages
   console.log("\n🔨 Building all packages...");

@@ -207,6 +207,8 @@ export interface WidgetOptions {
   splitMode?: SplitModeOptions;
   /** Vite 服务 Web 端口（扩展模式多实例场景用） */
   vitePort?: string;
+  /** 服务实例唯一标识（扩展模式多实例隔离用） */
+  serviceInstanceId?: string;
 }
 
 /**

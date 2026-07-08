@@ -3,23 +3,29 @@ import { EXT_MSG } from "@vite-plugin-opencode-assistant/shared";
 /**
  * OpenCode Assistant - Side Panel
  *
- * 获取 Vite 插件端口 → 挂载原始 App.vue
- * 多 Vite 服务独立创建 Vue 实例，通过 overflow:hidden + 定位偏移切换，不销毁不 display:none，
- * 所有实例始终保持完整渲染和网络连接
- * 不再依赖全局 monkey-patch，每个实例通过配置的 vitePort 构建绝对 URL
+ * 面板实例存活 = workspace 中 Vite 服务存活。
+ * serviceInstanceId 作为唯一隔离键，通过 Content Script 健康检查驱动实例生命周期。
+ * 多实例通过 overflow:hidden + 定位偏移切换，不销毁不 display:none，
+ * 所有实例始终保持完整渲染和网络连接。
  */
 console.log("[OpenCode SP] Side Panel 入口已加载");
 
 import "@vite-plugin-opencode-assistant/client/styles.css";
 
-/** 从 content script 获取端口 */
-async function fetchPort(): Promise<{ proxyPort: number; vitePort: string } | null> {
+interface ServiceInfo {
+  proxyPort: number;
+  vitePort: string;
+  projectRoot: string;
+  serviceInstanceId: string;
+}
+
+/** 从 content script 获取服务信息 */
+async function fetchServiceInfo(): Promise<ServiceInfo | null> {
   try {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tabs[0]?.id) return null;
     const info = await chrome.tabs.sendMessage(tabs[0].id, { type: EXT_MSG.GET_PORT_INFO });
-    console.log("[OpenCode SP] 端口信息:", info);
-    if (info && info.proxyPort && info.vitePort) return info;
+    if (info && info.serviceInstanceId && info.proxyPort && info.vitePort) return info;
     return null;
   } catch {
     return null;
@@ -29,14 +35,18 @@ async function fetchPort(): Promise<{ proxyPort: number; vitePort: string } | nu
 // === DOM 容器 ===
 interface AppInstance {
   rootEl: HTMLDivElement;
+  serviceInstanceId: string;
   vitePort: string;
+  proxyPort: number;
+  zombie: boolean;
+  zombieTimer: ReturnType<typeof setTimeout> | null;
 }
 
-/** vitePort → 已挂载的 App 实例 */
+/** serviceInstanceId → 已挂载的 App 实例 */
 const appInstances = new Map<string, AppInstance>();
 let wrapperEl: HTMLDivElement | null = null;
 let noServiceEl: HTMLDivElement | null = null;
-let activeVitePort: string | null = null;
+let activeServiceId: string | null = null;
 
 /** 创建 wrapper 容器（overflow:hidden 确保所有实例保持渲染） */
 function createWrapper(): HTMLDivElement {
@@ -53,14 +63,14 @@ function hideAllApps() {
   });
 }
 
-/** 显示指定 vitePort 对应的 App */
-function showApp(vitePort: string) {
-  const inst = appInstances.get(vitePort);
+/** 显示指定 serviceInstanceId 对应的 App */
+function showApp(serviceInstanceId: string) {
+  const inst = appInstances.get(serviceInstanceId);
   if (inst) {
     if (noServiceEl) noServiceEl.style.left = "-10000px";
     hideAllApps();
     inst.rootEl.style.left = "0";
-    activeVitePort = vitePort;
+    activeServiceId = serviceInstanceId;
   }
 }
 
@@ -68,7 +78,18 @@ function showApp(vitePort: string) {
 function showNoServiceOverlay() {
   hideAllApps();
   if (noServiceEl) noServiceEl.style.left = "0";
-  activeVitePort = null;
+  activeServiceId = null;
+}
+
+/** 选择下一个可用实例展示 */
+function showNextAvailable() {
+  for (const inst of appInstances.values()) {
+    if (!inst.zombie) {
+      showApp(inst.serviceInstanceId);
+      return;
+    }
+  }
+  showNoServiceOverlay();
 }
 
 /** 初始化 DOM 容器（仅一次） */
@@ -86,14 +107,13 @@ async function initContainers() {
   noServiceEl.style.cssText = "position:absolute;top:0;left:-10000px;width:100%;height:100%;";
   wrapperEl.appendChild(noServiceEl);
 
-  // 挂载无服务提示 Vue 组件
   const { createApp } = await import("vue");
   const { default: NoServicePrompt } = await import("./NoServicePrompt.vue");
   createApp(NoServicePrompt, { onRefresh: () => mountAppForActiveTab() }).mount(noServiceEl);
 }
 
-/** 为指定端口创建并挂载新的 Vue App */
-async function createAppInstance(vitePort: string, proxyPort: number): Promise<AppInstance> {
+/** 为指定服务创建并挂载新的 Vue App */
+async function createAppInstance(info: ServiceInfo): Promise<AppInstance> {
   const { createApp } = await import("vue");
   const { default: App } = await import("@vite-plugin-opencode-assistant/client/App.vue");
 
@@ -102,9 +122,11 @@ async function createAppInstance(vitePort: string, proxyPort: number): Promise<A
   wrapperEl!.appendChild(rootEl);
 
   const config = {
-    proxyPort,
+    proxyPort: info.proxyPort,
     proxyHost: "127.0.0.1",
-    vitePort, // App 内部用此构建绝对 URL，不再依赖全局 monkey-patch
+    vitePort: info.vitePort,
+    serviceInstanceId: info.serviceInstanceId,
+    projectRoot: info.projectRoot,
     theme: "auto",
     hotkey: "",
     displayMode: "extension",
@@ -114,43 +136,101 @@ async function createAppInstance(vitePort: string, proxyPort: number): Promise<A
   const app = createApp(App, { config });
   app.mount(rootEl);
 
-  const inst: AppInstance = { rootEl, vitePort };
-  appInstances.set(vitePort, inst);
-  console.log("[OpenCode SP] 新 App 实例已创建: vite=%s proxy=%d", vitePort, proxyPort);
+  const inst: AppInstance = {
+    rootEl,
+    serviceInstanceId: info.serviceInstanceId,
+    vitePort: info.vitePort,
+    proxyPort: info.proxyPort,
+    zombie: false,
+    zombieTimer: null,
+  };
+  appInstances.set(info.serviceInstanceId, inst);
+  console.log("[OpenCode SP] 新 App 实例已创建: %s vite=%s", info.serviceInstanceId, info.vitePort);
   return inst;
+}
+
+/** 销毁指定 App 实例 */
+function destroyAppInstance(serviceInstanceId: string) {
+  const inst = appInstances.get(serviceInstanceId);
+  if (!inst) return;
+
+  if (inst.zombieTimer) {
+    clearTimeout(inst.zombieTimer);
+    inst.zombieTimer = null;
+  }
+
+  // 卸载 Vue App
+  inst.rootEl.innerHTML = "";
+  inst.rootEl.remove();
+
+  appInstances.delete(serviceInstanceId);
+  console.log("[OpenCode SP] App 实例已销毁: %s", serviceInstanceId);
+
+  // 如果销毁的是当前显示的实例，切换到下一个
+  if (activeServiceId === serviceInstanceId) {
+    showNextAvailable();
+  }
 }
 
 /** 为当前 active tab 挂载 App */
 async function mountAppForActiveTab(): Promise<boolean> {
-  const info = await fetchPort();
+  const info = await fetchServiceInfo();
   if (!info) {
     showNoServiceOverlay();
     return false;
   }
 
-  if (appInstances.has(info.vitePort)) {
-    showApp(info.vitePort);
-    console.log("[OpenCode SP] 复用已有实例: vite=%s", info.vitePort);
-  } else {
-    await createAppInstance(info.vitePort, info.proxyPort);
-    showApp(info.vitePort);
-  }
+  handleServiceAppeared(info);
   return true;
 }
 
-/** 处理服务切换 */
-function handleServiceSwitch(newVitePort: string, newProxyPort: number) {
-  if (activeVitePort === newVitePort) return;
+/** 处理服务上线 */
+function handleServiceAppeared(info: ServiceInfo) {
+  const existingInst = appInstances.get(info.serviceInstanceId);
 
-  if (appInstances.has(newVitePort)) {
-    showApp(newVitePort);
-    console.log("[OpenCode SP] Tab 切换 → 已有服务: vite=%s", newVitePort);
+  if (existingInst) {
+    // 已有实例：更新端口信息（可能重启后换了端口），清除 zombie 标记
+    existingInst.vitePort = info.vitePort;
+    existingInst.proxyPort = info.proxyPort;
+    existingInst.zombie = false;
+    if (existingInst.zombieTimer) {
+      clearTimeout(existingInst.zombieTimer);
+      existingInst.zombieTimer = null;
+    }
+    showApp(info.serviceInstanceId);
+    console.log("[OpenCode SP] 复用已有实例: %s vite=%s", info.serviceInstanceId, info.vitePort);
   } else {
-    createAppInstance(newVitePort, newProxyPort).then(() => {
-      showApp(newVitePort);
+    createAppInstance(info).then(() => {
+      showApp(info.serviceInstanceId);
     });
-    console.log("[OpenCode SP] Tab 切换 → 新服务: vite=%s", newVitePort);
   }
+}
+
+/** 处理服务下线 */
+function handleServiceGone(serviceInstanceId: string) {
+  const inst = appInstances.get(serviceInstanceId);
+  if (!inst || inst.zombie) return;
+
+  inst.zombie = true;
+  inst.zombieTimer = setTimeout(() => {
+    destroyAppInstance(serviceInstanceId);
+  }, 3000);
+  console.log("[OpenCode SP] 服务下线标记 zombie: %s (3s后销毁)", serviceInstanceId);
+
+  // 如果当前显示的就是这个实例，切换到下一个可用
+  if (activeServiceId === serviceInstanceId) {
+    showNextAvailable();
+  }
+}
+
+/** 处理 Tab 切换 */
+function handleTabSwitched(info: ServiceInfo | null) {
+  if (!info) {
+    showNoServiceOverlay();
+    return;
+  }
+
+  handleServiceAppeared(info);
 }
 
 // === 初始化 ===
@@ -159,14 +239,31 @@ function handleServiceSwitch(newVitePort: string, newProxyPort: number) {
   mountAppForActiveTab();
 })();
 
-/** 监听 Tab 切换 */
+/** 监听消息 */
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === EXT_MSG.TAB_SWITCHED) {
-    console.log("[OpenCode SP] Tab 切换:", msg.portInfo);
-    if (msg.portInfo && msg.portInfo.proxyPort && msg.portInfo.vitePort) {
-      handleServiceSwitch(msg.portInfo.vitePort, msg.portInfo.proxyPort);
-    } else {
-      showNoServiceOverlay();
-    }
+  switch (msg.type) {
+    case EXT_MSG.TAB_SWITCHED:
+      console.log("[OpenCode SP] Tab 切换:", msg.portInfo);
+      handleTabSwitched(msg.portInfo || null);
+      break;
+
+    case EXT_MSG.SERVICE_APPEARED:
+      if (msg.serviceInstanceId && msg.proxyPort && msg.vitePort) {
+        console.log("[OpenCode SP] 服务上线: %s", msg.serviceInstanceId);
+        handleServiceAppeared({
+          serviceInstanceId: msg.serviceInstanceId,
+          vitePort: msg.vitePort,
+          proxyPort: msg.proxyPort,
+          projectRoot: msg.projectRoot || "",
+        });
+      }
+      break;
+
+    case EXT_MSG.SERVICE_GONE:
+      if (msg.serviceInstanceId) {
+        console.log("[OpenCode SP] 服务下线: %s", msg.serviceInstanceId);
+        handleServiceGone(msg.serviceInstanceId);
+      }
+      break;
   }
 });

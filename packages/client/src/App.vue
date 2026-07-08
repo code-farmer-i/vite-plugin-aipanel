@@ -44,6 +44,7 @@ const {
   displayMode = "bubble",
   splitMode,
   vitePort = "",
+  serviceInstanceId = "",
 } = props.config;
 
 const widgetTheme = initialTheme as OpenCodeWidgetTheme;
@@ -61,6 +62,7 @@ const apiPath = (path: string) => viteBaseUrl.value ? `${viteBaseUrl.value}${pat
 // 扩展模式 composable 返回值（在 composable 调用后填充）
 const ext = {
   onSelectModeChange: null as ((val: boolean) => void) | null,
+  broadcastTheme: null as ((theme: OpenCodeWidgetTheme) => void) | null,
   notifySelectionResult: null as ((element: OpenCodeSelectedElement) => void) | null,
   notifySelectModeChange: null as ((val: boolean) => void) | null,
 };
@@ -74,7 +76,11 @@ const showNotification = (
   msg: string,
   options?: { duration?: number; mode?: "widget" | "page"; },
 ) => {
-  widgetRef.value?.showNotification?.(msg, options);
+  // 扩展模式下通知渲染在实例内部，避免多实例间可见
+  widgetRef.value?.showNotification?.(msg, {
+    ...options,
+    mode: isExtensionMode ? "widget" : options?.mode,
+  });
 };
 
 const {
@@ -87,7 +93,7 @@ const {
   setStarting,
 } = useServiceStatus();
 
-const { selectedElements, removeElement, clearElements } = useSelectedElements();
+const { selectedElements, removeElement, clearElements } = useSelectedElements(serviceInstanceId);
 
 const { theme, sendThemeToIframe } = useTheme(widgetTheme, widgetRef);
 
@@ -105,7 +111,7 @@ const {
 } = useSessions({ showNotification, viteBaseUrl: viteBaseUrl.value });
 
 const { updateContext } = isExtensionMode
-  ? useExtensionContext(serviceStatus, selectedElements, viteBaseUrl.value)
+  ? useExtensionContext(serviceStatus, selectedElements, viteBaseUrl.value, serviceInstanceId)
   : usePageContext(serviceStatus, selectedElements, viteBaseUrl.value);
 
 // Server SSE: 监听 Vite server 事件 (服务启动状态)
@@ -376,8 +382,17 @@ const handleSelectModeChange = (val: boolean) => {
 
 // 扩展模式 composable 调用（必须在 handler 函数定义之后）
 if (isExtensionMode) {
-  const result = useExtensionMode({ selectMode, onElementSelected: handleSelectNode });
+  const result = useExtensionMode({
+    selectMode,
+    serviceInstanceId,
+    onElementSelected: handleSelectNode,
+    onThemeChange: (t) => {
+      theme.value = t;
+      sendThemeToIframe();
+    },
+  });
   ext.onSelectModeChange = result.onSelectModeChange;
+  ext.broadcastTheme = result.broadcastTheme;
 }
 if (isExtensionSelectorMode) {
   const result = useExtensionSelectorMode({ onSelectModeChange: handleSelectModeChange });
@@ -391,6 +406,9 @@ const handleSessionListCollapsedChange = (val: boolean) => {
 
 const handleThemeChange = (val: OpenCodeWidgetTheme) => {
   theme.value = val;
+  if (isExtensionMode) {
+    ext.broadcastTheme?.(val);
+  }
 };
 
 const handleSplitPanelWidthChange = (val: number) => {

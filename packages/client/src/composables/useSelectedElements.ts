@@ -1,11 +1,15 @@
 import { ref, watch } from "vue";
 import type { OpenCodeSelectedElement } from "@vite-plugin-opencode-assistant/shared";
+import { SELECTED_ELEMENTS_KEY } from "@vite-plugin-opencode-assistant/shared";
 
-export function useSelectedElements() {
+export function useSelectedElements(serviceInstanceId = "") {
+  const storageKey = serviceInstanceId
+    ? `${SELECTED_ELEMENTS_KEY}_${serviceInstanceId}`
+    : SELECTED_ELEMENTS_KEY;
   const selectedElements = ref<OpenCodeSelectedElement[]>([]);
 
   try {
-    const stored = sessionStorage.getItem("__opencode_selected_elements__");
+    const stored = sessionStorage.getItem(storageKey);
     if (stored) {
       selectedElements.value = JSON.parse(stored);
     }
@@ -16,7 +20,7 @@ export function useSelectedElements() {
   watch(
     selectedElements,
     (val) => {
-      sessionStorage.setItem("__opencode_selected_elements__", JSON.stringify(val));
+      sessionStorage.setItem(storageKey, JSON.stringify(val));
     },
     { deep: true },
   );

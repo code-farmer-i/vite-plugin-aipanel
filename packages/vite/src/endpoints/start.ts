@@ -14,6 +14,8 @@ export function setupStartEndpoint(server: ViteDevServer, ctx: EndpointContext) 
       success: true,
       proxyPort: ctx.actualProxyPort,
       webPort: ctx.actualWebPort,
+      projectRoot: server.config.root,
+      serviceInstanceId: ctx.serviceInstanceId,
     }));
     reqCtx.end(200);
   });

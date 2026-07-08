@@ -1,5 +1,5 @@
 import { onMounted, onUnmounted, type Ref } from "vue";
-import type { OpenCodeSelectedElement } from "@vite-plugin-opencode-assistant/shared";
+import type { OpenCodeSelectedElement, OpenCodeWidgetTheme } from "@vite-plugin-opencode-assistant/shared";
 import { WIDGET_MSG, EXT_MSG } from "@vite-plugin-opencode-assistant/shared";
 
 interface ExtensionMessage {
@@ -11,25 +11,32 @@ interface ExtensionMessage {
   description?: string;
   pageUrl?: string;
   pageTitle?: string;
+  serviceInstanceId?: string;
+  theme?: OpenCodeWidgetTheme;
 }
 
 interface UseExtensionModeOptions {
   selectMode: Ref<boolean>;
+  serviceInstanceId: string;
   onElementSelected: (
     element: OpenCodeSelectedElement,
     pageUrl?: string,
     pageTitle?: string,
   ) => void;
+  onThemeChange?: (theme: OpenCodeWidgetTheme) => void;
 }
 
 /**
  * 扩展模式：封装 chrome.runtime.onMessage 消息监听，
- * 包含元素选择结果处理、选择模式状态同步、向目标 Tab 发送选择指令
+ * 按 serviceInstanceId 隔离多 Vite 服务消息，包含元素选择结果处理、选择模式状态同步、主题同步
  */
 export function useExtensionMode(options: UseExtensionModeOptions) {
-  const { selectMode, onElementSelected } = options;
+  const { selectMode, serviceInstanceId, onElementSelected, onThemeChange } = options;
 
   const handleMessage = (msg: ExtensionMessage) => {
+    // 按 serviceInstanceId 过滤，仅处理来自当前服务实例的消息
+    if (msg.serviceInstanceId && msg.serviceInstanceId !== serviceInstanceId) return;
+
     switch (msg.type) {
       case WIDGET_MSG.ELEMENT_SELECTED:
         onElementSelected(
@@ -52,6 +59,11 @@ export function useExtensionMode(options: UseExtensionModeOptions) {
         break;
       case WIDGET_MSG.SELECTOR_STOP:
         selectMode.value = false;
+        break;
+      case EXT_MSG.THEME_CHANGE:
+        if (msg.theme && onThemeChange) {
+          onThemeChange(msg.theme);
+        }
         break;
     }
   };
@@ -81,5 +93,10 @@ export function useExtensionMode(options: UseExtensionModeOptions) {
     sendToActiveTab({ type: val ? EXT_MSG.SELECTION_START : EXT_MSG.SELECTION_STOP });
   }
 
-  return { onSelectModeChange };
+  /** 广播主题变更（同步到所有实例） */
+  function broadcastTheme(theme: OpenCodeWidgetTheme) {
+    chrome.runtime.sendMessage({ type: EXT_MSG.THEME_CHANGE, theme }).catch(() => {});
+  }
+
+  return { onSelectModeChange, broadcastTheme };
 }

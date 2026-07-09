@@ -60,14 +60,14 @@ function createWrapper(): HTMLDivElement {
 /** 隐藏所有 App（移到屏幕外，但保持完整渲染） */
 function hideAllApps() {
   appInstances.forEach((inst) => {
-    inst.rootEl.style.left = "-10000px";
+    if (inst.rootEl) inst.rootEl.style.left = "-10000px";
   });
 }
 
 /** 显示指定 serviceInstanceId 对应的 App */
 function showApp(serviceInstanceId: string) {
   const inst = appInstances.get(serviceInstanceId);
-  if (inst) {
+  if (inst && inst.rootEl) {
     if (noServiceEl) noServiceEl.style.left = "-10000px";
     hideAllApps();
     inst.rootEl.style.left = "0";
@@ -155,7 +155,7 @@ async function createAppInstance(info: ServiceInfo): Promise<AppInstance> {
 /** 销毁指定 App 实例 */
 function destroyAppInstance(serviceInstanceId: string) {
   const inst = appInstances.get(serviceInstanceId);
-  if (!inst) return;
+  if (!inst || !inst.rootEl) return;
 
   if (inst.zombieTimer) {
     clearTimeout(inst.zombieTimer);

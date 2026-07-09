@@ -23,9 +23,6 @@ const props = withDefaults(
     maxWidth?: number;
     noTransition?: boolean;
     dragging?: boolean;
-    notificationVisible?: boolean;
-    notificationMessage?: string;
-    notificationMode?: "widget" | "page";
     thinking?: boolean;
     resolvedTheme?: "light" | "dark";
     splitPosition?: "left" | "right";
@@ -43,9 +40,6 @@ const props = withDefaults(
     maxWidth: 800,
     noTransition: false,
     dragging: false,
-    notificationVisible: false,
-    notificationMessage: "",
-    notificationMode: "widget",
     thinking: false,
     resolvedTheme: "light",
     splitPosition: "right",
@@ -225,14 +219,6 @@ const panelClasses = computed(() => [
       </template>
     </Header>
 
-    <div
-      v-if="notificationVisible && notificationMode === 'widget'"
-      class="opencode-notification"
-      role="alert"
-    >
-      {{ notificationMessage }}
-    </div>
-
     <div class="opencode-chat-content">
       <SessionList>
         <template #empty>
@@ -388,32 +374,6 @@ const panelClasses = computed(() => [
   display: flex;
   flex: 1;
   overflow: hidden;
-}
-
-.opencode-notification {
-  position: absolute;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-  border-radius: 10px;
-  font-size: 14px;
-  z-index: 100;
-  animation: opencode-notification-fade-in 0.3s ease;
-}
-
-@keyframes opencode-notification-fade-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
 }
 
 .opencode-session-empty {

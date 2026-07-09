@@ -597,9 +597,6 @@ defineExpose({
         :max-width="splitConfig.maxWidth"
         :no-transition="isRestoring"
         :dragging="isDragging"
-        :notification-visible="notificationVisible"
-        :notification-message="notificationMessage"
-        :notification-mode="notificationMode"
         :thinking="thinking"
         :resolved-theme="resolvedTheme"
         :split-position="splitPosition"
@@ -712,10 +709,13 @@ defineExpose({
       </div>
     </div>
 
-    <Teleport to="body">
+    <Teleport
+      to="body"
+      :disabled="notificationMode === 'widget'"
+    >
       <div
-        v-if="notificationVisible && notificationMode === 'page'"
-        class="opencode-page-notification"
+        v-if="notificationVisible"
+        :class="notificationMode === 'page' ? 'opencode-page-notification' : 'opencode-notification'"
         role="alert"
       >
         {{ notificationMessage }}
@@ -1125,5 +1125,11 @@ body.has-opencode-split-left {
   width: 100%;
   height: 100%;
   display: flex;
+}
+
+/* 插件模式下 fixed 元素改为 absolute，跟随 rootEl 定位，避免多实例切换时泄漏 */
+.opencode-widget.extension-mode .opencode-select-mode-hint,
+.opencode-widget.extension-mode .opencode-dialog-overlay {
+  position: absolute;
 }
 </style>

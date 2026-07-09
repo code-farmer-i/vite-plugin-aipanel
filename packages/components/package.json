@@ -1,6 +1,6 @@
 {
   "name": "@vite-plugin-opencode-assistant/components",
-  "version": "1.0.83",
+  "version": "1.0.84",
   "description": "Reusable OpenCode widget components built with Pagoda CLI",
   "type": "module",
   "main": "lib/index.cjs",

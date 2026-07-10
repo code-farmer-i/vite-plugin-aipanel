@@ -46,6 +46,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
 
   let actualWebPort = config.webPort;
   let actualProxyPort = config.proxyPort ?? DEFAULT_PROXY_PORT;
+  let projectRoot = "";
   let pageContext: PageContext = { url: "", title: "" };
   const serviceInstanceId = crypto.randomUUID();
 
@@ -80,6 +81,8 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
 
     async configureServer(server: ViteDevServer) {
       const timer = log.timer("configureServer");
+
+      projectRoot = server.config.root;
 
       let viteOrigin = "";
       const getViteOrigin = () => viteOrigin;
@@ -193,6 +196,9 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         proxyHost: config.hostname,
         displayMode: config.displayMode === "extension" ? "extension-selector" : config.displayMode,
         splitMode: config.splitMode,
+        serviceInstanceId,
+        webPort: actualWebPort,
+        projectRoot,
       });
 
       timer.end();

@@ -1,13 +1,12 @@
-import { EXT_MSG, WIDGET_MSG, START_API_PATH } from "@vite-plugin-opencode-assistant/shared";
+import { EXT_MSG, WIDGET_MSG } from "@vite-plugin-opencode-assistant/shared";
 
 /**
  * OpenCode Assistant - Content Script
  *
- * 健康检查 + 页面上下文同步 + 选择模式消息中转。
+ * 通过 postMessage 接收服务信息 + 页面上下文同步 + 选择模式消息中转。
  * UI 在 Side Panel 中渲染。
  */
 const INIT_MARKER = "__OPENCODE_EXTENSION_INITIALIZED__";
-const HEALTH_CHECK_INTERVAL = 3000;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const win = window as any;
 
@@ -20,46 +19,27 @@ if (win[INIT_MARKER]) {
   console.log("[OpenCode CS] Content Script 已启动", location.href);
 
   /** 缓存的 Vite 服务信息 */
-  let cachedInfo: {
+  interface ServiceInfo {
     proxyPort: number;
     vitePort: string;
     projectRoot: string;
     serviceInstanceId: string;
-  } | null = null;
-
-  /** 从 /__opencode_start__ 获取 Vite 插件信息 */
-  async function getServiceInfo(): Promise<typeof cachedInfo> {
-    try {
-      const res = await fetch(START_API_PATH);
-      const data = await res.json();
-      if (data.proxyPort && data.serviceInstanceId) {
-        return {
-          proxyPort: data.proxyPort,
-          vitePort: location.port,
-          projectRoot: data.projectRoot || "",
-          serviceInstanceId: data.serviceInstanceId,
-        };
-      }
-      return null;
-    } catch {
-      return null;
-    }
   }
 
-  // ========== 健康检查 ==========
+  let cachedInfo: ServiceInfo | null = null;
 
-  /** 检测服务状态变化，通知 Side Panel */
-  async function healthCheck() {
-    const info = await getServiceInfo();
+  /** 心跳超时定时器 */
+  let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+  const HEARTBEAT_TIMEOUT = 12000; // 12 秒无心跳视为服务下线
 
+  /** 处理服务信息（postMessage 或 DOM 检测） */
+  function handleServiceInfo(info: ServiceInfo) {
     const wasAlive = cachedInfo !== null;
-    const isAlive = info !== null;
-    const serviceChanged = info && cachedInfo && info.serviceInstanceId !== cachedInfo.serviceInstanceId;
+    const serviceChanged = cachedInfo && info.serviceInstanceId !== cachedInfo.serviceInstanceId;
 
     // 新服务上线
-    if (isAlive && (!wasAlive || serviceChanged)) {
+    if (!wasAlive || serviceChanged) {
       if (wasAlive && serviceChanged) {
-        // 端口被不同服务复用：先通知旧服务下线
         chrome.runtime.sendMessage({
           type: EXT_MSG.SERVICE_GONE,
           serviceInstanceId: cachedInfo!.serviceInstanceId,
@@ -72,29 +52,45 @@ if (win[INIT_MARKER]) {
       }).catch(() => {});
       console.log("[OpenCode CS] 服务上线: %s vite=%s", info.serviceInstanceId, info.vitePort);
     }
-    // 服务下线
-    else if (!isAlive && wasAlive) {
-      chrome.runtime.sendMessage({
-        type: EXT_MSG.SERVICE_GONE,
-        serviceInstanceId: cachedInfo!.serviceInstanceId,
-      }).catch(() => {});
-      console.log("[OpenCode CS] 服务下线: %s", cachedInfo!.serviceInstanceId);
-      cachedInfo = null;
-    }
-    // 纯端口变化（同 serviceInstanceId，可能 Vite 重启后换了端口）
-    else if (isAlive && wasAlive && !serviceChanged && info.vitePort !== cachedInfo!.vitePort) {
+    // 纯端口变化（同 serviceInstanceId）
+    else if (wasAlive && !serviceChanged && info.vitePort !== cachedInfo!.vitePort) {
       cachedInfo = info;
-      // 端口变化通过 SERVICE_APPEARED 通知 Side Panel 更新连接信息
       chrome.runtime.sendMessage({
         type: EXT_MSG.SERVICE_APPEARED,
         ...info,
       }).catch(() => {});
     }
+
+    // 重置心跳超时
+    if (heartbeatTimer) clearTimeout(heartbeatTimer);
+    heartbeatTimer = setTimeout(() => {
+      if (cachedInfo) {
+        chrome.runtime.sendMessage({
+          type: EXT_MSG.SERVICE_GONE,
+          serviceInstanceId: cachedInfo.serviceInstanceId,
+        }).catch(() => {});
+        console.log("[OpenCode CS] 服务下线（心跳超时）: %s", cachedInfo.serviceInstanceId);
+        cachedInfo = null;
+      }
+      heartbeatTimer = null;
+    }, HEARTBEAT_TIMEOUT);
   }
 
-  // 启动健康检查
-  healthCheck();
-  setInterval(healthCheck, HEALTH_CHECK_INTERVAL);
+  // ========== 通过 postMessage 接收服务信息（替代 HTTP 轮询） ==========
+
+  window.addEventListener("message", (event) => {
+    if (event.origin !== location.origin) return;
+    if (event.data?.type !== WIDGET_MSG.SERVICE_INFO) return;
+    const data = event.data;
+    if (data.proxyPort && data.serviceInstanceId) {
+      handleServiceInfo({
+        proxyPort: data.proxyPort,
+        vitePort: data.vitePort || location.port,
+        projectRoot: data.projectRoot || "",
+        serviceInstanceId: data.serviceInstanceId,
+      });
+    }
+  });
 
   // ========== 页面上下文同步 ==========
 

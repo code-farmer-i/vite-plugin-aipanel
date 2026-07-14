@@ -9,7 +9,12 @@
       "esbuild": "^0.28.1",
       "typescript": "^6.0.3",
       "vue-tsc": "^3.3.6"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "msgpackr-extract",
+      "vue-demi"
+    ]
   },
   "scripts": {
     "build": "pnpm --filter @vite-plugin-opencode-assistant/shared build && pnpm --filter @vite-plugin-opencode-assistant/opencode build && pnpm --filter @vite-plugin-opencode-assistant/components build && pnpm --filter vite-plugin-opencode-assistant build && pnpm --filter @vite-plugin-opencode-assistant/extension build",
@@ -30,22 +35,22 @@
     "@pnpm/logger": "1100.0.0",
     "@types/chrome": "^0.2.2",
     "@types/node": "^26.1.1",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "@vue/test-utils": "^2.4.11",
     "enquirer": "^2.4.1",
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-vue": "^10.9.2",
     "globals": "^17.7.0",
+    "jsdom": "^29.1.1",
     "prettier": "^3.9.4",
     "semver": "^7.8.5",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.63.0",
     "vite": "^8.1.3",
-    "@vitejs/plugin-vue": "^6.0.7",
     "vitest": "^4.1.0",
-    "vue-eslint-parser": "^10.4.1",
-    "vue-tsc": "^3.3.6",
-    "typescript": "^6.0.3",
     "vue": "^3.5.39",
-    "@vue/test-utils": "^2.4.11",
-    "jsdom": "^29.1.1"
+    "vue-eslint-parser": "^10.4.1",
+    "vue-tsc": "^3.3.6"
   }
 }

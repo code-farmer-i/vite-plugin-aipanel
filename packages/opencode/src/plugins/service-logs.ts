@@ -1,7 +1,9 @@
 import type { Hooks } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import type { LogFileConfig, FileLogEntry } from "@vite-plugin-opencode-assistant/shared";
-import { readLogFileTail, createLogger } from "@vite-plugin-opencode-assistant/shared";
+import type { LogFileConfig } from "@vite-plugin-opencode-assistant/shared";
+import { createLogger } from "@vite-plugin-opencode-assistant/shared";
+import { readLogFileTail } from "@vite-plugin-opencode-assistant/shared/node";
+import type { FileLogEntry } from "@vite-plugin-opencode-assistant/shared/node";
 
 const log = createLogger("ServiceLogsPlugin");
 

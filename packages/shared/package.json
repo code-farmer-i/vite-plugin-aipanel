@@ -2,6 +2,7 @@
   "name": "@vite-plugin-opencode-assistant/shared",
   "version": "1.0.87",
   "type": "module",
+  "sideEffects": false,
   "main": "lib/index.cjs",
   "module": "es/index.mjs",
   "types": "es/index.d.ts",
@@ -14,6 +15,11 @@
       "types": "./es/index.d.ts",
       "import": "./es/index.mjs",
       "require": "./lib/index.cjs"
+    },
+    "./node": {
+      "types": "./es/node.d.ts",
+      "import": "./es/node.mjs",
+      "require": "./lib/node.cjs"
     }
   },
   "publishConfig": {

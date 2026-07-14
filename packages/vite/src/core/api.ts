@@ -8,11 +8,11 @@ import {
   ChromeMcpWarmupErrorType,
   ChromeMcpWarmupError,
   CHROME_DEVTOOLS_PORT,
-  checkChromeDevToolsAvailable,
   sleep,
   base64Encode,
   extractTextFromResponse,
 } from "@vite-plugin-opencode-assistant/shared";
+import { checkChromeDevToolsAvailable } from "@vite-plugin-opencode-assistant/shared/node";
 
 const log = createLogger("API");
 

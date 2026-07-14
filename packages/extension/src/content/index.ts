@@ -16,7 +16,7 @@ if (win[INIT_MARKER]) {
 } else {
   win[INIT_MARKER] = true;
 
-  console.log("[OpenCode CS] Content Script 已启动", location.href);
+  console.debug("[OpenCode CS] Content Script 已启动", location.href);
 
   /** 缓存的 Vite 服务信息 */
   interface ServiceInfo {
@@ -40,36 +40,44 @@ if (win[INIT_MARKER]) {
     // 新服务上线
     if (!wasAlive || serviceChanged) {
       if (wasAlive && serviceChanged) {
-        chrome.runtime.sendMessage({
-          type: EXT_MSG.SERVICE_GONE,
-          serviceInstanceId: cachedInfo!.serviceInstanceId,
-        }).catch(() => {});
+        chrome.runtime
+          .sendMessage({
+            type: EXT_MSG.SERVICE_GONE,
+            serviceInstanceId: cachedInfo!.serviceInstanceId,
+          })
+          .catch(() => {});
       }
       cachedInfo = info;
-      chrome.runtime.sendMessage({
-        type: EXT_MSG.SERVICE_APPEARED,
-        ...info,
-      }).catch(() => {});
-      console.log("[OpenCode CS] 服务上线: %s vite=%s", info.serviceInstanceId, info.vitePort);
+      chrome.runtime
+        .sendMessage({
+          type: EXT_MSG.SERVICE_APPEARED,
+          ...info,
+        })
+        .catch(() => {});
+      console.debug("[OpenCode CS] 服务上线: %s vite=%s", info.serviceInstanceId, info.vitePort);
     }
     // 纯端口变化（同 serviceInstanceId）
     else if (wasAlive && !serviceChanged && info.vitePort !== cachedInfo!.vitePort) {
       cachedInfo = info;
-      chrome.runtime.sendMessage({
-        type: EXT_MSG.SERVICE_APPEARED,
-        ...info,
-      }).catch(() => {});
+      chrome.runtime
+        .sendMessage({
+          type: EXT_MSG.SERVICE_APPEARED,
+          ...info,
+        })
+        .catch(() => {});
     }
 
     // 重置心跳超时
     if (heartbeatTimer) clearTimeout(heartbeatTimer);
     heartbeatTimer = setTimeout(() => {
       if (cachedInfo) {
-        chrome.runtime.sendMessage({
-          type: EXT_MSG.SERVICE_GONE,
-          serviceInstanceId: cachedInfo.serviceInstanceId,
-        }).catch(() => {});
-        console.log("[OpenCode CS] 服务下线（心跳超时）: %s", cachedInfo.serviceInstanceId);
+        chrome.runtime
+          .sendMessage({
+            type: EXT_MSG.SERVICE_GONE,
+            serviceInstanceId: cachedInfo.serviceInstanceId,
+          })
+          .catch(() => {});
+        console.debug("[OpenCode CS] 服务下线（心跳超时）: %s", cachedInfo.serviceInstanceId);
         cachedInfo = null;
       }
       heartbeatTimer = null;

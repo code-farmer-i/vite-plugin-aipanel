@@ -63,14 +63,14 @@ export function useServerSSE(options: ServerSSEOptions = {}) {
     endpoint,
     autoConnect: false,
     onDisconnected: () => {
-      console.log("[ServerSSE] disconnected (retries exhausted):", endpoint);
+      console.debug("[ServerSSE] disconnected (retries exhausted):", endpoint);
     },
     onMessage: (data) => {
       const message = data as ServerSSEMessage;
 
       switch (message.type) {
         case "CONNECTED":
-          console.log("[ServerSSE] CONNECTED message received:", endpoint);
+          console.debug("[ServerSSE] CONNECTED message received:", endpoint);
           onConnected?.();
           break;
         case "STATUS_SYNC":

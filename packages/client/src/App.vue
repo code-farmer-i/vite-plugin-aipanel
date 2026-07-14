@@ -137,7 +137,7 @@ const opencodeSSE = useOpencodeSessionSSE({
   proxyBaseUrl: proxyBaseUrl.value,
   currentSessionId,
   onConnected: () => {
-    console.log("[OpenCode] Session SSE connected");
+    console.debug("[OpenCode] Session SSE connected");
   },
   onSessionUpdate: (session) => {
     // 当 OpenCode 自动生成标题后，更新本地 session 列表
@@ -257,7 +257,7 @@ if (!isExtensionMode) {
 
 // 监听服务状态变化，启动相应的 SSE 连接
 watch(serviceStatus, (status, oldStatus) => {
-  console.log("[App] serviceStatus changed:", oldStatus, "->", status);
+  console.debug("[App] serviceStatus changed:", oldStatus, "->", status);
   if (status !== "idle" && oldStatus === "idle") {
     serverSSE.connect();
     opencodeSSE.connect();
@@ -290,7 +290,7 @@ const handleIframeMessage = (event: MessageEvent) => {
 };
 
 onMounted(() => {
-  console.log("[App] mounted, serviceStatus:", serviceStatus.value, "vitePort:", vitePort, "endpoint:", viteBaseUrl.value || "/__opencode_events__");
+  console.debug("[App] mounted, serviceStatus:", serviceStatus.value, "vitePort:", vitePort, "endpoint:", viteBaseUrl.value || "/__opencode_events__");
   if (serviceStatus.value === "ready") {
     loadSessions();
     serverSSE.connect();

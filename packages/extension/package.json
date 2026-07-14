@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && npx tsx scripts/build-bg-cs.ts",
+    "build": "vite build && tsx scripts/build-bg-cs.ts",
     "dev": "vite build --watch"
   },
   "dependencies": {

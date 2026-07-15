@@ -1,6 +1,6 @@
 {
   "name": "@vite-plugin-opencode-assistant/extension",
-  "version": "1.0.88",
+  "version": "1.0.90",
   "private": true,
   "type": "module",
   "scripts": {

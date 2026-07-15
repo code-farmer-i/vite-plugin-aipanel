@@ -279,6 +279,8 @@ export interface PageContext {
   url: string;
   /** 当前页面标题 */
   title: string;
+  /** 当前活跃的浏览器 Tab ID（扩展模式），用于在多 Tab 场景下标识具体是哪个 Tab */
+  tabId?: number;
   /** 选中的元素列表 */
   selectedElements?: SelectedElement[];
 }

@@ -61,6 +61,7 @@ export function setupContextEndpoint(server: ViteDevServer, ctx: EndpointContext
           ctx.pageContext = {
             url: data.url || "",
             title: data.title || "",
+            tabId: data.tabId,
             selectedElements: data.selectedElements || [],
           };
 

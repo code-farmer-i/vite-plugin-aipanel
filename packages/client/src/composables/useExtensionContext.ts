@@ -36,6 +36,7 @@ export function useExtensionContext(
       body: JSON.stringify({
         url,
         title,
+        tabId: activeTabId,
         selectedElements: selectedElements.value,
       }),
     }).catch(() => {});

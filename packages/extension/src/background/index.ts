@@ -17,7 +17,7 @@ chrome.action.onClicked.addListener((tab) => {
   if (tab.id) chrome.sidePanel.open({ tabId: tab.id });
 });
 
-/** Tab 切换 → 通知 Side Panel 重新连接新 Tab 的服务 */
+/** Tab 切换 → 通知 Side Panel 重新连接新 Tab 的服务 + 请求新 Tab 上报页面上下文 */
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   try {
     const info = await chrome.tabs.sendMessage(tabId, { type: EXT_MSG.GET_PORT_INFO });
@@ -28,6 +28,8 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
         tabId,
       })
       .catch(() => {});
+    // 请求新激活的 Tab 立即上报当前页面上下文，避免使用过期数据
+    chrome.tabs.sendMessage(tabId, { type: EXT_MSG.REQUEST_PAGE_CONTEXT }).catch(() => {});
   } catch {
     chrome.runtime
       .sendMessage({ type: EXT_MSG.TAB_SWITCHED, portInfo: null, tabId })
@@ -35,9 +37,10 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   }
 });
 
-/** 消息转发到 Side Panel（EXT_BROADCAST 中的类型自动转发） */
-chrome.runtime.onMessage.addListener((msg) => {
+/** 消息转发到 Side Panel（EXT_BROADCAST 中的类型自动转发，并附加 sender tabId 用于多 Tab 隔离） */
+chrome.runtime.onMessage.addListener((msg, sender) => {
   if (BROADCAST_TYPES.has(msg.type)) {
-    chrome.runtime.sendMessage(msg).catch(() => {});
+    // 附加 tabId 以便 Side Panel 区分来自哪个 Tab 的消息
+    chrome.runtime.sendMessage({ ...msg, tabId: sender.tab?.id }).catch(() => {});
   }
 });

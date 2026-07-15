@@ -102,40 +102,41 @@ if (win[INIT_MARKER]) {
 
   // ========== 页面上下文同步 ==========
 
-  function watchPageContext() {
-    const report = () => {
-      if (!cachedInfo) return; // 无服务时不发送
-      chrome.runtime
-        .sendMessage({
-          type: EXT_MSG.PAGE_CONTEXT,
-          ctx: { url: location.href, title: document.title },
-          serviceInstanceId: cachedInfo.serviceInstanceId,
-        })
-        .catch(() => {});
-    };
+  /** 上报当前页面上下文（URL + 标题） */
+  function reportPageContext() {
+    if (!cachedInfo) return; // 无服务时不发送
+    chrome.runtime
+      .sendMessage({
+        type: EXT_MSG.PAGE_CONTEXT,
+        ctx: { url: location.href, title: document.title },
+        serviceInstanceId: cachedInfo.serviceInstanceId,
+      })
+      .catch(() => {});
+  }
 
+  function watchPageContext() {
     const origPush = history.pushState.bind(history);
     const origReplace = history.replaceState.bind(history);
     history.pushState = (...args: Parameters<typeof history.pushState>) => {
       origPush(...args);
-      report();
+      reportPageContext();
     };
     history.replaceState = (...args: Parameters<typeof history.replaceState>) => {
       origReplace(...args);
-      report();
+      reportPageContext();
     };
-    window.addEventListener("popstate", report);
-    window.addEventListener("hashchange", report);
+    window.addEventListener("popstate", reportPageContext);
+    window.addEventListener("hashchange", reportPageContext);
 
     let lastTitle = document.title;
     new MutationObserver(() => {
       if (document.title !== lastTitle) {
         lastTitle = document.title;
-        report();
+        reportPageContext();
       }
     }).observe(document.querySelector("title") || document.head, { childList: true });
 
-    report();
+    reportPageContext();
   }
 
   // ========== Side Panel 消息处理 ==========
@@ -144,6 +145,13 @@ if (win[INIT_MARKER]) {
     if (msg.type === EXT_MSG.GET_PORT_INFO) {
       // 同步获取缓存信息（用于 Tab 切换时的快速响应）
       sendResponse(cachedInfo);
+      return true;
+    }
+
+    // Tab 切换后 Background 请求立即上报当前页面上下文
+    if (msg.type === EXT_MSG.REQUEST_PAGE_CONTEXT) {
+      reportPageContext();
+      sendResponse({ success: true });
       return true;
     }
 

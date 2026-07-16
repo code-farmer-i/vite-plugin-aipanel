@@ -22,6 +22,7 @@ import { useExtensionMode } from "./composables/useExtensionMode";
 import { useExtensionSelectorMode } from "./composables/useExtensionSelectorMode";
 import LoadingContent from "./components/LoadingContent.vue";
 import ChromeWarmupError from "./components/ChromeWarmupError.vue";
+import { EXT_MSG } from "@vite-plugin-opencode-assistant/shared";
 
 const props = defineProps<{
   config: Partial<WidgetOptions>;
@@ -130,6 +131,28 @@ const serverSSE = useServerSSE({
   },
   onClearElements: () => clearElements(),
   onConnected: () => updateContext(true),
+});
+
+// SSE 断开/重连 → 服务上下线实时同步（localhost 无网络抖动）
+let sseWasDown = false;
+watch(serverSSE.isConnected, (connected, wasConnected) => {
+  if (!connected && wasConnected && serviceInstanceId) {
+    sseWasDown = true;
+    console.log("[App] SSE 断开，通知服务下线: %s", serviceInstanceId);
+    chrome.runtime.sendMessage({
+      type: EXT_MSG.SERVICE_GONE,
+      serviceInstanceId,
+    }).catch(() => { });
+  } else if (connected && !wasConnected && sseWasDown && serviceInstanceId) {
+    sseWasDown = false;
+    console.log("[App] SSE 重连，通知服务上线: %s", serviceInstanceId);
+    chrome.runtime.sendMessage({
+      type: EXT_MSG.SERVICE_APPEARED,
+      proxyPort,
+      vitePort,
+      serviceInstanceId,
+    }).catch(() => { });
+  }
 });
 
 // OpenCode Session SSE: 监听 OpenCode session thinking 状态和标题更新

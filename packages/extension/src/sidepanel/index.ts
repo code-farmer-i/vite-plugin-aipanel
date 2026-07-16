@@ -162,14 +162,12 @@ function destroyAppInstance(serviceInstanceId: string) {
     inst.zombieTimer = null;
   }
 
-  // 卸载 Vue App（触发 onUnmounted 清理 SSE 等资源）
   inst.vueApp.unmount();
   inst.rootEl.remove();
 
   appInstances.delete(serviceInstanceId);
   console.log("[OpenCode SP] App 实例已销毁: %s", serviceInstanceId);
 
-  // 如果销毁的是当前显示的实例，显示无服务页面
   if (activeServiceId === serviceInstanceId) {
     showNoServiceOverlay();
   }
@@ -217,10 +215,9 @@ function handleServiceGone(serviceInstanceId: string) {
   inst.zombie = true;
   inst.zombieTimer = setTimeout(() => {
     destroyAppInstance(serviceInstanceId);
-  }, 3000);
-  console.log("[OpenCode SP] 服务下线标记 zombie: %s (3s后销毁)", serviceInstanceId);
+  }, 30000);
+  console.log("[OpenCode SP] 服务下线: %s (30s后销毁)", serviceInstanceId);
 
-  // 如果当前显示的就是这个实例，显示无服务页面
   if (activeServiceId === serviceInstanceId) {
     showNoServiceOverlay();
   }

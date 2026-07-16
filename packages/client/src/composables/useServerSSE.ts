@@ -46,6 +46,8 @@ export interface ServerSSEOptions {
   onClearElements?: () => void;
   /** 连接成功回调 */
   onConnected?: () => void;
+  /** 连接断开回调（重试耗尽且曾连接成功） */
+  onDisconnected?: () => void;
   /** 是否启用 */
   enabled?: boolean;
 }
@@ -55,7 +57,14 @@ export interface ServerSSEOptions {
  * 端点: /__opencode_events__
  */
 export function useServerSSE(options: ServerSSEOptions = {}) {
-  const { viteBaseUrl = "", onStatusSync, onTaskUpdate, onClearElements, onConnected } = options;
+  const {
+    viteBaseUrl = "",
+    onStatusSync,
+    onTaskUpdate,
+    onClearElements,
+    onConnected,
+    onDisconnected,
+  } = options;
 
   const endpoint = viteBaseUrl ? `${viteBaseUrl}${SSE_EVENTS_PATH}` : SSE_EVENTS_PATH;
 
@@ -64,6 +73,7 @@ export function useServerSSE(options: ServerSSEOptions = {}) {
     autoConnect: false,
     onDisconnected: () => {
       console.debug("[ServerSSE] disconnected (retries exhausted):", endpoint);
+      onDisconnected?.();
     },
     onMessage: (data) => {
       const message = data as ServerSSEMessage;

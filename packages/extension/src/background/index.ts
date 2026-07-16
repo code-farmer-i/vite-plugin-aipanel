@@ -41,6 +41,8 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (BROADCAST_TYPES.has(msg.type)) {
     // 附加 tabId 以便 Side Panel 区分来自哪个 Tab 的消息
-    chrome.runtime.sendMessage({ ...msg, tabId: sender.tab?.id }).catch(() => {});
+    const forwarded = { ...msg, tabId: sender.tab?.id };
+    console.log("[OpenCode BG] 转发消息: type=%s tabId=%s", msg.type, sender.tab?.id);
+    chrome.runtime.sendMessage(forwarded).catch(() => {});
   }
 });

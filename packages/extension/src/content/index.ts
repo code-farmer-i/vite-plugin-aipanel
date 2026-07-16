@@ -1,4 +1,4 @@
-import { EXT_MSG, WIDGET_MSG } from "@vite-plugin-opencode-assistant/shared";
+import { EXT_MSG, WIDGET_MSG, START_API_PATH } from "@vite-plugin-opencode-assistant/shared";
 
 /**
  * OpenCode Assistant - Content Script
@@ -55,6 +55,8 @@ if (win[INIT_MARKER]) {
         })
         .catch(() => {});
       console.debug("[OpenCode CS] 服务上线: %s vite=%s", info.serviceInstanceId, info.vitePort);
+      // 新服务上线时主动上报当前页面上下文
+      reportPageContext();
     }
     // 纯端口变化（同 serviceInstanceId）
     else if (wasAlive && !serviceChanged && info.vitePort !== cachedInfo!.vitePort) {
@@ -112,6 +114,11 @@ if (win[INIT_MARKER]) {
         serviceInstanceId: cachedInfo.serviceInstanceId,
       })
       .catch(() => {});
+    console.log(
+      "[OpenCode CS] 上报上下文: url=%s serviceInstanceId=%s",
+      location.href,
+      cachedInfo.serviceInstanceId,
+    );
   }
 
   function watchPageContext() {
@@ -143,8 +150,27 @@ if (win[INIT_MARKER]) {
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === EXT_MSG.GET_PORT_INFO) {
-      // 同步获取缓存信息（用于 Tab 切换时的快速响应）
-      sendResponse(cachedInfo);
+      if (cachedInfo) {
+        // 有心跳缓存 → 直接返回
+        sendResponse(cachedInfo);
+      } else {
+        // 无缓存 → 真实请求检测服务（按需，非轮询）
+        fetch(START_API_PATH)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.proxyPort && data.serviceInstanceId) {
+              sendResponse({
+                proxyPort: data.proxyPort,
+                vitePort: location.port,
+                projectRoot: data.projectRoot || "",
+                serviceInstanceId: data.serviceInstanceId,
+              });
+            } else {
+              sendResponse(null);
+            }
+          })
+          .catch(() => sendResponse(null));
+      }
       return true;
     }
 

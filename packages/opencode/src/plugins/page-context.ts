@@ -12,6 +12,7 @@ interface PageContext {
   url: string;
   title: string;
   tabId?: number;
+  tabIndex?: number;
   selectedElements?: Array<{
     filePath: string | null;
     line: number | null;
@@ -71,7 +72,6 @@ export const PageContextPlugin: Plugin = async (): Promise<Hooks> => {
 
 - **页面 URL**: ${pageContext?.url || "未知"}
 - **页面标题**: ${pageContext?.title || "未知"}
-${pageContext?.tabId !== undefined ? `- **浏览器 Tab ID**: ${pageContext.tabId}（当多个 Tab 打开相同 URL 时，用此 ID 区分具体是哪个 Tab）` : ""}
 
 **理解问题的优先级顺序：**
 1. **当前页面上下文**（最高优先级） - 根据用户当前所在页面的 URL 和标题理解问题背景

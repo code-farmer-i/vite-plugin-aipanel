@@ -281,6 +281,8 @@ export interface PageContext {
   title: string;
   /** 当前活跃的浏览器 Tab ID（扩展模式），用于在多 Tab 场景下标识具体是哪个 Tab */
   tabId?: number;
+  /** Tab 在标签栏的位置索引（从 0 开始），用于 MCP 匹配 Page ID */
+  tabIndex?: number;
   /** 选中的元素列表 */
   selectedElements?: SelectedElement[];
 }

@@ -61,7 +61,9 @@ export function setupContextEndpoint(server: ViteDevServer, ctx: EndpointContext
           ctx.pageContext = {
             url: data.url || "",
             title: data.title || "",
-            tabId: data.tabId,
+            // 保留已有的 tabId/tabIndex（避免页内 widget 覆盖 Side Panel 写入的值）
+            tabId: data.tabId ?? ctx.pageContext.tabId,
+            tabIndex: data.tabIndex ?? ctx.pageContext.tabIndex,
             selectedElements: data.selectedElements || [],
           };
 

@@ -30,6 +30,7 @@ export interface OpenCodeWidgetContext {
   thinking: Ref<boolean>;
   minimized: Ref<boolean>;
   promptDockVisible: Ref<boolean>;
+  reviewPanelVisible: Ref<boolean>;
   bubbleOffset: Ref<FloatingBubbleOffset | undefined>;
   mode: Ref<"bubble" | "split">;
   displayMode: Ref<DisplayMode>;
@@ -52,6 +53,7 @@ export interface OpenCodeWidgetContext {
   handleClose: () => void;
   handleToggleMinimize: () => void;
   handleTogglePromptDock: () => void;
+  handleToggleReviewPanel: () => void;
   handleToggleSessionList: () => void;
   handleToggleTheme: () => void;
   handleToggleDisplayMode: () => void;

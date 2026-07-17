@@ -6,6 +6,7 @@ export interface WidgetPersistState {
   open: boolean;
   minimized: boolean;
   promptDockVisible: boolean;
+  reviewPanelVisible: boolean;
   bubbleOffset?: FloatingBubbleOffset;
   theme: OpenCodeWidgetTheme;
   sessionListCollapsed: boolean;
@@ -42,6 +43,7 @@ export interface UsePersistStateOptions {
   open: Ref<boolean>;
   minimized: Ref<boolean>;
   promptDockVisible: Ref<boolean>;
+  reviewPanelVisible: Ref<boolean>;
   bubbleOffset: Ref<FloatingBubbleOffset | undefined>;
   theme: Ref<OpenCodeWidgetTheme>;
   sessionListCollapsed: Ref<boolean>;
@@ -64,6 +66,7 @@ export function usePersistState(options: UsePersistStateOptions) {
     open: options.open.value,
     minimized: options.minimized.value,
     promptDockVisible: options.promptDockVisible.value,
+    reviewPanelVisible: options.reviewPanelVisible.value,
     bubbleOffset: options.bubbleOffset.value,
     theme: options.theme.value,
     sessionListCollapsed: options.sessionListCollapsed.value,
@@ -80,6 +83,7 @@ export function usePersistState(options: UsePersistStateOptions) {
     options.open,
     options.minimized,
     options.promptDockVisible,
+    options.reviewPanelVisible,
     options.bubbleOffset,
     options.theme,
     options.sessionListCollapsed,

@@ -101,6 +101,7 @@ const localSplitPosition = ref<"left" | "right">(
 );
 const minimized = ref(false);
 const promptDockVisible = ref(true);
+const reviewPanelVisible = ref(false);
 const isRestoring = ref(true);
 const iframeLoaded = ref(false);
 const splitPanelWidth = ref(props.splitPanelWidth);
@@ -109,6 +110,7 @@ const syncStateToIframe = () => {
   if (!iframeLoaded.value) return;
   sendMessageToIframe(WIDGET_MSG.PROMPT_DOCK_VISIBILITY, { visible: promptDockVisible.value });
   sendMessageToIframe(WIDGET_MSG.MINIMIZE_STATE, { minimized: minimized.value });
+  sendMessageToIframe(WIDGET_MSG.REVIEW_PANEL_TOGGLE, { visible: reviewPanelVisible.value });
 };
 
 const handleFrameLoaded = () => {
@@ -276,6 +278,7 @@ usePersistState({
   open: toRef(props, "open"),
   minimized,
   promptDockVisible,
+  reviewPanelVisible,
   bubbleOffset,
   theme: toRef(props, "theme"),
   sessionListCollapsed: localSessionListCollapsed,
@@ -314,6 +317,9 @@ usePersistState({
     } else if (minimized.value) {
       promptDockVisible.value = false;
     }
+    if (state.reviewPanelVisible !== undefined) {
+      reviewPanelVisible.value = state.reviewPanelVisible;
+    }
     if (state.splitPanelWidth !== undefined && state.splitPanelWidth !== props.splitPanelWidth) {
       handleResize(state.splitPanelWidth);
     }
@@ -342,6 +348,11 @@ const handleToggleMinimize = () => {
 const handleTogglePromptDock = () => {
   promptDockVisible.value = !promptDockVisible.value;
   sendMessageToIframe(WIDGET_MSG.PROMPT_DOCK_VISIBILITY, { visible: promptDockVisible.value });
+};
+
+const handleToggleReviewPanel = () => {
+  reviewPanelVisible.value = !reviewPanelVisible.value;
+  sendMessageToIframe(WIDGET_MSG.REVIEW_PANEL_TOGGLE, { visible: reviewPanelVisible.value });
 };
 
 const handleRefresh = () => {
@@ -525,6 +536,7 @@ provideOpenCodeWidgetContext({
   thinking: toRef(props, "thinking"),
   minimized,
   promptDockVisible,
+  reviewPanelVisible,
   bubbleOffset,
   mode: effectiveMode,
   displayMode: localDisplayMode,
@@ -541,6 +553,7 @@ provideOpenCodeWidgetContext({
   handleClose,
   handleToggleMinimize,
   handleTogglePromptDock,
+  handleToggleReviewPanel,
   handleToggleSessionList,
   handleToggleTheme,
   handleToggleDisplayMode,

@@ -64,6 +64,29 @@ function generateBridgeScript(options: ProxyServerOptions): string {
 
   return `
 (function() {
+  // === 劫持 matchMedia，强制桌面端布局以渲染审查面板 ===
+  // 只劫持 opencode 判断桌面端的媒体查询 (min-width: 768px)，不影响其他查询
+  (function() {
+    var _origMatchMedia = window.matchMedia.bind(window);
+    var DESKTOP_QUERY = '(min-width: 768px)';
+    window.matchMedia = function(query) {
+      var result = _origMatchMedia(query);
+      if (query === DESKTOP_QUERY) {
+        return {
+          get matches() { return true; },
+          get media() { return result.media; },
+          onchange: null,
+          addListener: function(cb) { result.addListener(cb); },
+          removeListener: function(cb) { result.removeListener(cb); },
+          addEventListener: function(t, cb) { result.addEventListener(t, cb); },
+          removeEventListener: function(t, cb) { result.removeEventListener(t, cb); },
+          dispatchEvent: function(e) { return result.dispatchEvent(e); }
+        };
+      }
+      return result;
+    };
+  })();
+
   const STORAGE_KEYS = ${JSON.stringify(OPENCODE_STORAGE_KEYS)};
   const THEME_KEY = STORAGE_KEYS.COLOR_SCHEME;
   const SETTINGS_KEY = STORAGE_KEYS.SETTINGS;
@@ -160,6 +183,10 @@ function generateBridgeScript(options: ProxyServerOptions): string {
     if (event.data && event.data.type === ${JSON.stringify(WIDGET_MSG.SELECT_MODE_CHANGE)}) {
       handleSelectModeChange(event.data.selectMode);
     }
+
+    if (event.data && event.data.type === ${JSON.stringify(WIDGET_MSG.REVIEW_PANEL_TOGGLE)}) {
+      handleReviewPanelToggle(event.data.visible);
+    }
   });
 
   // === 键盘事件转发（用于退出选择模式） ===
@@ -219,6 +246,58 @@ function generateBridgeScript(options: ProxyServerOptions): string {
     }
   \`;
 
+  // === 审查面板覆盖样式 ===
+  // 审查面板 fixed 覆盖消息区域，底部留空给对话框
+  // 只清除侧边面板分支的 contain，不影响会话面板的下拉菜单定位
+  const reviewPanelStyles = \`
+    /* 强制 flex-row（小屏时 CSS @media 不生效） */
+    .opencode-review-panel-overlay [data-ref="panel-row"] {
+      flex-direction: row !important;
+    }
+
+    /* 清除侧边面板链路 contain 限制，压缩为零宽度（审查面板已 fixed 定位） */
+    .opencode-review-panel-overlay [data-ref="side-panel-container"],
+    .opencode-review-panel-overlay [data-ref="side-panel-container"] [data-slot="tabs-content"],
+    .opencode-review-panel-overlay [data-ref="side-panel-container"] .contain-strict {
+      contain: none !important;
+      overflow: visible !important;
+    }
+    .opencode-review-panel-overlay [data-ref="side-panel-container"] {
+      flex: 0 0 0 !important;
+      width: 0 !important;
+    }
+
+    /* 审查面板 fixed 覆盖，padding-bottom 防止内容被对话框遮挡 */
+    .opencode-review-panel-overlay [data-component="session-review-v2"],
+    .opencode-review-panel-overlay [data-component="session-review"] {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      z-index: 500 !important;
+      background: var(--v2-background-bg-base, var(--background-stronger)) !important;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15) !important;
+      padding-bottom: 116px !important;
+    }
+
+    /* 强制会话面板撑满（覆盖 SolidJS 的 inline width） */
+    .opencode-review-panel-overlay [data-ref="session-panel"] {
+      width: 100% !important;
+      max-width: none !important;
+      flex: 1 !important;
+    }
+    /* 会话面板内部所有容器不限宽 */
+    .opencode-review-panel-overlay [data-ref="session-panel"] * {
+      max-width: none !important;
+    }
+
+    /* 对话框在审查面板上层，不被覆盖 */
+    .opencode-review-panel-overlay [data-component="session-prompt-dock"] {
+      position: relative !important;
+      z-index: 600 !important;
+    }
+  \`;
+
   function injectMinimizeStyles() {
     if (document.getElementById('opencode-minimize-styles')) return;
     const style = document.createElement('style');
@@ -227,9 +306,18 @@ function generateBridgeScript(options: ProxyServerOptions): string {
     document.head.appendChild(style);
   }
 
+  function injectReviewPanelStyles() {
+    if (document.getElementById('opencode-review-panel-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'opencode-review-panel-styles';
+    style.textContent = reviewPanelStyles;
+    document.head.appendChild(style);
+  }
+
   // === 最小化状态处理 ===
   let savedMinimizedState = null;
   let savedPromptDockVisibleState = null;
+  let savedReviewPanelState = null;
 
   function handleMinimizeStateChange(minimized) {
     savedMinimizedState = minimized;
@@ -249,6 +337,72 @@ function generateBridgeScript(options: ProxyServerOptions): string {
       document.documentElement.classList.remove('opencode-prompt-dock-hidden');
     }
   }
+
+  // === 审查面板覆盖状态处理 ===
+  // 策略：纯 CSS class 控制。首次打开时给关键元素打 data-ref 标记，
+  // 后续只需 toggle class。关闭时移除 class，CSS 规则自动恢复原始布局。
+  // 不修改任何 inline style，避免保存/恢复的时机和 DOM 引用问题。
+
+  function ensureReviewPanelRefs() {
+    var reviewPanel = document.querySelector('[data-component="session-review-v2"]')
+      || document.querySelector('[data-component="session-review"]');
+    if (!reviewPanel) return false;
+
+    // 向上遍历找到 panelRow
+    var panelRow = reviewPanel.parentElement;
+    while (panelRow) {
+      var cls = panelRow.className || '';
+      if (cls.indexOf('flex-col') !== -1 && cls.indexOf('md:flex-row') !== -1) break;
+      panelRow = panelRow.parentElement;
+    }
+    if (!panelRow) return false;
+    panelRow.setAttribute('data-ref', 'panel-row');
+
+    // 找到会话面板和侧边面板容器
+    for (var i = 0; i < panelRow.children.length; i++) {
+      var child = panelRow.children[i];
+      if (child.nodeType !== 1) continue;
+      var c = child.className || '';
+      if (c.indexOf('@container') !== -1) {
+        child.setAttribute('data-ref', 'session-panel');
+      } else if (c.indexOf('min-w-0') !== -1 && c.indexOf('flex-col') !== -1) {
+        child.setAttribute('data-ref', 'side-panel-container');
+      }
+    }
+
+    return true;
+  }
+
+  function handleReviewPanelToggle(visible) {
+    savedReviewPanelState = visible;
+
+    if (visible) {
+      // 先点击原生按钮打开面板，让 DOM 渲染出来
+      var reviewBtn = document.querySelector('[aria-controls="review-panel"]');
+      if (reviewBtn && reviewBtn.getAttribute('aria-expanded') !== 'true') {
+        reviewBtn.click();
+      }
+
+      // 等 DOM 就绪后打标记并应用 CSS
+      var attempts = 0;
+      function tryApply() {
+        if (ensureReviewPanelRefs()) {
+          document.documentElement.classList.add('opencode-review-panel-overlay');
+          return;
+        }
+        attempts++;
+        if (attempts < 20) requestAnimationFrame(tryApply);
+      }
+      requestAnimationFrame(tryApply);
+    } else {
+      document.documentElement.classList.remove('opencode-review-panel-overlay');
+
+      var reviewBtn = document.querySelector('[aria-controls="review-panel"]');
+      if (reviewBtn && reviewBtn.getAttribute('aria-expanded') === 'true') {
+        reviewBtn.click();
+      }
+    }
+  }
   
   // === 应用保存的状态 ===
   function applySavedStates() {
@@ -257,6 +411,9 @@ function generateBridgeScript(options: ProxyServerOptions): string {
     }
     if (savedPromptDockVisibleState !== null) {
       handlePromptDockVisibilityChange(savedPromptDockVisibleState);
+    }
+    if (savedReviewPanelState !== null) {
+      handleReviewPanelToggle(savedReviewPanelState);
     }
   }
 
@@ -403,6 +560,7 @@ function generateBridgeScript(options: ProxyServerOptions): string {
   // === 就绪通知 ===
   function init() {
     injectMinimizeStyles();
+    injectReviewPanelStyles();
     if (window.parent !== window) {
       window.parent.postMessage({ type: ${JSON.stringify(WIDGET_MSG.READY)} }, "*");
     }

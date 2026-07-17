@@ -82,6 +82,29 @@ export async function checkOpenCodeInstalled(): Promise<boolean> {
   });
 }
 
+export function getOpenCodeVersion(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const proc = spawn("opencode", ["--version"], { stdio: "pipe" });
+    let output = "";
+
+    proc.stdout?.on("data", (data) => {
+      output += data.toString();
+    });
+
+    proc.on("close", (code) => {
+      if (code === 0 && output.trim()) {
+        resolve(output.trim());
+      } else {
+        resolve(null);
+      }
+    });
+
+    proc.on("error", () => {
+      resolve(null);
+    });
+  });
+}
+
 export async function isPortAvailable(port: number, hostname?: string): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer();

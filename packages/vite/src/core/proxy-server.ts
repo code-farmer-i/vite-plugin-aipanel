@@ -82,7 +82,27 @@ function generateBridgeScript(options: ProxyServerOptions): string {
   }
 
   // 初始化设置
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(initialConfig.settings));
+  // 深度合并 initialConfig.settings 到已有配置：只覆盖插件声明的字段，
+  // opencode 自己管理的其他配置不受影响
+  function deepMerge(target, source) {
+    for (var key in source) {
+      if (!{}.hasOwnProperty.call(source, key)) continue;
+      if (source[key] && typeof source[key] === "object" && !Array.isArray(source[key])) {
+        if (!target[key] || typeof target[key] !== "object") target[key] = {};
+        deepMerge(target[key], source[key]);
+      } else {
+        target[key] = source[key];
+      }
+    }
+    return target;
+  }
+
+  try {
+    var existing = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(deepMerge(existing, initialConfig.settings)));
+  } catch {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(initialConfig.settings));
+  }
 
   // === 主题同步函数 ===
   function getTheme() {
@@ -191,6 +211,10 @@ function generateBridgeScript(options: ProxyServerOptions): string {
       display: none !important;
     }
     button[data-slot="dropdown-menu-trigger"][icon="dot-grid"] {
+      display: none !important;
+    }
+    [data-component="icon-button-v2"][aria-label="更多选项"],
+    [data-component="icon-button-v2"][aria-label="More options"] {
       display: none !important;
     }
   \`;

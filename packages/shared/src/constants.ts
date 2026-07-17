@@ -166,6 +166,8 @@ export const OPENCODE_STORAGE_KEYS = {
 export const DEFAULT_OPENCODE_SETTINGS = {
   general: {
     showReasoningSummaries: true,
+    newLayoutDesigns: true,
+    showFileTree: false,
   },
 };
 

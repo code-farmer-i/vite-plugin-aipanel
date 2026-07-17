@@ -14,6 +14,7 @@ import {
   checkOpenCodeInstalled,
   findAvailablePort,
   findGitRoot,
+  getOpenCodeVersion,
   killOrphanOpenCodeProcesses,
   waitForServer,
 } from "../utils/system";
@@ -165,7 +166,8 @@ Please install OpenCode first:
           throw new Error(`OpenCode process exited with code ${this.webProcess.exitCode}`);
         }
 
-        log.info(`OpenCode Web started at ${webUrl}`);
+        const version = await getOpenCodeVersion();
+        log.info(`OpenCode Web started at ${webUrl}${version ? ` (opencode ${version})` : ""}`);
       } catch (e) {
         log.error("OpenCode Web failed to start", { error: e });
         this.sendTaskUpdate("web_start_timeout");

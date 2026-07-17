@@ -247,54 +247,77 @@ function generateBridgeScript(options: ProxyServerOptions): string {
   \`;
 
   // === 审查面板覆盖样式 ===
-  // 审查面板 fixed 覆盖消息区域，底部留空给对话框
-  // 只清除侧边面板分支的 contain，不影响会话面板的下拉菜单定位
+  // 审查面板全屏，会话面板浮在右下角（类似插件最小化状态）
   const reviewPanelStyles = \`
-    /* 强制 flex-row（小屏时 CSS @media 不生效） */
     .opencode-review-panel-overlay [data-ref="panel-row"] {
-      flex-direction: row !important;
+      flex-direction: column !important;
+      gap: 8px !important;
+      padding: 8px !important;
     }
 
-    /* 清除侧边面板链路 contain 限制，压缩为零宽度（审查面板已 fixed 定位） */
-    .opencode-review-panel-overlay [data-ref="side-panel-container"],
-    .opencode-review-panel-overlay [data-ref="side-panel-container"] [data-slot="tabs-content"],
-    .opencode-review-panel-overlay [data-ref="side-panel-container"] .contain-strict {
-      contain: none !important;
-      overflow: visible !important;
-    }
+    /* 审查面板占满剩余空间 */
     .opencode-review-panel-overlay [data-ref="side-panel-container"] {
-      flex: 0 0 0 !important;
-      width: 0 !important;
-    }
-
-    /* 审查面板 fixed 覆盖，padding-bottom 防止内容被对话框遮挡 */
-    .opencode-review-panel-overlay [data-component="session-review-v2"],
-    .opencode-review-panel-overlay [data-component="session-review"] {
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      right: 0 !important;
-      z-index: 500 !important;
-      background: var(--v2-background-bg-base, var(--background-stronger)) !important;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15) !important;
-      padding-bottom: 116px !important;
-    }
-
-    /* 强制会话面板撑满（覆盖 SolidJS 的 inline width） */
-    .opencode-review-panel-overlay [data-ref="session-panel"] {
-      width: 100% !important;
-      max-width: none !important;
       flex: 1 !important;
+      width: 100% !important;
+      transition: none !important;
+      min-height: 0 !important;
     }
-    /* 会话面板内部所有容器不限宽 */
+
+    /* 会话面板浮在右下角 */
+    .opencode-review-panel-overlay [data-ref="session-panel"] {
+      position: fixed !important;
+      bottom: 16px !important;
+      right: 16px !important;
+      width: 380px !important;
+      max-height: 70vh !important;
+      display: flex !important;
+      flex-direction: column !important;
+      z-index: 600 !important;
+      border-radius: 12px !important;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+      overflow: hidden !important;
+      transition: none;
+    }
     .opencode-review-panel-overlay [data-ref="session-panel"] * {
       max-width: none !important;
     }
 
-    /* 对话框在审查面板上层，不被覆盖 */
-    .opencode-review-panel-overlay [data-component="session-prompt-dock"] {
-      position: relative !important;
-      z-index: 600 !important;
+    /* 隐藏会话面板内的标题 */
+    .opencode-review-panel-overlay [data-ref="session-panel"] [data-session-title] {
+      display: none !important;
+    }
+
+    /* 隐藏浮动会话（用 visibility+opacity 避免切换闪烁） */
+    .opencode-review-panel-overlay.hide-chat [data-ref="session-panel"] {
+      visibility: hidden !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+
+    /* 审查面板右上角悬浮切换按钮 */
+    .opencode-chat-toggle-btn {
+      position: fixed !important;
+      top: 16px !important;
+      right: 16px !important;
+      z-index: 700 !important;
+      width: 36px !important;
+      height: 36px !important;
+      border-radius: 8px !important;
+      border: none !important;
+      background: var(--v2-background-bg-base, #1e1e1e) !important;
+      color: var(--v2-icon-icon-base, #ccc) !important;
+      cursor: pointer !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+      transition: background 0.15s !important;
+    }
+    .opencode-chat-toggle-btn:hover {
+      background: var(--v2-overlay-simple-overlay-hover, #333) !important;
+    }
+    .opencode-chat-toggle-btn.active {
+      background: var(--v2-overlay-simple-overlay-pressed, #444) !important;
     }
   \`;
 
@@ -373,7 +396,29 @@ function generateBridgeScript(options: ProxyServerOptions): string {
     return true;
   }
 
+  function injectChatToggleBtn() {
+    if (document.getElementById('opencode-chat-toggle-btn')) return;
+    var btn = document.createElement('button');
+    btn.id = 'opencode-chat-toggle-btn';
+    btn.className = 'opencode-chat-toggle-btn';
+    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    btn.title = '展开聊天面板';
+    btn.onclick = function() {
+      document.documentElement.classList.toggle('hide-chat');
+      btn.classList.toggle('active');
+      btn.title = btn.classList.contains('active') ? '隐藏聊天面板' : '展开聊天面板';
+    };
+    document.body.appendChild(btn);
+  }
+
+  function removeChatToggleBtn() {
+    var btn = document.getElementById('opencode-chat-toggle-btn');
+    if (btn) btn.remove();
+  }
+
   function handleReviewPanelToggle(visible) {
+    // 如果状态没有变化，跳过（避免 MutationObserver 重复触发）
+    if (savedReviewPanelState === visible) return;
     savedReviewPanelState = visible;
 
     if (visible) {
@@ -387,7 +432,8 @@ function generateBridgeScript(options: ProxyServerOptions): string {
       var attempts = 0;
       function tryApply() {
         if (ensureReviewPanelRefs()) {
-          document.documentElement.classList.add('opencode-review-panel-overlay');
+          document.documentElement.classList.add('opencode-review-panel-overlay', 'hide-chat');
+          injectChatToggleBtn();
           return;
         }
         attempts++;
@@ -395,12 +441,23 @@ function generateBridgeScript(options: ProxyServerOptions): string {
       }
       requestAnimationFrame(tryApply);
     } else {
-      document.documentElement.classList.remove('opencode-review-panel-overlay');
+      // 关闭前先将会话面板宽度设为 100%，避免 SolidJS 异步渲染的宽度跳变
+      var sessionPanel = document.querySelector('[data-ref="session-panel"]');
+      if (sessionPanel) sessionPanel.style.width = '100%';
+      document.body.offsetHeight; // 强制回流
 
-      var reviewBtn = document.querySelector('[aria-controls="review-panel"]');
-      if (reviewBtn && reviewBtn.getAttribute('aria-expanded') === 'true') {
-        reviewBtn.click();
-      }
+      document.documentElement.classList.remove('opencode-review-panel-overlay');
+      document.documentElement.classList.remove('hide-chat');
+      removeChatToggleBtn();
+
+      // 等一帧让 CSS 布局变化先渲染，再关闭原生面板
+      // 避免 SolidJS 异步 DOM 变化和 CSS 布局变化发生在同一帧导致视觉跳动
+      requestAnimationFrame(function() {
+        var reviewBtn = document.querySelector('[aria-controls="review-panel"]');
+        if (reviewBtn && reviewBtn.getAttribute('aria-expanded') === 'true') {
+          reviewBtn.click();
+        }
+      });
     }
   }
   

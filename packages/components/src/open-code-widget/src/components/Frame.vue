@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref } from "vue";
 import { useOpenCodeWidgetContext } from "../context";
 
 const iframeRef = ref<HTMLIFrameElement | null>(null);
@@ -19,14 +19,6 @@ function sendMessageToIframe(type: string, data?: Record<string, unknown>) {
   if (!iframeRef.value?.contentWindow) return;
   iframeRef.value.contentWindow.postMessage({ type, ...data }, "*");
 }
-
-onMounted(() => {
-  if (iframeRef.value) {
-    iframeRef.value.addEventListener("load", () => {
-      handleFrameLoaded();
-    });
-  }
-});
 
 defineExpose({
   sendMessageToIframe,
@@ -92,6 +84,7 @@ defineExpose({
         :src="iframeSrc"
         allow="clipboard-write; clipboard-read"
         referrerpolicy="origin"
+        @load="handleFrameLoaded"
       />
     </slot>
   </div>

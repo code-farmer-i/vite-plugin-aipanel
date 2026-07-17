@@ -150,21 +150,24 @@ if (win[INIT_MARKER]) {
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === EXT_MSG.GET_PORT_INFO) {
-      if (cachedInfo) {
-        // 有心跳缓存 → 直接返回
+      if (cachedInfo && !msg.forceRefresh) {
+        // 有心跳缓存且非强制刷新 → 直接返回
         sendResponse(cachedInfo);
       } else {
-        // 无缓存 → 真实请求检测服务（按需，非轮询）
+        // 无缓存或强制刷新 → 真实请求检测服务（按需，非轮询）
         fetch(START_API_PATH)
           .then((res) => res.json())
           .then((data) => {
             if (data.proxyPort && data.serviceInstanceId) {
-              sendResponse({
+              const info: ServiceInfo = {
                 proxyPort: data.proxyPort,
                 vitePort: location.port,
                 projectRoot: data.projectRoot || "",
                 serviceInstanceId: data.serviceInstanceId,
-              });
+              };
+              // 真正的服务响应 → 更新缓存
+              handleServiceInfo(info);
+              sendResponse(info);
             } else {
               sendResponse(null);
             }
@@ -190,6 +193,20 @@ if (win[INIT_MARKER]) {
 
     if (msg.type === EXT_MSG.SELECTION_STOP) {
       window.postMessage({ type: WIDGET_MSG.SELECTOR_STOP }, "*");
+      sendResponse({ success: true });
+      return true;
+    }
+
+    // 服务下线 → 清除缓存，确保下次 GET_PORT_INFO 走真实检测
+    if (msg.type === EXT_MSG.SERVICE_GONE) {
+      if (cachedInfo && msg.serviceInstanceId === cachedInfo.serviceInstanceId) {
+        console.debug("[OpenCode CS] 服务下线，清除缓存: %s", cachedInfo.serviceInstanceId);
+        cachedInfo = null;
+        if (heartbeatTimer) {
+          clearTimeout(heartbeatTimer);
+          heartbeatTimer = null;
+        }
+      }
       sendResponse({ success: true });
       return true;
     }

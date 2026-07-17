@@ -86,6 +86,7 @@ const showNotification = (
 
 const {
   serviceStatus,
+  currentTask,
   chromeMcpFailed,
   chromeMcpErrorType,
   chromeMcpErrorMessage,
@@ -119,6 +120,18 @@ const { updateContext } = isExtensionMode
 const serverSSE = useServerSSE({
   viteBaseUrl: viteBaseUrl.value,
   onStatusSync: (data) => {
+    console.log("[App] SSE STATUS_SYNC:", JSON.stringify(data), "currentStatus:", serviceStatus.value);
+    // SSE 重连后如果服务仍在启动中，重置为 starting 以显示蒙层
+    if (justReconnected && data.task && data.task !== "ready" && data.task !== "chrome_mcp_failed" &&
+      data.task !== "session_creation_failed" && data.task !== "opencode_not_installed" &&
+      data.task !== "web_start_timeout") {
+      console.log("[App] SSE 重连后服务仍在启动中(%s)，重置 status 为 starting", data.task);
+      currentTask.value = data.task;
+      serviceStatus.value = "starting";
+      justReconnected = false;
+      return;
+    }
+    justReconnected = false;
     if (data.isStarted !== undefined && data.isStarted && serviceStatus.value === "idle") {
       setStarting();
     }
@@ -127,6 +140,7 @@ const serverSSE = useServerSSE({
     }
   },
   onTaskUpdate: (data) => {
+    console.log("[App] SSE TASK_UPDATE:", JSON.stringify(data), "currentStatus:", serviceStatus.value);
     updateStatusFromTask(data.task, data.errorType, data.errorMessage);
   },
   onClearElements: () => clearElements(),
@@ -135,6 +149,7 @@ const serverSSE = useServerSSE({
 
 // SSE 断开/重连 → 服务上下线实时同步（localhost 无网络抖动）
 let sseWasDown = false;
+let justReconnected = false;
 watch(serverSSE.isConnected, (connected, wasConnected) => {
   if (!connected && wasConnected && serviceInstanceId) {
     sseWasDown = true;
@@ -145,6 +160,7 @@ watch(serverSSE.isConnected, (connected, wasConnected) => {
     }).catch(() => { });
   } else if (connected && !wasConnected && sseWasDown && serviceInstanceId) {
     sseWasDown = false;
+    justReconnected = true;
     console.log("[App] SSE 重连，通知服务上线: %s", serviceInstanceId);
     chrome.runtime.sendMessage({
       type: EXT_MSG.SERVICE_APPEARED,
@@ -240,6 +256,11 @@ const ensureServicesStarted = async () => {
   try {
     const res = await fetch(apiPath(START_API_PATH));
     const data = await res.json();
+    // 防御性检查：fetch 期间 serviceStatus 可能已被其他流程改变（如 SSE），仅当仍为 idle 时才启动
+    if (serviceStatus.value !== "idle") {
+      console.log("[App][ensureServicesStarted] fetch 完成但 serviceStatus 已变为 %s，跳过启动", serviceStatus.value);
+      return true;
+    }
     if (data.success) {
       setStarting();
       serverSSE.connect();
@@ -280,12 +301,12 @@ if (!isExtensionMode) {
 
 // 监听服务状态变化，启动相应的 SSE 连接
 watch(serviceStatus, (status, oldStatus) => {
-  console.debug("[App] serviceStatus changed:", oldStatus, "->", status);
   if (status !== "idle" && oldStatus === "idle") {
     serverSSE.connect();
     opencodeSSE.connect();
   }
   if (status === "ready" && oldStatus !== "ready") {
+    console.log("[App] 服务就绪，加载会话列表");
     loadSessions();
   }
 });
@@ -312,17 +333,33 @@ const handleIframeMessage = (event: MessageEvent) => {
   }
 };
 
+// 关闭面板时退出选择元素模式（onUnmounted 在 Side Panel 关闭时不一定触发，
+// 通过 visibilitychange + pagehide 事件确保清理）
+const cleanupSelectMode = () => {
+  if (selectMode.value) {
+    ext.onSelectModeChange?.(false);
+  }
+};
+
 onMounted(() => {
-  console.debug("[App] mounted, serviceStatus:", serviceStatus.value, "vitePort:", vitePort, "endpoint:", viteBaseUrl.value || "/__opencode_events__");
+  console.log("[App] onMounted, sid=%s, serviceStatus=%s, config:", serviceInstanceId, serviceStatus.value, JSON.stringify(props.config));
   if (serviceStatus.value === "ready") {
+    console.log("[App] onMounted: ready 分支，直接加载会话");
     loadSessions();
     serverSSE.connect();
     opencodeSSE.connect();
     updateContext(true);
   } else if (serviceStatus.value === "idle") {
-    // sidepanel / tab 切换重连场景：主动加载会话并连接 SSE
-    loadSessions();
-    serverSSE.connect();
+    if (isExtensionMode) {
+      console.log("[App] onMounted: idle 分支（扩展模式），先 setStarting 显示蒙层");
+      // 扩展模式：服务可能正在启动中，先显示加载蒙层，等待 SSE 确认 ready 后再加载会话
+      setStarting();
+      serverSSE.connect();
+    } else {
+      console.log("[App] onMounted: idle 分支（非扩展模式），直接加载会话");
+      loadSessions();
+      serverSSE.connect();
+    }
   }
   if (autoOpen && serviceStatus.value === "ready") {
     setTimeout(() => {
@@ -332,10 +369,15 @@ onMounted(() => {
 
   // 监听 iframe 消息（主题同步和键盘事件）
   window.addEventListener("message", handleIframeMessage);
+  document.addEventListener("visibilitychange", cleanupSelectMode);
+  window.addEventListener("pagehide", cleanupSelectMode);
 });
 
 onUnmounted(() => {
   window.removeEventListener("message", handleIframeMessage);
+  document.removeEventListener("visibilitychange", cleanupSelectMode);
+  window.removeEventListener("pagehide", cleanupSelectMode);
+  cleanupSelectMode();
 });
 
 const handleToggle = async (val: boolean) => {

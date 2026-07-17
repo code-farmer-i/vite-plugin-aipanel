@@ -1121,7 +1121,7 @@ body.has-opencode-split-left {
 }
 
 .opencode-widget.extension-mode {
-  position: static;
+  position: relative;
   width: 100%;
   height: 100%;
   display: flex;

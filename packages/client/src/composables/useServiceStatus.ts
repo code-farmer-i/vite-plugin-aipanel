@@ -19,6 +19,7 @@ export function useServiceStatus() {
     errorType?: string,
     errorMessage?: string,
   ) => {
+    const prevStatus = serviceStatus.value;
     currentTask.value = task;
 
     if (task === "ready") {
@@ -40,6 +41,7 @@ export function useServiceStatus() {
     } else if (serviceStatus.value === "idle" && task) {
       serviceStatus.value = "starting";
     }
+    console.log(`[useServiceStatus] updateStatusFromTask: task="${task}" status: ${prevStatus} -> ${serviceStatus.value}`);
   };
 
   const setStarting = () => {

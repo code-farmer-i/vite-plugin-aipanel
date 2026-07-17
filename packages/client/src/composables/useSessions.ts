@@ -88,7 +88,6 @@ export function useSessions(options: UseSessionsOptions) {
       });
       currentSessionId.value = newSession.id;
       iframeLoading.value = true;
-      loadSessions();
     } catch {
       showNotification("创建会话失败");
     }

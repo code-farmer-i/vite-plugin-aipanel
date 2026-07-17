@@ -20,11 +20,14 @@ interface ServiceInfo {
 }
 
 /** 从 content script 获取服务信息 */
-async function fetchServiceInfo(): Promise<ServiceInfo | null> {
+async function fetchServiceInfo(forceRefresh = false): Promise<ServiceInfo | null> {
   try {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tabs[0]?.id) return null;
-    const info = await chrome.tabs.sendMessage(tabs[0].id, { type: EXT_MSG.GET_PORT_INFO });
+    const info = await chrome.tabs.sendMessage(tabs[0].id, {
+      type: EXT_MSG.GET_PORT_INFO,
+      forceRefresh,
+    });
     if (info && info.serviceInstanceId && info.proxyPort && info.vitePort) return info;
     return null;
   } catch {
@@ -99,7 +102,7 @@ async function initContainers() {
 
   const { createApp } = await import("vue");
   const { default: NoServicePrompt } = await import("./NoServicePrompt.vue");
-  createApp(NoServicePrompt, { onRefresh: () => mountAppForActiveTab() }).mount(noServiceEl);
+  createApp(NoServicePrompt, { onRefresh: () => mountAppForActiveTab(true) }).mount(noServiceEl);
 }
 
 /** 为指定服务创建并挂载新的 Vue App */
@@ -174,8 +177,8 @@ function destroyAppInstance(serviceInstanceId: string) {
 }
 
 /** 为当前 active tab 挂载 App */
-async function mountAppForActiveTab(): Promise<boolean> {
-  const info = await fetchServiceInfo();
+async function mountAppForActiveTab(forceRefresh = false): Promise<boolean> {
+  const info = await fetchServiceInfo(forceRefresh);
   if (!info) {
     showNoServiceOverlay();
     return false;
@@ -201,6 +204,7 @@ function handleServiceAppeared(info: ServiceInfo) {
     showApp(info.serviceInstanceId);
     console.log("[OpenCode SP] 复用已有实例: %s vite=%s", info.serviceInstanceId, info.vitePort);
   } else {
+    console.log("[OpenCode SP] 创建新实例: %s vite=%s", info.serviceInstanceId, info.vitePort);
     createAppInstance(info).then(() => {
       showApp(info.serviceInstanceId);
     });

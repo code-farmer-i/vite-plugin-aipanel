@@ -73,25 +73,23 @@ const { selectMode: visible, selectShortcutLabel: shortcutLabel } = useOpenCodeW
   top: 16px;
   left: 50%;
   transform: translateX(-50%) translateY(-16px);
-  max-width: calc(100% - 24px);
-  width: max-content;
+  width: 280px;
   padding: 8px 14px;
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: white;
   border-radius: 18px;
   font-size: 13px;
   font-weight: 500;
-  line-height: 1;
+  line-height: 1.4;
   box-shadow:
     0 6px 20px rgba(239, 68, 68, 0.5),
     0 0 0 3px rgba(239, 68, 68, 0.3);
   z-index: 9999999;
   display: none;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  column-gap: 10px;
-  row-gap: 8px;
+  gap: 6px;
   border: 1px solid rgba(255, 255, 255, 0.25);
   opacity: 0;
   transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -102,7 +100,7 @@ const { selectMode: visible, selectShortcutLabel: shortcutLabel } = useOpenCodeW
 }
 
 .opencode-select-mode-hint.visible {
-  display: inline-flex;
+  display: flex;
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   animation:

@@ -180,6 +180,22 @@ function destroyAppInstance(serviceInstanceId: string) {
 
 /** 为当前 active tab 挂载 App */
 async function mountAppForActiveTab(forceRefresh = false): Promise<boolean> {
+  if (forceRefresh) {
+    // 主动注入 content script，确保其已加载到页面中（无需刷新页面）
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tabId = tabs[0]?.id;
+    if (tabId) {
+      await chrome.scripting
+        .executeScript({
+          target: { tabId },
+          files: ["content.js"],
+        })
+        .catch(() => {
+          // content script 可能已注入（INIT_MARKER 守卫会跳过），忽略错误
+        });
+    }
+  }
+
   const info = await fetchServiceInfo(forceRefresh);
   if (!info) {
     showNoServiceOverlay();

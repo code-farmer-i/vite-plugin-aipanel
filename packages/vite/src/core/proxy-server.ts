@@ -246,6 +246,14 @@ function generateBridgeScript(options: ProxyServerOptions): string {
     }
   \`;
 
+  // === 通用样式 ===
+  const generalStyles = \`
+    /* 隐藏会话面板标题右侧按钮区 */
+    [data-session-title] .shrink-0 {
+      display: none !important;
+    }
+  \`;
+
   // === 审查面板覆盖样式 ===
   // 审查面板全屏，会话面板浮在右下角（类似插件最小化状态）
   const reviewPanelStyles = \`
@@ -296,10 +304,7 @@ function generateBridgeScript(options: ProxyServerOptions): string {
       display: none !important;
     }
 
-    /* 隐藏会话面板标题右侧按钮区 */
-    .opencode-review-panel-overlay [data-ref="session-panel"] [data-session-title] .shrink-0 {
-      display: none !important;
-    }
+
 
     /* 隐藏浮动会话（用 visibility+opacity 避免切换闪烁） */
     .opencode-review-panel-overlay.hide-chat [data-ref="session-panel"] {
@@ -348,6 +353,14 @@ function generateBridgeScript(options: ProxyServerOptions): string {
     const style = document.createElement('style');
     style.id = 'opencode-review-panel-styles';
     style.textContent = reviewPanelStyles;
+    document.head.appendChild(style);
+  }
+
+  function injectGeneralStyles() {
+    if (document.getElementById('opencode-general-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'opencode-general-styles';
+    style.textContent = generalStyles;
     document.head.appendChild(style);
   }
 
@@ -643,6 +656,7 @@ function generateBridgeScript(options: ProxyServerOptions): string {
   function init() {
     injectMinimizeStyles();
     injectReviewPanelStyles();
+    injectGeneralStyles();
     if (window.parent !== window) {
       window.parent.postMessage({ type: ${JSON.stringify(WIDGET_MSG.READY)} }, "*");
     }

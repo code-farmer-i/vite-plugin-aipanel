@@ -296,6 +296,11 @@ function generateBridgeScript(options: ProxyServerOptions): string {
       display: none !important;
     }
 
+    /* 隐藏会话面板标题右侧按钮区 */
+    .opencode-review-panel-overlay [data-ref="session-panel"] [data-session-title] .shrink-0 {
+      display: none !important;
+    }
+
     /* 隐藏浮动会话（用 visibility+opacity 避免切换闪烁） */
     .opencode-review-panel-overlay.hide-chat [data-ref="session-panel"] {
       visibility: hidden !important;

@@ -201,14 +201,24 @@ function handleServiceAppeared(info: ServiceInfo) {
       clearTimeout(existingInst.zombieTimer);
       existingInst.zombieTimer = null;
     }
-    showApp(info.serviceInstanceId);
+    // 只显示 App 如果当前 active tab 仍能检测到该服务
+    showAppIfActiveTabMatches(info.serviceInstanceId);
     console.log("[OpenCode SP] 复用已有实例: %s vite=%s", info.serviceInstanceId, info.vitePort);
   } else {
     console.log("[OpenCode SP] 创建新实例: %s vite=%s", info.serviceInstanceId, info.vitePort);
     createAppInstance(info).then(() => {
-      showApp(info.serviceInstanceId);
+      showAppIfActiveTabMatches(info.serviceInstanceId);
     });
   }
+}
+
+/** 仅在当前 active tab 匹配指定服务时才显示 App，否则保持 NoServicePrompt */
+function showAppIfActiveTabMatches(serviceInstanceId: string) {
+  fetchServiceInfo().then((currentInfo) => {
+    if (currentInfo && currentInfo.serviceInstanceId === serviceInstanceId) {
+      showApp(serviceInstanceId);
+    }
+  });
 }
 
 /** 处理服务下线 */

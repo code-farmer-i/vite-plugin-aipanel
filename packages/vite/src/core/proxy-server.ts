@@ -274,12 +274,21 @@ function generateBridgeScript(options: ProxyServerOptions): string {
       flex-direction: column !important;
       z-index: 600 !important;
       border-radius: 12px !important;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.04),
+        0 2px 4px rgba(0, 0, 0, 0.04),
+        0 8px 16px rgba(0, 0, 0, 0.08),
+        0 16px 40px rgba(0, 0, 0, 0.12) !important;
       overflow: hidden !important;
       transition: none;
     }
     .opencode-review-panel-overlay [data-ref="session-panel"] * {
       max-width: none !important;
+    }
+
+    /* 会话浮窗内层背景抬高，与审查面板底色形成层次 */
+    .opencode-review-panel-overlay [data-ref="session-panel"] [class*="bg-v2-background-bg-base"] {
+      background: color-mix(in srgb, var(--v2-background-bg-base, #1e1e1e) 96%, #fff) !important;
     }
 
     /* 隐藏会话面板内的标题 */
@@ -403,10 +412,21 @@ function generateBridgeScript(options: ProxyServerOptions): string {
     btn.className = 'opencode-chat-toggle-btn';
     btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
     btn.title = '展开聊天面板';
+    // 从 localStorage 恢复上次的展开/收起状态，默认收起
+    var chatVisible = localStorage.getItem('opencode-review-chat-visible');
+    if (chatVisible === 'true') {
+      document.documentElement.classList.remove('hide-chat');
+      btn.classList.add('active');
+      btn.title = '隐藏聊天面板';
+    } else {
+      document.documentElement.classList.add('hide-chat');
+    }
     btn.onclick = function() {
       document.documentElement.classList.toggle('hide-chat');
       btn.classList.toggle('active');
-      btn.title = btn.classList.contains('active') ? '隐藏聊天面板' : '展开聊天面板';
+      var isVisible = btn.classList.contains('active');
+      btn.title = isVisible ? '隐藏聊天面板' : '展开聊天面板';
+      localStorage.setItem('opencode-review-chat-visible', isVisible ? 'true' : 'false');
     };
     document.body.appendChild(btn);
   }
@@ -432,7 +452,7 @@ function generateBridgeScript(options: ProxyServerOptions): string {
       var attempts = 0;
       function tryApply() {
         if (ensureReviewPanelRefs()) {
-          document.documentElement.classList.add('opencode-review-panel-overlay', 'hide-chat');
+          document.documentElement.classList.add('opencode-review-panel-overlay');
           injectChatToggleBtn();
           return;
         }

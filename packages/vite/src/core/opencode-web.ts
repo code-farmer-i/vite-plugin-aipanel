@@ -121,6 +121,8 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
   proc.stderr?.on("data", (data) => {
     const output = data.toString().trim();
     if (output) {
+      // 忽略 SolidJS MaxListeners 警告（OpenCode 内部问题，不影响功能）
+      if (output.includes('MaxListenersExceededWarning')) return;
       log.warn("[OpenCode stderr]", { output });
       getProcessLogBuffer().addOpenCodeStderr(output);
     }

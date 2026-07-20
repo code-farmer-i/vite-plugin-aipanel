@@ -1,8 +1,6 @@
 import http from "http";
 import type { SessionInfo, ModelInfo } from "@vite-plugin-opencode-assistant/shared";
 import {
-  PerformanceTimer,
-  createLogger,
   DEFAULT_RETRIES,
   RETRY_DELAY,
   ChromeMcpWarmupErrorType,
@@ -12,6 +10,7 @@ import {
   base64Encode,
   extractTextFromResponse,
 } from "@vite-plugin-opencode-assistant/shared";
+import { PerformanceTimer, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
 import { checkChromeDevToolsAvailable } from "@vite-plugin-opencode-assistant/shared/node";
 
 const log = createLogger("API");

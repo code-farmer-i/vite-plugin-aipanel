@@ -1,4 +1,7 @@
 import { ref, computed, onUnmounted, type Ref } from "vue";
+import { createLogger } from "@vite-plugin-opencode-assistant/shared";
+
+const log = createLogger("SSE");
 
 const DEFAULT_MAX_RETRIES = 10;
 const DEFAULT_RETRY_DELAY = 1000;
@@ -82,7 +85,7 @@ export function useSSE(options: SSEOptions) {
 
     status.value = "connecting";
 
-    console.debug("[SSE] connecting to", endpoint);
+    log.debug(`connecting to ${endpoint}`);
 
     try {
       connection.value = new EventSource(endpoint);
@@ -90,7 +93,7 @@ export function useSSE(options: SSEOptions) {
       connection.value.onopen = () => {
         status.value = "connected";
         retryCount.value = 0;
-        console.debug("[SSE] connected:", endpoint);
+        log.debug(`connected: ${endpoint}`);
         onConnected?.();
       };
 
@@ -105,11 +108,7 @@ export function useSSE(options: SSEOptions) {
         connection.value?.close();
         connection.value = null;
 
-        console.debug("[SSE] error on", endpoint, {
-          wasConnected,
-          retryCount: retryCount.value,
-          maxRetries,
-        });
+        log.debug("error on", { endpoint, wasConnected, retryCount: retryCount.value, maxRetries });
 
         const error = new Error(`SSE connection error: ${endpoint}`);
         onError?.(error);
@@ -118,7 +117,7 @@ export function useSSE(options: SSEOptions) {
         if (retryCount.value < maxRetries) {
           retryCount.value++;
           const delay = retryDelay * retryCount.value;
-          console.debug(`[SSE] will retry #${retryCount.value} in ${delay}ms -> ${endpoint}`);
+          log.debug(`will retry #${retryCount.value} in ${delay}ms -> ${endpoint}`);
           setTimeout(() => {
             // 只有在没有现有连接且未被手动断开时才重试
             if (enabled?.value !== false && !connection.value && status.value !== "disconnected") {
@@ -126,12 +125,11 @@ export function useSSE(options: SSEOptions) {
             }
           }, delay);
         } else if (wasConnected) {
-          console.debug("[SSE] max retries reached, calling onDisconnected for", endpoint);
+          log.debug(`max retries reached, calling onDisconnected for ${endpoint}`);
           onDisconnected?.();
         } else {
-          console.debug(
-            "[SSE] max retries reached, was never connected, NOT calling onDisconnected for",
-            endpoint,
+          log.debug(
+            `max retries reached, was never connected, NOT calling onDisconnected for ${endpoint}`,
           );
         }
       };

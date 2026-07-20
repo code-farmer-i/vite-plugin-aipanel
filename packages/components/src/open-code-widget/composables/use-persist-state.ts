@@ -1,6 +1,9 @@
 import { watch, onMounted, type Ref } from "vue";
+import { createLogger } from "@vite-plugin-opencode-assistant/shared";
 import type { FloatingBubbleOffset } from "../src/components/FloatingBubble/types";
 import type { OpenCodeWidgetTheme, DisplayMode } from "../src/types";
+
+const log = createLogger("OpenCodeWidget");
 
 export interface WidgetPersistState {
   open: boolean;
@@ -25,7 +28,7 @@ function loadState(): Partial<WidgetPersistState> | null {
       return JSON.parse(stored);
     }
   } catch (e) {
-    console.warn("[OpenCodeWidget] Failed to load persisted state:", e);
+    log.error("Failed to load persisted state:", { error: e });
   }
   return null;
 }
@@ -35,7 +38,7 @@ function saveState(state: WidgetPersistState): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) {
-    console.warn("[OpenCodeWidget] Failed to save state:", e);
+    log.error("Failed to save state:", { error: e });
   }
 }
 

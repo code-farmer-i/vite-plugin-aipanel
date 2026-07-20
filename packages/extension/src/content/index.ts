@@ -1,4 +1,11 @@
-import { EXT_MSG, WIDGET_MSG, START_API_PATH } from "@vite-plugin-opencode-assistant/shared";
+import {
+  EXT_MSG,
+  WIDGET_MSG,
+  START_API_PATH,
+  createLogger,
+} from "@vite-plugin-opencode-assistant/shared";
+
+const log = createLogger("OpenCode CS");
 
 /**
  * OpenCode Assistant - Content Script
@@ -12,11 +19,11 @@ const win = window as any;
 
 // 防御性检查：MV3 中 content script 不应重复注入到同一页面
 if (win[INIT_MARKER]) {
-  console.warn("[OpenCode CS] Content Script 已初始化，跳过");
+  log.warn("Content Script 已初始化，跳过");
 } else {
   win[INIT_MARKER] = true;
 
-  console.debug("[OpenCode CS] Content Script 已启动", location.href);
+  log.debug("Content Script 已启动", { url: location.href });
 
   /** 缓存的 Vite 服务信息 */
   interface ServiceInfo {
@@ -54,7 +61,7 @@ if (win[INIT_MARKER]) {
           ...info,
         })
         .catch(() => {});
-      console.debug("[OpenCode CS] 服务上线: %s vite=%s", info.serviceInstanceId, info.vitePort);
+      log.debug(`服务上线: ${info.serviceInstanceId} vite=${info.vitePort}`);
       // 新服务上线时主动上报当前页面上下文
       reportPageContext();
     }
@@ -79,7 +86,7 @@ if (win[INIT_MARKER]) {
             serviceInstanceId: cachedInfo.serviceInstanceId,
           })
           .catch(() => {});
-        console.debug("[OpenCode CS] 服务下线（心跳超时）: %s", cachedInfo.serviceInstanceId);
+        log.debug(`服务下线（心跳超时）: ${cachedInfo.serviceInstanceId}`);
         cachedInfo = null;
       }
       heartbeatTimer = null;
@@ -114,11 +121,7 @@ if (win[INIT_MARKER]) {
         serviceInstanceId: cachedInfo.serviceInstanceId,
       })
       .catch(() => {});
-    console.log(
-      "[OpenCode CS] 上报上下文: url=%s serviceInstanceId=%s",
-      location.href,
-      cachedInfo.serviceInstanceId,
-    );
+    log.debug(`上报上下文: url=${location.href} serviceInstanceId=${cachedInfo.serviceInstanceId}`);
   }
 
   function watchPageContext() {
@@ -200,7 +203,7 @@ if (win[INIT_MARKER]) {
     // 服务下线 → 清除缓存，确保下次 GET_PORT_INFO 走真实检测
     if (msg.type === EXT_MSG.SERVICE_GONE) {
       if (cachedInfo && msg.serviceInstanceId === cachedInfo.serviceInstanceId) {
-        console.debug("[OpenCode CS] 服务下线，清除缓存: %s", cachedInfo.serviceInstanceId);
+        log.debug(`服务下线，清除缓存: ${cachedInfo.serviceInstanceId}`);
         cachedInfo = null;
         if (heartbeatTimer) {
           clearTimeout(heartbeatTimer);

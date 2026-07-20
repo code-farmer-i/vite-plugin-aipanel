@@ -3,7 +3,7 @@ import type {
   OpenCodeSelectedElement,
   ServiceStatus,
 } from "@vite-plugin-opencode-assistant/shared";
-import { EXT_MSG, CONTEXT_API_PATH } from "@vite-plugin-opencode-assistant/shared";
+import { EXT_MSG, CONTEXT_API_PATH, createLogger } from "@vite-plugin-opencode-assistant/shared";
 
 /**
  * 扩展模式：通过 chrome.runtime 监听目标页面的 PAGE_CONTEXT 消息，
@@ -28,16 +28,12 @@ export function useExtensionContext(
 
   const extensionPageUrl = ref("");
   const extensionPageTitle = ref("");
+  const log = createLogger("ExtCtx");
 
   const basePath = (path: string) => (viteBaseUrl ? `${viteBaseUrl}${path}` : path);
 
   const sendContext = (url: string, title: string) => {
-    console.log(
-      "[ExtCtx] sendContext: tabId=%s tabIndex=%s url=%s",
-      activeTabId,
-      activeTabIndex,
-      url,
-    );
+    log.debug(`sendContext: tabId=${activeTabId} tabIndex=${activeTabIndex} url=${url}`);
     fetch(basePath(CONTEXT_API_PATH), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -80,16 +76,13 @@ export function useExtensionContext(
 
     // 页面上下文：只接受当前活跃 Tab 的消息，避免多 Tab 串扰
     if (msg.type === EXT_MSG.PAGE_CONTEXT && msg.ctx) {
-      console.log(
-        "[ExtCtx] 收到 PAGE_CONTEXT: msg.tabId=%s activeTabId=%s url=%s",
-        msg.tabId,
-        activeTabId,
-        msg.ctx.url,
+      log.debug(
+        `收到 PAGE_CONTEXT: msg.tabId=${msg.tabId} activeTabId=${activeTabId} url=${msg.ctx.url}`,
       );
       // 首次收到上下文消息时，用消息中的 tabId 初始化 activeTabId（onMounted 异步查询可能未完成）
       if (activeTabId === undefined && msg.tabId !== undefined) {
         activeTabId = msg.tabId;
-        console.log("[ExtCtx] activeTabId 从消息初始化: %s", activeTabId);
+        log.debug(`activeTabId 从消息初始化: ${activeTabId}`);
       }
       if (activeTabId !== undefined && msg.tabId !== undefined && msg.tabId !== activeTabId) return;
       extensionPageUrl.value = msg.ctx.url;
@@ -107,19 +100,16 @@ export function useExtensionContext(
       if (tabs[0]?.id !== undefined) {
         activeTabId = tabs[0].id;
         activeTabIndex = tabs[0].index;
-        console.log(
-          "[ExtCtx] onMounted activeTabId=%s tabIndex=%s url=%s",
-          activeTabId,
-          activeTabIndex,
-          tabs[0].url,
+        log.debug(
+          `onMounted activeTabId=${activeTabId} tabIndex=${activeTabIndex} url=${tabs[0].url}`,
         );
         // 主动请求 Content Script 上报当前页面上下文（弥补挂载前的丢失）
         chrome.tabs.sendMessage(tabs[0].id, { type: EXT_MSG.REQUEST_PAGE_CONTEXT }).catch(() => {});
       } else {
-        console.log("[ExtCtx] onMounted 未查询到活跃 Tab, tabs=%o", tabs);
+        log.debug(`onMounted 未查询到活跃 Tab, tabs=${JSON.stringify(tabs)}`);
       }
     } catch (e) {
-      console.log("[ExtCtx] onMounted 查询 Tab 失败: %o", e);
+      log.debug(`onMounted 查询 Tab 失败: ${e}`);
     }
   });
 

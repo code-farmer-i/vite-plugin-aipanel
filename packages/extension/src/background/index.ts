@@ -1,5 +1,6 @@
-import { EXT_MSG, EXT_BROADCAST } from "@vite-plugin-opencode-assistant/shared";
+import { EXT_MSG, EXT_BROADCAST, createLogger } from "@vite-plugin-opencode-assistant/shared";
 
+const log = createLogger("OpenCode BG");
 const BROADCAST_TYPES = new Set<string>(Object.values(EXT_BROADCAST));
 
 /**
@@ -9,7 +10,7 @@ const BROADCAST_TYPES = new Set<string>(Object.values(EXT_BROADCAST));
  */
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("[OpenCode Extension] 已安装");
+  log.info("已安装");
 });
 
 /** 点击工具栏图标 → 打开 Side Panel */
@@ -42,7 +43,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   if (BROADCAST_TYPES.has(msg.type)) {
     // 附加 tabId 以便 Side Panel 区分来自哪个 Tab 的消息
     const forwarded = { ...msg, tabId: sender.tab?.id };
-    console.log("[OpenCode BG] 转发消息: type=%s tabId=%s", msg.type, sender.tab?.id);
+    log.debug(`转发消息: type=${msg.type} tabId=${sender.tab?.id}`);
     chrome.runtime.sendMessage(forwarded).catch(() => {});
   }
 });

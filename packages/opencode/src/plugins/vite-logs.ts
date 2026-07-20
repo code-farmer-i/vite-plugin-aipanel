@@ -5,7 +5,7 @@
 
 import type { Plugin, Hooks } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import { createLogger } from "@vite-plugin-opencode-assistant/shared";
+import { createLogger } from "@vite-plugin-opencode-assistant/shared/node";
 
 const log = createLogger("OpenCodePluginViteLogs");
 

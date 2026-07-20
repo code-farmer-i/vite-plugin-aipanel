@@ -1,6 +1,6 @@
 import { ref, computed } from "vue";
 import type { ServiceStartupTask, ServiceStatus } from "@vite-plugin-opencode-assistant/shared";
-import { SERVICE_STARTUP_TASKS } from "@vite-plugin-opencode-assistant/shared";
+import { SERVICE_STARTUP_TASKS, createLogger } from "@vite-plugin-opencode-assistant/shared";
 
 export function useServiceStatus() {
   const currentTask = ref<ServiceStartupTask | "">("");
@@ -8,6 +8,7 @@ export function useServiceStatus() {
   const chromeMcpFailed = ref(false);
   const chromeMcpErrorType = ref<string | undefined>(undefined);
   const chromeMcpErrorMessage = ref<string | undefined>(undefined);
+  const log = createLogger("useServiceStatus");
 
   const loadingText = computed(() => {
     if (!currentTask.value) return "加载中...";
@@ -41,7 +42,9 @@ export function useServiceStatus() {
     } else if (serviceStatus.value === "idle" && task) {
       serviceStatus.value = "starting";
     }
-    console.log(`[useServiceStatus] updateStatusFromTask: task="${task}" status: ${prevStatus} -> ${serviceStatus.value}`);
+    log.debug(
+      `updateStatusFromTask: task="${task}" status: ${prevStatus} -> ${serviceStatus.value}`,
+    );
   };
 
   const setStarting = () => {

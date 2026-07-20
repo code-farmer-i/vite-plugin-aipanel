@@ -1,6 +1,11 @@
-import { ServiceStartupTask } from "@vite-plugin-opencode-assistant/shared";
-import { SSE_EVENTS_PATH } from "@vite-plugin-opencode-assistant/shared";
+import {
+  ServiceStartupTask,
+  SSE_EVENTS_PATH,
+  createLogger,
+} from "@vite-plugin-opencode-assistant/shared";
 import { useSSE } from "./useSSE";
+
+const log = createLogger("ServerSSE");
 
 /**
  * Server SSE 状态同步数据
@@ -72,7 +77,7 @@ export function useServerSSE(options: ServerSSEOptions = {}) {
     endpoint,
     autoConnect: false,
     onDisconnected: () => {
-      console.debug("[ServerSSE] disconnected (retries exhausted):", endpoint);
+      log.debug(`disconnected (retries exhausted): ${endpoint}`);
       onDisconnected?.();
     },
     onMessage: (data) => {
@@ -80,7 +85,7 @@ export function useServerSSE(options: ServerSSEOptions = {}) {
 
       switch (message.type) {
         case "CONNECTED":
-          console.debug("[ServerSSE] CONNECTED message received:", endpoint);
+          log.debug(`CONNECTED message received: ${endpoint}`);
           onConnected?.();
           break;
         case "STATUS_SYNC":

@@ -6,10 +6,10 @@ import type { OpenCodeOptions, ServiceStartupTask } from "@vite-plugin-opencode-
 import {
   DEFAULT_PROXY_PORT,
   SERVER_START_TIMEOUT,
-  createLogger,
   ChromeMcpWarmupError,
   ChromeMcpWarmupErrorType,
 } from "@vite-plugin-opencode-assistant/shared";
+import { createLogger } from "@vite-plugin-opencode-assistant/shared/node";
 import {
   checkOpenCodeInstalled,
   findAvailablePort,

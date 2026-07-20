@@ -1,6 +1,8 @@
 import { ref, computed, type Ref } from "vue";
-import { SESSIONS_API_PATH } from "@vite-plugin-opencode-assistant/shared";
+import { SESSIONS_API_PATH, createLogger } from "@vite-plugin-opencode-assistant/shared";
 import type { OpenCodeWidgetSession, SessionInfo } from "@vite-plugin-opencode-assistant/shared";
+
+const log = createLogger("OpenCode");
 
 export interface UseSessionsOptions {
   showNotification: (msg: string) => void;
@@ -48,7 +50,7 @@ export function useSessions(options: UseSessionsOptions) {
       }
       currentSessionId.value = sessions.value[0]?.id || null;
     } catch (e) {
-      console.error("[OpenCode] Failed to load sessions:", e);
+      log.error("Failed to load sessions:", { error: e });
     } finally {
       loadingSessionList.value = false;
     }

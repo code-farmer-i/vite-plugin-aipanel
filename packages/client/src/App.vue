@@ -7,7 +7,7 @@ import type {
   ModelInfo,
 } from "@vite-plugin-opencode-assistant/shared";
 import type { WidgetOptions } from "@vite-plugin-opencode-assistant/shared";
-import { WIDGET_MSG, WARMUP_API_PATH, START_API_PATH } from "@vite-plugin-opencode-assistant/shared";
+import { WIDGET_MSG, WARMUP_API_PATH, START_API_PATH, createLogger } from "@vite-plugin-opencode-assistant/shared";
 
 import { useHotkey } from "./composables/useHotkey";
 import { useServerSSE } from "./composables/useServerSSE";
@@ -47,6 +47,9 @@ const {
   vitePort = "",
   serviceInstanceId = "",
 } = props.config;
+
+const opencodeLog = createLogger("OpenCode");
+const log = createLogger("App");
 
 const widgetTheme = initialTheme as OpenCodeWidgetTheme;
 const splitPanelWidth = ref(splitMode?.width ?? 500);
@@ -120,12 +123,12 @@ const { updateContext } = isExtensionMode
 const serverSSE = useServerSSE({
   viteBaseUrl: viteBaseUrl.value,
   onStatusSync: (data) => {
-    console.log("[App] SSE STATUS_SYNC:", JSON.stringify(data), "currentStatus:", serviceStatus.value);
+    log.debug(`SSE STATUS_SYNC: ${JSON.stringify(data)} currentStatus: ${serviceStatus.value}`);
     // SSE 重连后如果服务仍在启动中，重置为 starting 以显示蒙层
     if (justReconnected && data.task && data.task !== "ready" && data.task !== "chrome_mcp_failed" &&
       data.task !== "session_creation_failed" && data.task !== "opencode_not_installed" &&
       data.task !== "web_start_timeout") {
-      console.log("[App] SSE 重连后服务仍在启动中(%s)，重置 status 为 starting", data.task);
+      log.debug(`SSE 重连后服务仍在启动中(${data.task})，重置 status 为 starting`);
       currentTask.value = data.task;
       serviceStatus.value = "starting";
       justReconnected = false;
@@ -140,7 +143,7 @@ const serverSSE = useServerSSE({
     }
   },
   onTaskUpdate: (data) => {
-    console.log("[App] SSE TASK_UPDATE:", JSON.stringify(data), "currentStatus:", serviceStatus.value);
+    log.debug(`SSE TASK_UPDATE: ${JSON.stringify(data)} currentStatus: ${serviceStatus.value}`);
     updateStatusFromTask(data.task, data.errorType, data.errorMessage);
   },
   onClearElements: () => clearElements(),
@@ -153,7 +156,7 @@ let justReconnected = false;
 watch(serverSSE.isConnected, (connected, wasConnected) => {
   if (!connected && wasConnected && serviceInstanceId) {
     sseWasDown = true;
-    console.log("[App] SSE 断开，通知服务下线: %s", serviceInstanceId);
+    log.debug(`SSE 断开，通知服务下线: ${serviceInstanceId}`);
     chrome.runtime.sendMessage({
       type: EXT_MSG.SERVICE_GONE,
       serviceInstanceId,
@@ -161,7 +164,7 @@ watch(serverSSE.isConnected, (connected, wasConnected) => {
   } else if (connected && !wasConnected && sseWasDown && serviceInstanceId) {
     sseWasDown = false;
     justReconnected = true;
-    console.log("[App] SSE 重连，通知服务上线: %s", serviceInstanceId);
+    log.debug(`SSE 重连，通知服务上线: ${serviceInstanceId}`);
     chrome.runtime.sendMessage({
       type: EXT_MSG.SERVICE_APPEARED,
       proxyPort,
@@ -176,7 +179,7 @@ const opencodeSSE = useOpencodeSessionSSE({
   proxyBaseUrl: proxyBaseUrl.value,
   currentSessionId,
   onConnected: () => {
-    console.debug("[OpenCode] Session SSE connected");
+    opencodeLog.debug("Session SSE connected");
   },
   onSessionUpdate: (session) => {
     // 当 OpenCode 自动生成标题后，更新本地 session 列表
@@ -231,7 +234,7 @@ const retryWarmup = async (selectedModel?: { providerID: string; modelID: string
       }
     }
   } catch (e) {
-    console.error("[OpenCode] Retry warmup failed:", e);
+    opencodeLog.error("Retry warmup failed:", { error: e });
     showNotification("重试失败，请稍后再试");
   } finally {
     retryingWarmup.value = false;
@@ -246,7 +249,7 @@ const fetchAvailableModels = async () => {
       availableModels.value = data.models;
     }
   } catch (e) {
-    console.error("[OpenCode] Failed to fetch available models:", e);
+    opencodeLog.error("Failed to fetch available models:", { error: e });
     availableModels.value = [];
   }
 };
@@ -258,7 +261,7 @@ const ensureServicesStarted = async () => {
     const data = await res.json();
     // 防御性检查：fetch 期间 serviceStatus 可能已被其他流程改变（如 SSE），仅当仍为 idle 时才启动
     if (serviceStatus.value !== "idle") {
-      console.log("[App][ensureServicesStarted] fetch 完成但 serviceStatus 已变为 %s，跳过启动", serviceStatus.value);
+      log.debug(`[ensureServicesStarted] fetch 完成但 serviceStatus 已变为 ${serviceStatus.value}，跳过启动`);
       return true;
     }
     if (data.success) {
@@ -306,7 +309,7 @@ watch(serviceStatus, (status, oldStatus) => {
     opencodeSSE.connect();
   }
   if (status === "ready" && oldStatus !== "ready") {
-    console.log("[App] 服务就绪，加载会话列表");
+    log.debug("服务就绪，加载会话列表");
     loadSessions();
   }
 });
@@ -342,21 +345,21 @@ const cleanupSelectMode = () => {
 };
 
 onMounted(() => {
-  console.log("[App] onMounted, sid=%s, serviceStatus=%s, config:", serviceInstanceId, serviceStatus.value, JSON.stringify(props.config));
+  log.debug(`onMounted, sid=${serviceInstanceId}, serviceStatus=${serviceStatus.value}, config: ${JSON.stringify(props.config)}`);
   if (serviceStatus.value === "ready") {
-    console.log("[App] onMounted: ready 分支，直接加载会话");
+    log.debug("onMounted: ready 分支，直接加载会话");
     loadSessions();
     serverSSE.connect();
     opencodeSSE.connect();
     updateContext(true);
   } else if (serviceStatus.value === "idle") {
     if (isExtensionMode) {
-      console.log("[App] onMounted: idle 分支（扩展模式），先 setStarting 显示蒙层");
+      log.debug("onMounted: idle 分支（扩展模式），先 setStarting 显示蒙层");
       // 扩展模式：服务可能正在启动中，先显示加载蒙层，等待 SSE 确认 ready 后再加载会话
       setStarting();
       serverSSE.connect();
     } else {
-      console.log("[App] onMounted: idle 分支（非扩展模式），直接加载会话");
+      log.debug("onMounted: idle 分支（非扩展模式），直接加载会话");
       loadSessions();
       serverSSE.connect();
     }

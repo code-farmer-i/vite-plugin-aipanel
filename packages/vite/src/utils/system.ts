@@ -5,7 +5,7 @@ import net from "net";
 import path from "path";
 import type { ResultPromise } from "execa";
 import { MAX_PORT_TRIES, SERVER_CHECK_INTERVAL } from "@vite-plugin-opencode-assistant/shared";
-import { PerformanceTimer, createLogger } from "@vite-plugin-opencode-assistant/shared";
+import { PerformanceTimer, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
 
 const log = createLogger("Utils");
 

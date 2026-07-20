@@ -1,216 +1,104 @@
 import { LOG_PREFIX } from "./constants";
+import {
+  LogLevel,
+  type LogContext,
+  getConfig,
+  getTimestamp,
+  formatContext,
+  formatValue,
+} from "./logger-core";
 
-export enum LogLevel {
-  DEBUG = 0,
-  INFO = 1,
-  WARN = 2,
-  ERROR = 3,
-  NONE = 4,
-}
-
-export interface LogContext {
-  module?: string;
-  operation?: string;
-  traceId?: string;
-  duration?: number;
-  error?: Error | unknown;
-  [key: string]: unknown;
-}
-
-interface LoggerConfig {
-  verbose: boolean;
-  level: LogLevel;
-  showTimestamp: boolean;
-  showCaller: boolean;
-  showTrace: boolean;
-  indent: string;
-}
-
-const COLORS = {
-  reset: "\x1b[0m",
-  dim: "\x1b[2m",
-  bright: "\x1b[1m",
-  red: "\x1b[31m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  blue: "\x1b[34m",
-  magenta: "\x1b[35m",
-  cyan: "\x1b[36m",
-  white: "\x1b[37m",
-};
-
-const LEVEL_COLORS: Record<LogLevel, string> = {
-  [LogLevel.DEBUG]: COLORS.cyan,
-  [LogLevel.INFO]: COLORS.green,
-  [LogLevel.WARN]: COLORS.yellow,
-  [LogLevel.ERROR]: COLORS.red,
-  [LogLevel.NONE]: COLORS.reset,
-};
+/**
+ * 浏览器端 logger（使用 %c CSS 样式，无 ANSI 颜色码、无 process.pid）
+ * DEBUG → console.debug, INFO → console.log, WARN → console.warn, ERROR → console.error
+ */
 
 const LEVEL_NAMES: Record<LogLevel, string> = {
   [LogLevel.DEBUG]: "DEBUG",
-  [LogLevel.INFO]: "INFO",
-  [LogLevel.WARN]: "WARN",
+  [LogLevel.INFO]: "INFO ",
+  [LogLevel.WARN]: "WARN ",
   [LogLevel.ERROR]: "ERROR",
-  [LogLevel.NONE]: "NONE",
+  [LogLevel.NONE]: "NONE ",
 };
 
-let globalConfig: LoggerConfig = {
-  verbose: false,
-  level: LogLevel.INFO,
-  showTimestamp: true,
-  showCaller: true,
-  showTrace: false,
-  indent: "  ",
+// 浏览器 console 颜色（对齐 ANSI 标准 16 色终端）
+const C = {
+  dim: "color: #888",
+  bright: "font-weight: bold",
+  red: "color: #cd0000; font-weight: bold",
+  green: "color: #00cd00",
+  yellow: "color: #cdcd00",
+  blue: "color: #0000cd",
+  magenta: "color: #cd00cd",
+  cyan: "color: #00cdcd",
+  reset: "",
+} as const;
+
+const LEVEL_COLORS: Record<LogLevel, string> = {
+  [LogLevel.DEBUG]: C.cyan,
+  [LogLevel.INFO]: C.green,
+  [LogLevel.WARN]: C.yellow,
+  [LogLevel.ERROR]: C.red,
+  [LogLevel.NONE]: C.reset,
 };
-
-let traceCounter = 0;
-
-export function configureLogger(options: Partial<LoggerConfig>): void {
-  globalConfig = { ...globalConfig, ...options };
-}
-
-export function setVerbose(verbose: boolean): void {
-  globalConfig.verbose = verbose;
-  globalConfig.level = verbose ? LogLevel.DEBUG : LogLevel.INFO;
-}
-
-function getTimestamp(): string {
-  const now = new Date();
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  const seconds = String(now.getSeconds()).padStart(2, "0");
-  const ms = String(now.getMilliseconds()).padStart(3, "0");
-  return `${hours}:${minutes}:${seconds}.${ms}`;
-}
-
-function getCallerInfo(depth: number = 3): string {
-  const stack = new Error().stack;
-  if (!stack) return "";
-
-  const lines = stack.split("\n");
-  const targetLine = lines[depth];
-  if (!targetLine) return "";
-
-  const match = targetLine.match(/at\s+(?:(.+?)\s+\()?(.+?):(\d+):(\d+)\)?/);
-  if (!match) return "";
-
-  const [, funcName, filePath, line] = match;
-  const fileName = filePath.split("/").pop() || filePath;
-  const func = funcName || "<anonymous>";
-  return `${fileName}:${line} ${func}`;
-}
-
-function formatValue(value: unknown, depth: number = 0): string {
-  if (depth > 3) return "...";
-
-  if (value === null) return "null";
-  if (value === undefined) return "undefined";
-  if (typeof value === "string") return depth > 0 ? `"${value}"` : value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (value instanceof Error) {
-    return `${value.name}: ${value.message}${value.stack ? `\n${value.stack}` : ""}`;
-  }
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "[]";
-    if (value.length > 5) {
-      const items = value.slice(0, 3).map((v) => formatValue(v, depth + 1));
-      return `[${items.join(", ")}, ... ${value.length - 3} more items]`;
-    }
-    const items = value.map((v) => formatValue(v, depth + 1));
-    return `[${items.join(", ")}]`;
-  }
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length === 0) return "{}";
-    if (entries.length > 5) {
-      const shown = entries.slice(0, 3).map(([k, v]) => `${k}: ${formatValue(v, depth + 1)}`);
-      return `{${shown.join(", ")}, ... ${entries.length - 3} more keys}`;
-    }
-    const formatted = entries.map(([k, v]) => `${k}: ${formatValue(v, depth + 1)}`);
-    return `{${formatted.join(", ")}}`;
-  }
-  return String(value);
-}
-
-function formatContext(context?: LogContext): string {
-  if (!context || Object.keys(context).length === 0) return "";
-
-  const parts: string[] = [];
-
-  if (context.module) parts.push(`[${context.module}]`);
-  if (context.operation) parts.push(`(${context.operation})`);
-  if (context.traceId) parts.push(`trace:${context.traceId}`);
-  if (context.duration !== undefined) parts.push(`${context.duration}ms`);
-
-  const extraKeys = Object.keys(context).filter(
-    (k) => !["module", "operation", "traceId", "duration", "error"].includes(k),
-  );
-  if (extraKeys.length > 0) {
-    const extra: Record<string, unknown> = {};
-    extraKeys.forEach((k) => (extra[k] = context[k]));
-    parts.push(formatValue(extra));
-  }
-
-  return parts.join(" ");
-}
 
 function log(level: LogLevel, message: string, context?: LogContext, ...args: unknown[]): void {
-  if (level < globalConfig.level) return;
+  if (level < getConfig().level) return;
 
-  const parts: string[] = [];
+  const segments: string[] = [];
+  const styles: string[] = [];
 
-  parts.push(`${COLORS.dim}[${process.pid}]${COLORS.reset}`);
-
-  if (globalConfig.showTimestamp) {
-    parts.push(`${COLORS.dim}${getTimestamp()}${COLORS.reset}`);
+  // 时间戳（dim）
+  if (getConfig().showTimestamp) {
+    segments.push("%c%s");
+    styles.push(C.dim, getTimestamp());
   }
 
-  const levelColor = LEVEL_COLORS[level];
-  const levelName = LEVEL_NAMES[level].padEnd(5);
-  parts.push(`${levelColor}${levelName}${COLORS.reset}`);
+  // 级别（对应颜色）
+  segments.push(`%c${LEVEL_NAMES[level]}`);
+  styles.push(LEVEL_COLORS[level]);
 
-  parts.push(`${COLORS.bright}${LOG_PREFIX}${COLORS.reset}`);
+  // 前缀（bright）
+  segments.push(`%c${LOG_PREFIX}`);
+  styles.push(C.bright);
 
-  const contextStr = formatContext(context);
-  if (contextStr) {
-    parts.push(`${COLORS.magenta}${contextStr}${COLORS.reset}`);
+  // 模块（magenta）
+  const ctxStr = formatContext(context);
+  if (ctxStr) {
+    segments.push(`%c${ctxStr}`);
+    styles.push(C.magenta);
   }
 
-  parts.push(message);
+  // 消息
+  const formattedArgs = args.length > 0 ? ` ${args.map((a) => formatValue(a)).join(" ")}` : "";
+  segments.push(`%c${message}${formattedArgs}`);
+  styles.push(C.reset);
 
-  if (globalConfig.showCaller && level >= LogLevel.WARN) {
-    const caller = getCallerInfo(4);
-    if (caller) {
-      parts.push(`${COLORS.dim}(${caller})${COLORS.reset}`);
-    }
-  }
+  const output = segments.join(" ");
 
-  const formattedArgs = args.map((a) => formatValue(a)).join(" ");
-  if (formattedArgs) {
-    parts.push(formattedArgs);
-  }
-
+  // 错误信息单独处理
   if (context?.error) {
     const err = context.error;
     if (err instanceof Error) {
-      parts.push(`${COLORS.red}Error: ${err.message}${COLORS.reset}`);
-      if (level >= LogLevel.ERROR && globalConfig.showTrace && err.stack) {
-        console.error(`${COLORS.dim}${err.stack}${COLORS.reset}`);
+      if (level >= LogLevel.ERROR && getConfig().showTrace && err.stack) {
+        console.error(output, ...styles, `\n${err.stack}`);
+      } else {
+        console.error(output, ...styles, `\n%cError: ${err.message}`, C.red);
       }
     } else {
-      parts.push(`${COLORS.red}Error: ${formatValue(err)}${COLORS.reset}`);
+      console.error(output, ...styles, `\n%cError: ${formatValue(err)}`, C.red);
     }
+    return;
   }
 
-  const output = parts.join(" ");
-
   if (level >= LogLevel.ERROR) {
-    console.error(output);
+    console.error(output, ...styles);
   } else if (level === LogLevel.WARN) {
-    console.warn(output);
+    console.warn(output, ...styles);
+  } else if (level === LogLevel.DEBUG) {
+    console.debug(output, ...styles);
   } else {
-    console.log(output);
+    console.log(output, ...styles);
   }
 }
 
@@ -232,93 +120,20 @@ export const logger = {
   },
 
   group(label: string, context?: LogContext): void {
-    if (!globalConfig.verbose) return;
-    const contextStr = formatContext(context);
-    console.log(
-      `${COLORS.dim}[${process.pid}]${COLORS.reset} ${COLORS.bright}${LOG_PREFIX}${COLORS.reset} ${COLORS.blue}▼${COLORS.reset} ${label}${contextStr ? ` ${contextStr}` : ""}`,
+    if (!getConfig().verbose) return;
+    console.group(
+      `%c${LOG_PREFIX}%c ${label}`,
+      C.bright,
+      context?.module ? `%c[${context.module}]%c ` : C.reset,
+      ...(context?.module ? [C.magenta, C.reset] : []),
     );
   },
 
   groupEnd(): void {
-    if (!globalConfig.verbose) return;
+    if (!getConfig().verbose) return;
+    console.groupEnd();
   },
 };
-
-export function generateTraceId(): string {
-  traceCounter++;
-  const timestamp = Date.now().toString(36);
-  const counter = traceCounter.toString(36).padStart(4, "0");
-  return `${timestamp}-${counter}`;
-}
-
-export class PerformanceTimer {
-  private startTime: number;
-  private context: LogContext;
-  private operation: string;
-
-  constructor(operation: string, context?: LogContext) {
-    this.operation = operation;
-    this.context = context || {};
-    this.startTime = performance.now();
-
-    logger.debug(`⏱️  Starting: ${operation}`, this.context);
-  }
-
-  end(message?: string): number {
-    const duration = Math.round(performance.now() - this.startTime);
-    const msg = message || `✓ Completed: ${this.operation}`;
-    logger.debug(msg, { ...this.context, duration });
-    return duration;
-  }
-
-  checkpoint(label: string): number {
-    const elapsed = Math.round(performance.now() - this.startTime);
-    logger.debug(`  ↳ ${label}`, { ...this.context, duration: elapsed });
-    return elapsed;
-  }
-}
-
-export class RequestContext {
-  traceId: string;
-  method: string;
-  path: string;
-  startTime: number;
-  private checkpoints: Array<{ time: number; label: string }> = [];
-
-  constructor(method: string, path: string) {
-    this.traceId = generateTraceId();
-    this.method = method;
-    this.path = path;
-    this.startTime = performance.now();
-
-    logger.debug(`→ ${method} ${path}`, { traceId: this.traceId, module: "HTTP" });
-  }
-
-  checkpoint(label: string): void {
-    const elapsed = Math.round(performance.now() - this.startTime);
-    this.checkpoints.push({ time: elapsed, label });
-    logger.debug(`  → ${label}`, { traceId: this.traceId, duration: elapsed });
-  }
-
-  end(statusCode: number): void {
-    const duration = Math.round(performance.now() - this.startTime);
-    const statusColor = statusCode < 400 ? COLORS.green : COLORS.red;
-    logger.debug(`← ${this.method} ${this.path} ${statusColor}${statusCode}${COLORS.reset}`, {
-      traceId: this.traceId,
-      duration,
-      checkpoints: this.checkpoints.length,
-    });
-  }
-
-  error(error: Error | unknown): void {
-    const duration = Math.round(performance.now() - this.startTime);
-    logger.error(`✗ ${this.method} ${this.path}`, {
-      traceId: this.traceId,
-      duration,
-      error,
-    });
-  }
-}
 
 export function createLogger(module: string) {
   return {
@@ -337,48 +152,5 @@ export function createLogger(module: string) {
     error(message: string, context?: Omit<LogContext, "module">, ...args: unknown[]): void {
       logger.error(message, { ...context, module }, ...args);
     },
-
-    timer(operation: string, context?: Omit<LogContext, "module">): PerformanceTimer {
-      return new PerformanceTimer(operation, { ...context, module });
-    },
   };
-}
-
-export function logMethod(
-  target: unknown,
-  propertyKey: string,
-  descriptor: PropertyDescriptor,
-): PropertyDescriptor {
-  const originalMethod = descriptor.value;
-  const className = (target as { constructor: { name: string } }).constructor.name;
-
-  descriptor.value = async function (...args: unknown[]) {
-    const timer = new PerformanceTimer(`${className}.${propertyKey}`);
-    try {
-      const result = await originalMethod.apply(this, args);
-      timer.end();
-      return result;
-    } catch (error) {
-      timer.end("❌ Failed");
-      throw error;
-    }
-  };
-
-  return descriptor;
-}
-
-export function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))}${sizes[i]}`;
-}
-
-export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
-  const minutes = Math.floor(ms / 60000);
-  const seconds = Math.round((ms % 60000) / 1000);
-  return `${minutes}m ${seconds}s`;
 }

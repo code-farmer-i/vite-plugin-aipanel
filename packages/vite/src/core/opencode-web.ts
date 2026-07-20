@@ -4,7 +4,7 @@ import fs from "fs";
 import { createRequire } from "module";
 import path from "path";
 import type { WebOptions } from "@vite-plugin-opencode-assistant/shared";
-import { createLogger, getProcessLogBuffer } from "@vite-plugin-opencode-assistant/shared";
+import { createLogger, getProcessLogBuffer } from "@vite-plugin-opencode-assistant/shared/node";
 
 const require = createRequire(path.join(process.cwd(), "package.json"));
 const packageDir = resolvePackageDir();
@@ -122,7 +122,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     const output = data.toString().trim();
     if (output) {
       // 忽略 SolidJS MaxListeners 警告（OpenCode 内部问题，不影响功能）
-      if (output.includes('MaxListenersExceededWarning')) return;
+      if (output.includes("MaxListenersExceededWarning")) return;
       log.warn("[OpenCode stderr]", { output });
       getProcessLogBuffer().addOpenCodeStderr(output);
     }

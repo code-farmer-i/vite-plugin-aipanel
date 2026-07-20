@@ -1,6 +1,6 @@
 import type { ViteDevServer } from "vite";
 import { CONTEXT_API_PATH } from "@vite-plugin-opencode-assistant/shared";
-import { RequestContext, createLogger } from "@vite-plugin-opencode-assistant/shared";
+import { RequestContext, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
 import type { EndpointContext } from "./types";
 
 const log = createLogger("Endpoints:Context");

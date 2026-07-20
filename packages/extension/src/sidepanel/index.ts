@@ -1,4 +1,6 @@
-import { EXT_MSG } from "@vite-plugin-opencode-assistant/shared";
+import { EXT_MSG, createLogger } from "@vite-plugin-opencode-assistant/shared";
+
+const log = createLogger("OpenCode SP");
 
 /**
  * OpenCode Assistant - Side Panel
@@ -8,7 +10,7 @@ import { EXT_MSG } from "@vite-plugin-opencode-assistant/shared";
  * 多实例通过 overflow:hidden + 定位偏移切换，不销毁不 display:none，
  * 所有实例始终保持完整渲染和网络连接。
  */
-console.log("[OpenCode SP] Side Panel 入口已加载");
+log.debug("Side Panel 入口已加载");
 
 import "@vite-plugin-opencode-assistant/client/styles.css";
 
@@ -151,7 +153,7 @@ async function createAppInstance(info: ServiceInfo): Promise<AppInstance> {
     zombieTimer: null,
   };
   appInstances.set(info.serviceInstanceId, inst);
-  console.log("[OpenCode SP] 新 App 实例已创建: %s vite=%s", info.serviceInstanceId, info.vitePort);
+  log.debug(`新 App 实例已创建: ${info.serviceInstanceId} vite=${info.vitePort}`);
   return inst;
 }
 
@@ -169,7 +171,7 @@ function destroyAppInstance(serviceInstanceId: string) {
   inst.rootEl.remove();
 
   appInstances.delete(serviceInstanceId);
-  console.log("[OpenCode SP] App 实例已销毁: %s", serviceInstanceId);
+  log.debug(`App 实例已销毁: ${serviceInstanceId}`);
 
   if (activeServiceId === serviceInstanceId) {
     showNoServiceOverlay();
@@ -203,9 +205,9 @@ function handleServiceAppeared(info: ServiceInfo) {
     }
     // 只显示 App 如果当前 active tab 仍能检测到该服务
     showAppIfActiveTabMatches(info.serviceInstanceId);
-    console.log("[OpenCode SP] 复用已有实例: %s vite=%s", info.serviceInstanceId, info.vitePort);
+    log.debug(`复用已有实例: ${info.serviceInstanceId} vite=${info.vitePort}`);
   } else {
-    console.log("[OpenCode SP] 创建新实例: %s vite=%s", info.serviceInstanceId, info.vitePort);
+    log.debug(`创建新实例: ${info.serviceInstanceId} vite=${info.vitePort}`);
     createAppInstance(info).then(() => {
       showAppIfActiveTabMatches(info.serviceInstanceId);
     });
@@ -230,7 +232,7 @@ function handleServiceGone(serviceInstanceId: string) {
   inst.zombieTimer = setTimeout(() => {
     destroyAppInstance(serviceInstanceId);
   }, 30000);
-  console.log("[OpenCode SP] 服务下线: %s (30s后销毁)", serviceInstanceId);
+  log.debug(`服务下线: ${serviceInstanceId} (30s后销毁)`);
 
   if (activeServiceId === serviceInstanceId) {
     showNoServiceOverlay();
@@ -257,13 +259,13 @@ function handleTabSwitched(info: ServiceInfo | null) {
 chrome.runtime.onMessage.addListener((msg) => {
   switch (msg.type) {
     case EXT_MSG.TAB_SWITCHED:
-      console.log("[OpenCode SP] Tab 切换:", msg.portInfo);
+      log.debug("Tab 切换:", msg.portInfo);
       handleTabSwitched(msg.portInfo || null);
       break;
 
     case EXT_MSG.SERVICE_APPEARED:
       if (msg.serviceInstanceId && msg.proxyPort && msg.vitePort) {
-        console.log("[OpenCode SP] 服务上线: %s", msg.serviceInstanceId);
+        log.debug(`服务上线: ${msg.serviceInstanceId}`);
         handleServiceAppeared({
           serviceInstanceId: msg.serviceInstanceId,
           vitePort: msg.vitePort,
@@ -275,7 +277,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 
     case EXT_MSG.SERVICE_GONE:
       if (msg.serviceInstanceId) {
-        console.log("[OpenCode SP] 服务下线: %s", msg.serviceInstanceId);
+        log.debug(`服务下线: ${msg.serviceInstanceId}`);
         handleServiceGone(msg.serviceInstanceId);
       }
       break;

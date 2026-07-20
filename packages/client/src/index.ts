@@ -1,6 +1,8 @@
 import { createApp } from "vue";
-import { CONFIG_DATA_ATTR, WIDGET_MSG } from "@vite-plugin-opencode-assistant/shared";
+import { CONFIG_DATA_ATTR, WIDGET_MSG, createLogger } from "@vite-plugin-opencode-assistant/shared";
 import type { WidgetOptions } from "@vite-plugin-opencode-assistant/shared";
+
+const log = createLogger("OpenCode");
 import App from "./App.vue";
 import "./styles.css";
 
@@ -15,7 +17,7 @@ if (scriptTag) {
       );
       config = JSON.parse(decoded);
     } catch (e) {
-      console.error("[OpenCode] Failed to parse config:", e);
+      log.error("Failed to parse config:", { error: e });
     }
   }
 }

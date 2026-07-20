@@ -520,7 +520,7 @@ function generateBridgeScript(options: ProxyServerOptions): string {
   function insertFilePart(element) {
     const promptInput = document.querySelector('[data-component="prompt-input"]');
     if (!promptInput) {
-      console.warn('[OpenCode Bridge] Prompt input not found');
+      log.warn('Prompt input not found');
       return;
     }
 

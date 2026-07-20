@@ -7,10 +7,9 @@ import {
   CONTEXT_API_PATH,
   DEFAULT_CONFIG,
   DEFAULT_PROXY_PORT,
-  createLogger,
   setVerbose,
-  initProcessLogCapture,
 } from "@vite-plugin-opencode-assistant/shared";
+import { createLogger, initProcessLogCapture } from "@vite-plugin-opencode-assistant/shared/node";
 
 import { setupMiddlewares, LOGS_API_PATH } from "./endpoints/index";
 import { injectWidget } from "./core/injector";

@@ -4,8 +4,10 @@ export default defineConfig({
   name: "@vite-plugin-opencode-assistant/components",
   build: {
     mode: "components",
+    namedExport: true,
     packageManager: "pnpm",
     umd: false,
+    bundle: false,
     extensions: {
       esm: ".mjs",
       cjs: ".cjs",

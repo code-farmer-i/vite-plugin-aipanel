@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { OpenCodeLogo } from "@vite-plugin-opencode-assistant/components";
 
 const props = defineProps<{
   onRefresh: () => Promise<boolean>;
@@ -29,43 +30,7 @@ async function handleRefresh() {
 <template>
   <div class="opencode-no-service">
     <div class="opencode-no-service-icon">
-      <svg
-        viewBox="0 0 1024 1024"
-        xmlns="http://www.w3.org/2000/svg"
-        width="64"
-        height="64"
-      >
-        <defs>
-          <linearGradient
-            id="ns-g"
-            x1="0%"
-            y1="0%"
-            x2="100%"
-            y2="100%"
-          >
-            <stop
-              offset="0%"
-              style="stop-color: #667eea"
-            />
-            <stop
-              offset="100%"
-              style="stop-color: #764ba2"
-            />
-          </linearGradient>
-        </defs>
-        <path
-          d="M512 981.33H85.34c-15.85 0-30.38-8.77-37.77-22.81a42.624 42.624 0 0 1 2.6-44.02L135 791.08C75.25 710.5 42.67 612.6 42.67 512 42.67 253.21 253.21 42.67 512 42.67S981.34 253.21 981.34 512 770.8 981.33 512 981.33zM166.44 896H512c211.73 0 384-172.27 384-384S723.73 128 512 128 128 300.27 128 512c0 91.29 32.83 179.9 92.46 249.46 12.58 14.69 13.73 36 2.77 51.94L166.44 896z"
-          fill="url(#ns-g)"
-        />
-        <path
-          d="M384 448m-64 0a64 64 0 1 0 128 0 64 64 0 1 0 -128 0Z"
-          fill="url(#ns-g)"
-        />
-        <path
-          d="M640 448m-64 0a64 64 0 1 0 128 0 64 64 0 1 0 -128 0Z"
-          fill="url(#ns-g)"
-        />
-      </svg>
+      <OpenCodeLogo :size="64" />
     </div>
     <h2 class="opencode-no-service-title">OpenCode Assistant</h2>
     <p class="opencode-no-service-desc">当前页面未检测到 OpenCode 助手服务</p>

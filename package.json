@@ -14,6 +14,9 @@
       "esbuild",
       "msgpackr-extract",
       "vue-demi"
+    ],
+    "ignoredBuiltDependencies": [
+      "sharp"
     ]
   },
   "scripts": {
@@ -31,7 +34,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@pagoda-cli/core": "^1.0.10",
+    "@pagoda-cli/core": "^1.0.11",
     "@pnpm/logger": "1100.0.0",
     "@types/chrome": "^0.2.2",
     "@types/node": "^26.1.1",

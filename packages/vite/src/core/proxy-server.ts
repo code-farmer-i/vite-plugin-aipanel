@@ -582,7 +582,7 @@ function generateBridgeScript(options: ProxyServerOptions): string {
     });
 
     const span = document.createElement('span');
-    span.setAttribute('data-type', 'file');
+    span.setAttribute('data-mention', 'file');
     span.setAttribute('data-path', jsonStr);
     span.setAttribute('contenteditable', 'false');
 

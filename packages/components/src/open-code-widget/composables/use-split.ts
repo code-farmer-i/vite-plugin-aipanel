@@ -20,6 +20,11 @@ export function useSplitMode(options: UseSplitModeOptions) {
 
   const isExtensionMode = computed(() => options.displayMode.value === "extension");
 
+  // extension / extension-selector 模式均不应修改 body class
+  const shouldSkipBodyModification = computed(
+    () => isExtensionMode.value || options.displayMode.value === "extension-selector",
+  );
+
   const splitConfig = computed(() => {
     const config = options.splitMode.value || {};
     const isExt = isExtensionMode.value;
@@ -75,8 +80,8 @@ export function useSplitMode(options: UseSplitModeOptions) {
 
   const updateBodyClass = () => {
     if (typeof document === "undefined") return;
-    // extension 模式下清理 split 遗留的 body class 后直接返回
-    if (isExtensionMode.value) {
+    // extension / extension-selector 模式下清理 split 遗留的 body class 后直接返回
+    if (shouldSkipBodyModification.value) {
       document.body.classList.remove("has-opencode-split");
       document.body.classList.remove("has-opencode-split-left");
       document.body.classList.remove("has-opencode-split-right");

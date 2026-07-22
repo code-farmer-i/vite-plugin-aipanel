@@ -75,8 +75,14 @@ export function useSplitMode(options: UseSplitModeOptions) {
 
   const updateBodyClass = () => {
     if (typeof document === "undefined") return;
-    // extension 模式下不修改 body class
-    if (isExtensionMode.value) return;
+    // extension 模式下清理 split 遗留的 body class 后直接返回
+    if (isExtensionMode.value) {
+      document.body.classList.remove("has-opencode-split");
+      document.body.classList.remove("has-opencode-split-left");
+      document.body.classList.remove("has-opencode-split-right");
+      document.body.style.removeProperty("--opencode-split-width");
+      return;
+    }
 
     const shouldShrink = isSplitMode.value && options.open.value && splitConfig.value.shrinkPage;
 
@@ -98,7 +104,9 @@ export function useSplitMode(options: UseSplitModeOptions) {
     }
   };
 
-  watch([isSplitMode, options.open, panelWidth, splitPosition], updateBodyClass, { immediate: true });
+  watch([isSplitMode, options.open, panelWidth, splitPosition], updateBodyClass, {
+    immediate: true,
+  });
 
   watch(splitConfig, (config) => {
     if (panelWidth.value < config.minWidth) {
@@ -121,7 +129,12 @@ export function useSplitMode(options: UseSplitModeOptions) {
   onMounted(() => {
     if (typeof window !== "undefined") {
       window.addEventListener("resize", handleWindowResize);
-      if (!isExtensionMode.value && isSplitMode.value && splitConfig.value.defaultOpen && !options.open.value) {
+      if (
+        !isExtensionMode.value &&
+        isSplitMode.value &&
+        splitConfig.value.defaultOpen &&
+        !options.open.value
+      ) {
         options.onOpenChange?.(true);
       }
     }

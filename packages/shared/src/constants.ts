@@ -169,6 +169,7 @@ export const DEFAULT_OPENCODE_SETTINGS = {
     showReasoningSummaries: true,
     newLayoutDesigns: true,
     showFileTree: false,
+    shellToolPartsExpanded: true,
   },
 };
 

@@ -324,7 +324,10 @@ usePersistState({
       handleResize(state.splitPanelWidth);
     }
     if (state.displayMode !== undefined && state.displayMode !== props.displayMode) {
-      localDisplayMode.value = state.displayMode;
+      // extension / extension-selector 模式由构建配置决定，不被 localStorage 覆盖
+      if (props.displayMode !== "extension" && props.displayMode !== "extension-selector") {
+        localDisplayMode.value = state.displayMode;
+      }
     }
     if (state.splitPosition !== undefined) {
       localSplitPosition.value = state.splitPosition;

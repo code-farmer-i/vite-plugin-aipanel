@@ -5,6 +5,7 @@ import {
   OPENCODE_STORAGE_KEYS,
   WIDGET_MSG,
   BRIDGE_SCRIPT_PATH,
+  base64Encode,
   type OpenCodeSettings,
   type OpenCodeLanguage,
 } from "@vite-plugin-opencode-assistant/shared";
@@ -20,6 +21,8 @@ export interface ProxyServerOptions {
   settings?: OpenCodeSettings;
   /** 绑定地址，需与端口检查使用的地址族一致，避免 IPv4/IPv6 不匹配 */
   hostname?: string;
+  /** 项目目录，用于路径重写（代理 /session/* 请求时添加 base64 目录前缀） */
+  projectDir?: string;
 }
 
 /**
@@ -703,6 +706,8 @@ export function startProxyServer(
     const target = new URL(targetUrl);
     const bridgeScript = generateBridgeScript(options);
 
+    const base64Dir = options.projectDir ? base64Encode(options.projectDir) : "";
+
     const server = http.createServer((req, res) => {
       if (req.url === BRIDGE_SCRIPT_PATH) {
         const body = bridgeScript;
@@ -715,10 +720,17 @@ export function startProxyServer(
         return;
       }
 
+      // 路径重写：如果请求路径以 /session/ 开头但缺少 base64 目录前缀，
+      // 则自动添加前缀。OpenCode 前端内部路由可能发起不带目录前缀的请求。
+      let reqPath = req.url || "/";
+      if (base64Dir && reqPath.startsWith("/session/") && !reqPath.startsWith(`/${base64Dir}/`)) {
+        reqPath = `/${base64Dir}${reqPath}`;
+      }
+
       const requestOptions: http.RequestOptions = {
         hostname: target.hostname,
         port: target.port,
-        path: req.url,
+        path: reqPath,
         method: req.method,
         headers: {
           ...req.headers,

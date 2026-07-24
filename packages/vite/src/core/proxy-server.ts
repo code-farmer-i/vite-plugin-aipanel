@@ -722,6 +722,15 @@ export function startProxyServer(
     const target = new URL(targetUrl);
     const bridgeScript = generateBridgeScript(options);
 
+    // 使用 keep-alive agent 复用连接，避免频繁创建/销毁 TCP 连接导致偶发 502
+    const agent = new http.Agent({
+      keepAlive: true,
+      keepAliveMsecs: 30000,
+      maxSockets: 50,
+      maxFreeSockets: 10,
+      timeout: 0,
+    });
+
     const server = http.createServer((req, res) => {
       if (req.url === BRIDGE_SCRIPT_PATH) {
         const body = bridgeScript;
@@ -735,6 +744,7 @@ export function startProxyServer(
       }
 
       const requestOptions: http.RequestOptions = {
+        agent,
         hostname: target.hostname,
         port: target.port,
         path: req.url,

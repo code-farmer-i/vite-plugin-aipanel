@@ -64,6 +64,25 @@ function generateBridgeScript(options: ProxyServerOptions): string {
 
   return `
 (function() {
+  // 立即清理残留的 session tabs 存储，必须在 DOMContentLoaded 之前执行
+  // 否则 OpenCode 模块脚本会先读取 localStorage 并发出 404 请求
+  (function cleanupTabsStorage() {
+    try {
+      var keysToRemove = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && (key.indexOf('opencode.window') === 0 || key.indexOf('opencode.workspace') === 0)) {
+          keysToRemove.push(key);
+        }
+      }
+      for (var j = 0; j < keysToRemove.length; j++) {
+        localStorage.removeItem(keysToRemove[j]);
+      }
+    } catch (e) {
+      // localStorage 不可用时忽略
+    }
+  })();
+
   // === 劫持 matchMedia，强制桌面端布局以渲染审查面板 ===
   // 只劫持 opencode 判断桌面端的媒体查询 (min-width: 768px)，不影响其他查询
   (function() {
@@ -654,25 +673,6 @@ function generateBridgeScript(options: ProxyServerOptions): string {
 
   // === 就绪通知 ===
   function init() {
-    // 清理残留的 session tabs 存储，避免加载已过期的 session 产生 404
-    // localStorage 按 origin 隔离，每次 iframe 重新加载时清掉旧的 tab 记录
-    (function cleanupTabsStorage() {
-      try {
-        var keysToRemove = [];
-        for (var i = 0; i < localStorage.length; i++) {
-          var key = localStorage.key(i);
-          if (key && (key.indexOf('opencode.window') === 0 || key.indexOf('opencode.workspace') === 0)) {
-            keysToRemove.push(key);
-          }
-        }
-        for (var j = 0; j < keysToRemove.length; j++) {
-          localStorage.removeItem(keysToRemove[j]);
-        }
-      } catch (e) {
-        // localStorage 不可用时忽略
-      }
-    })();
-
     injectMinimizeStyles();
     injectReviewPanelStyles();
     injectGeneralStyles();

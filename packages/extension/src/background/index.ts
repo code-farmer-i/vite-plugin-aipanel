@@ -9,6 +9,9 @@ const BROADCAST_TYPES = new Set<string>(Object.values(EXT_BROADCAST));
  * 消息中转 + Tab 切换通知 + 图标点击 → Side Panel
  */
 
+/** 记录有服务的 windowId 集合，只响应这些窗口内的 Tab 切换 */
+const serviceWindowIds = new Set<number>();
+
 chrome.runtime.onInstalled.addListener(() => {
   log.info("已安装");
 });
@@ -19,7 +22,10 @@ chrome.action.onClicked.addListener((tab) => {
 });
 
 /** Tab 切换 → 通知 Side Panel 重新连接新 Tab 的服务 + 请求新 Tab 上报页面上下文 */
-chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
+  // 只响应服务所在窗口的 Tab 切换，忽略其他窗口（DevTools/CDP 等）
+  if (serviceWindowIds.size > 0 && !serviceWindowIds.has(windowId)) return;
+
   try {
     const info = await chrome.tabs.sendMessage(tabId, { type: EXT_MSG.GET_PORT_INFO });
     chrome.runtime
@@ -45,5 +51,13 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     const forwarded = { ...msg, tabId: sender.tab?.id };
     log.debug(`转发消息: type=${msg.type} tabId=${sender.tab?.id}`);
     chrome.runtime.sendMessage(forwarded).catch(() => {});
+  }
+
+  // 记录/移除服务所在的 windowId
+  if (msg.type === EXT_MSG.SERVICE_APPEARED && sender.tab?.windowId != null) {
+    serviceWindowIds.add(sender.tab.windowId);
+  }
+  if (msg.type === EXT_MSG.SERVICE_GONE && sender.tab?.windowId != null) {
+    serviceWindowIds.delete(sender.tab.windowId);
   }
 });

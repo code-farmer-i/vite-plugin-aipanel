@@ -213,6 +213,8 @@ export interface WidgetOptions {
   webPort?: number;
   /** 项目根目录 */
   projectRoot?: string;
+  /** 是否开启 verbose 日志 */
+  verbose?: boolean;
 }
 
 /**

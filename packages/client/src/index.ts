@@ -1,5 +1,10 @@
 import { createApp } from "vue";
-import { CONFIG_DATA_ATTR, WIDGET_MSG, createLogger } from "@vite-plugin-opencode-assistant/shared";
+import {
+  CONFIG_DATA_ATTR,
+  WIDGET_MSG,
+  createLogger,
+  setVerbose,
+} from "@vite-plugin-opencode-assistant/shared";
 import type { WidgetOptions } from "@vite-plugin-opencode-assistant/shared";
 
 const log = createLogger("OpenCode");
@@ -16,6 +21,9 @@ if (scriptTag) {
         Uint8Array.from(atob(configBase64), (c) => c.charCodeAt(0)),
       );
       config = JSON.parse(decoded);
+      if (config.verbose) {
+        setVerbose(true);
+      }
     } catch (e) {
       log.error("Failed to parse config:", { error: e });
     }
@@ -39,6 +47,7 @@ if (!(window as any)[INIT_MARKER]) {
       webPort: config.webPort,
       projectRoot: config.projectRoot || "",
       serviceInstanceId: config.serviceInstanceId,
+      verbose: config.verbose,
     };
 
     // queueMicrotask 确保 Content Script 的消息监听器先注册

@@ -198,6 +198,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         serviceInstanceId,
         webPort: actualWebPort,
         projectRoot,
+        verbose: config.verbose,
       });
 
       timer.end();

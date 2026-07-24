@@ -1,4 +1,4 @@
-import { EXT_MSG, createLogger } from "@vite-plugin-opencode-assistant/shared";
+import { EXT_MSG, createLogger, setVerbose } from "@vite-plugin-opencode-assistant/shared";
 
 const log = createLogger("OpenCode SP");
 
@@ -19,6 +19,7 @@ interface ServiceInfo {
   vitePort: string;
   projectRoot: string;
   serviceInstanceId: string;
+  verbose?: boolean;
 }
 
 /** 从 content script 获取服务信息 */
@@ -138,7 +139,12 @@ async function createAppInstance(info: ServiceInfo): Promise<AppInstance> {
     hotkey: "",
     displayMode: "extension",
     open: true,
+    verbose: info.verbose,
   };
+
+  if (info.verbose) {
+    setVerbose(true);
+  }
 
   const app = createApp(App, { config });
   app.mount(rootEl);

@@ -31,6 +31,7 @@ if (win[INIT_MARKER]) {
     vitePort: string;
     projectRoot: string;
     serviceInstanceId: string;
+    verbose?: boolean;
   }
 
   let cachedInfo: ServiceInfo | null = null;
@@ -105,6 +106,7 @@ if (win[INIT_MARKER]) {
         vitePort: data.vitePort || location.port,
         projectRoot: data.projectRoot || "",
         serviceInstanceId: data.serviceInstanceId,
+        verbose: data.verbose,
       });
     }
   });

@@ -25,34 +25,29 @@ export function sleep(ms: number): Promise<void> {
 }
 
 /**
- * 将字符串编码为 Base64
+ * 将字符串编码为 URL-safe Base64（与 OpenCode 兼容）
+ * 替换 + 为 -, / 为 _, 去掉 =
  * @param str - 要编码的字符串
- * @returns Base64 编码的字符串
+ * @returns URL-safe Base64 编码的字符串
  */
 export function base64Encode(str: string): string {
   if (!str) {
     throw new Error("base64Encode: input string is required");
   }
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(str).toString("base64");
-  }
-  // 浏览器环境
   const bytes = new TextEncoder().encode(str);
   const binString = Array.from(bytes, (byte) => String.fromCodePoint(byte)).join("");
-  return btoa(binString);
+  return btoa(binString).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
 /**
- * 将 Base64 解码为字符串
- * @param base64 - Base64 编码的字符串
+ * 将 URL-safe Base64 解码为字符串
+ * @param base64 - URL-safe Base64 编码的字符串
  * @returns 解码后的字符串
  */
 export function base64Decode(base64: string): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(base64, "base64").toString("utf-8");
-  }
-  // 浏览器环境
-  const binString = atob(base64);
+  // 还原为标准 base64
+  const standard = base64.replace(/-/g, "+").replace(/_/g, "/");
+  const binString = atob(standard);
   const bytes = Uint8Array.from(binString, (c) => c.charCodeAt(0));
   return new TextDecoder().decode(bytes);
 }

@@ -24,6 +24,11 @@ export class OpenCodeAPI {
     private chromeDevtoolsPort: number = CHROME_DEVTOOLS_PORT,
   ) {}
 
+  /** 构建代理 iframe URL（旧版格式：/{base64(projectDir)}/session/{id}） */
+  private buildSessionProxyUrl(projectDir: string, sessionId: string): string {
+    return `http://${this.hostname}:${this.getProxyPort()}/${base64Encode(projectDir)}/session/${sessionId}`;
+  }
+
   private createHttpRequest<T>(
     options: http.RequestOptions,
     body?: string,
@@ -78,9 +83,7 @@ export class OpenCodeAPI {
         });
         const sessionsWithUrl = sessions.map((s) => ({
           ...s,
-          url: s.directory
-            ? `http://${this.hostname}:${this.getProxyPort()}/${base64Encode(s.directory)}/session/${s.id}`
-            : "",
+          url: s.directory && s.id ? this.buildSessionProxyUrl(s.directory, s.id) : "",
         }));
         timer.end(`Found ${sessions.length} sessions`);
         return sessionsWithUrl;
@@ -132,7 +135,7 @@ export class OpenCodeAPI {
         );
         const sessionWithUrl = {
           ...session,
-          url: `http://${this.hostname}:${this.getProxyPort()}/${base64Encode(projectDir)}/session/${session.id}`,
+          url: this.buildSessionProxyUrl(projectDir, session.id),
         };
         timer.end(`Created session: ${session.id}`);
         return sessionWithUrl;
@@ -480,14 +483,14 @@ export class OpenCodeAPI {
     const matchingSession = sessions.find((s) => s.directory === projectDir);
 
     if (matchingSession) {
-      const url = `http://${this.hostname}:${this.getProxyPort()}/${base64Encode(projectDir)}/session/${matchingSession.id}`;
+      const url = this.buildSessionProxyUrl(projectDir, matchingSession.id);
       timer.end(`Using existing session: ${matchingSession.id}`);
       return url;
     }
 
     log.debug("Creating new session...", { projectDir });
     const newSession = await this.createSession(projectDir);
-    const url = `http://${this.hostname}:${this.getProxyPort()}/${base64Encode(projectDir)}/session/${newSession.id}`;
+    const url = this.buildSessionProxyUrl(projectDir, newSession.id);
     timer.end(`Created new session: ${newSession.id}`);
     return url;
   }

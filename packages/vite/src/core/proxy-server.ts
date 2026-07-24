@@ -5,7 +5,6 @@ import {
   OPENCODE_STORAGE_KEYS,
   WIDGET_MSG,
   BRIDGE_SCRIPT_PATH,
-  base64Encode,
   type OpenCodeSettings,
   type OpenCodeLanguage,
 } from "@vite-plugin-opencode-assistant/shared";
@@ -21,8 +20,6 @@ export interface ProxyServerOptions {
   settings?: OpenCodeSettings;
   /** 绑定地址，需与端口检查使用的地址族一致，避免 IPv4/IPv6 不匹配 */
   hostname?: string;
-  /** 项目目录，用于路径重写（代理 /session/* 请求时添加 base64 目录前缀） */
-  projectDir?: string;
 }
 
 /**
@@ -657,6 +654,25 @@ function generateBridgeScript(options: ProxyServerOptions): string {
 
   // === 就绪通知 ===
   function init() {
+    // 清理残留的 session tabs 存储，避免加载已过期的 session 产生 404
+    // localStorage 按 origin 隔离，每次 iframe 重新加载时清掉旧的 tab 记录
+    (function cleanupTabsStorage() {
+      try {
+        var keysToRemove = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var key = localStorage.key(i);
+          if (key && (key.indexOf('opencode.window') === 0 || key.indexOf('opencode.workspace') === 0)) {
+            keysToRemove.push(key);
+          }
+        }
+        for (var j = 0; j < keysToRemove.length; j++) {
+          localStorage.removeItem(keysToRemove[j]);
+        }
+      } catch (e) {
+        // localStorage 不可用时忽略
+      }
+    })();
+
     injectMinimizeStyles();
     injectReviewPanelStyles();
     injectGeneralStyles();
@@ -706,8 +722,6 @@ export function startProxyServer(
     const target = new URL(targetUrl);
     const bridgeScript = generateBridgeScript(options);
 
-    const base64Dir = options.projectDir ? base64Encode(options.projectDir) : "";
-
     const server = http.createServer((req, res) => {
       if (req.url === BRIDGE_SCRIPT_PATH) {
         const body = bridgeScript;
@@ -720,17 +734,10 @@ export function startProxyServer(
         return;
       }
 
-      // 路径重写：如果请求路径以 /session/ 开头但缺少 base64 目录前缀，
-      // 则自动添加前缀。OpenCode 前端内部路由可能发起不带目录前缀的请求。
-      let reqPath = req.url || "/";
-      if (base64Dir && reqPath.startsWith("/session/") && !reqPath.startsWith(`/${base64Dir}/`)) {
-        reqPath = `/${base64Dir}${reqPath}`;
-      }
-
       const requestOptions: http.RequestOptions = {
         hostname: target.hostname,
         port: target.port,
-        path: reqPath,
+        path: req.url,
         method: req.method,
         headers: {
           ...req.headers,

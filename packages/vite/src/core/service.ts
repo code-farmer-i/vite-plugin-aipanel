@@ -199,7 +199,6 @@ Please install OpenCode first:
           language: this.config.language,
           settings: this.config.settings,
           hostname: this.config.hostname,
-          projectDir: this.workspaceRoot ?? undefined,
         });
         this.proxyServer = result.server;
         if (result.actualPort !== this.actualProxyPort) {
@@ -219,7 +218,6 @@ Please install OpenCode first:
             language: this.config.language,
             settings: this.config.settings,
             hostname: this.config.hostname,
-            projectDir: this.workspaceRoot ?? undefined,
           });
           this.proxyServer = result.server;
           this.actualProxyPort = result.actualPort;

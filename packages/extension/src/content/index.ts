@@ -81,17 +81,40 @@ if (win[INIT_MARKER]) {
     if (heartbeatTimer) clearTimeout(heartbeatTimer);
     heartbeatTimer = setTimeout(() => {
       if (cachedInfo) {
-        chrome.runtime
-          .sendMessage({
-            type: EXT_MSG.SERVICE_GONE,
-            serviceInstanceId: cachedInfo.serviceInstanceId,
+        // 心跳超时后先通过 HTTP 确认服务是否真的下线
+        // postMessage 在后台 tab 会被浏览器降频，不能仅凭心跳判断
+        fetch(START_API_PATH)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.proxyPort && data.serviceInstanceId) {
+              // 服务仍存活，只是 postMessage 被降频了，刷新缓存
+              const info: ServiceInfo = {
+                proxyPort: data.proxyPort,
+                vitePort: location.port,
+                projectRoot: data.projectRoot || "",
+                serviceInstanceId: data.serviceInstanceId,
+              };
+              handleServiceInfo(info);
+            } else {
+              reportServiceGone();
+            }
           })
-          .catch(() => {});
-        log.debug(`服务下线（心跳超时）: ${cachedInfo.serviceInstanceId}`);
-        cachedInfo = null;
+          .catch(() => reportServiceGone());
       }
       heartbeatTimer = null;
     }, HEARTBEAT_TIMEOUT);
+  }
+
+  function reportServiceGone() {
+    if (!cachedInfo) return;
+    chrome.runtime
+      .sendMessage({
+        type: EXT_MSG.SERVICE_GONE,
+        serviceInstanceId: cachedInfo.serviceInstanceId,
+      })
+      .catch(() => {});
+    log.debug(`服务下线（心跳超时）: ${cachedInfo.serviceInstanceId}`);
+    cachedInfo = null;
   }
 
   // ========== 通过 postMessage 接收服务信息（替代 HTTP 轮询） ==========

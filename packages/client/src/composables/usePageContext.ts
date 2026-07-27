@@ -15,7 +15,7 @@ export function usePageContext(
 ) {
   let currentPageUrl = "";
   let currentPageTitle = "";
-  const basePath = (path: string) => viteBaseUrl ? `${viteBaseUrl}${path}` : path;
+  const basePath = (path: string) => (viteBaseUrl ? `${viteBaseUrl}${path}` : path);
 
   const sendContext = (url: string, title: string) => {
     fetch(basePath(CONTEXT_API_PATH), {

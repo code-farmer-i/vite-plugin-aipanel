@@ -17,7 +17,6 @@ export function useExtensionContext(
   selectedElements: { value: OpenCodeSelectedElement[] },
   viteBaseUrl = "",
   serviceInstanceId = "",
-  myWindowId?: number,
 ) {
   let currentPageUrl = "";
   let currentPageTitle = "";
@@ -69,11 +68,6 @@ export function useExtensionContext(
   }) => {
     // 按 serviceInstanceId 过滤，仅处理来自当前服务实例的上下文消息
     if (msg.serviceInstanceId && msg.serviceInstanceId !== serviceInstanceId) return;
-
-    // 按 windowId 过滤跨窗口消息
-    if (myWindowId !== undefined && msg.windowId !== undefined && msg.windowId !== myWindowId) {
-      return;
-    }
 
     // Tab 切换：更新 activeTabId
     if (msg.type === EXT_MSG.TAB_SWITCHED) {

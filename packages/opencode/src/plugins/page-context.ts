@@ -3,7 +3,7 @@
  * @description 用于将页面上下文信息注入到 AI 对话中
  */
 
-import type { Plugin, Hooks } from "@opencode-ai/plugin";
+import type { Hooks } from "@opencode-ai/plugin";
 import { createLogger } from "@vite-plugin-opencode-assistant/shared/node";
 
 const log = createLogger("OpenCodePluginPageContext");
@@ -39,27 +39,29 @@ async function fetchPageContext(contextApiUrl: string): Promise<PageContext | nu
   }
 }
 
-export const PageContextPlugin: Plugin = async (): Promise<Hooks> => {
-  log.info("PageContextPlugin loading...");
+export default {
+  id: "vite-plugin-opencode-assistant/page-context",
+  async server(): Promise<Hooks> {
+    log.info("PageContextPlugin loading...");
 
-  const contextApiUrl = process.env.OPENCODE_CONTEXT_API_URL;
-  log.debug("Context API URL:", { contextApiUrl });
+    const contextApiUrl = process.env.OPENCODE_CONTEXT_API_URL;
+    log.debug("Context API URL:", { contextApiUrl });
 
-  if (!contextApiUrl) {
-    log.warn("OPENCODE_CONTEXT_API_URL is not set, page context plugin will not work");
-    return {};
-  }
+    if (!contextApiUrl) {
+      log.warn("OPENCODE_CONTEXT_API_URL is not set, page context plugin will not work");
+      return {};
+    }
 
-  log.info("Plugin initialized successfully");
+    log.info("Plugin initialized successfully");
 
-  return {
-    "experimental.chat.system.transform": async (_input, output) => {
-      log.debug("System transform hook called");
+    return {
+      "experimental.chat.system.transform": async (_input, output) => {
+        log.debug("System transform hook called");
 
-      const pageContext = await fetchPageContext(contextApiUrl);
-      log.debug("Page context fetched", { pageContext });
+        const pageContext = await fetchPageContext(contextApiUrl);
+        log.debug("Page context fetched", { pageContext });
 
-      const systemPrompt = `
+        const systemPrompt = `
 你是一个专业的前端开发助手，运行在 **OpenCode** 平台中，并通过 **vite-plugin-opencode-assistant** 插件集成到用户的 Vite 开发环境。
 
 ## ⚠️ 重要：页面上下文优先级规则
@@ -151,6 +153,8 @@ export const PageContextPlugin: Plugin = async (): Promise<Hooks> => {
 
    在使用 Chrome DevTools Mcp 执行任何与用户正在浏览的页面相关的任务之前，必须先通过 \`list_pages\` 获取所有页面，然后选中正确的页面再操作。
    
+   **⚠️ 禁止以 \`list_pages\` 中的 \`[selected]\` 标记判断用户当前所在页面。**
+
    - **首选**：同时匹配页面 URL 和标题（\`list_pages\` 输出中已包含标题，直接对比即可）
    - 匹配到正确页面后，立即调用 \`select_page\` 并设置 \`bringToFront: true\` 将其激活
 
@@ -167,9 +171,8 @@ export const PageContextPlugin: Plugin = async (): Promise<Hooks> => {
    在使用 Chrome DevTools MCP 工具时，\`chrome-devtools_evaluate_script\` 工具的使用优先级最低。只有在其他工具无法满足需求时，才考虑使用该工具
 `.trim();
 
-      output.system.push(systemPrompt);
-    },
-  };
+        output.system.push(systemPrompt);
+      },
+    };
+  },
 };
-
-export default PageContextPlugin;

@@ -117,7 +117,7 @@ const {
 } = useSessions({ showNotification, viteBaseUrl: viteBaseUrl.value });
 
 const { updateContext } = isExtensionMode
-  ? useExtensionContext(serviceStatus, selectedElements, viteBaseUrl.value, serviceInstanceId, myWindowId)
+  ? useExtensionContext(serviceStatus, selectedElements, viteBaseUrl.value, serviceInstanceId)
   : usePageContext(serviceStatus, selectedElements, viteBaseUrl.value);
 
 // Server SSE: 监听 Vite server 事件 (服务启动状态)

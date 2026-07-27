@@ -291,14 +291,24 @@ function handleTabSwitched(info: ServiceInfo | null) {
 
 /** 监听消息 */
 chrome.runtime.onMessage.addListener((msg) => {
-  // 跨窗口过滤：仅处理来自当前窗口或无窗口上下文的消息
-  if (myWindowId !== undefined && msg.windowId !== undefined && msg.windowId !== myWindowId) {
+  // 跨窗口过滤：TAB_SWITCHED 不受限制（用户可能切换到其他窗口的同服务页面），
+  // 其余消息仅处理来自当前窗口的
+  if (
+    msg.type !== EXT_MSG.TAB_SWITCHED &&
+    myWindowId !== undefined &&
+    msg.windowId !== undefined &&
+    msg.windowId !== myWindowId
+  ) {
     return;
   }
 
   switch (msg.type) {
     case EXT_MSG.TAB_SWITCHED:
       log.debug("Tab 切换:", msg.portInfo);
+      // 更新当前窗口 ID，后续消息过滤基于新窗口
+      if (msg.windowId !== undefined) {
+        myWindowId = msg.windowId;
+      }
       handleTabSwitched(msg.portInfo || null);
       break;
 

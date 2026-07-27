@@ -201,8 +201,12 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         verbose: config.verbose,
       });
 
+      // 页面标题注入唯一标识，使 Chrome DevTools MCP list_pages 中同 URL Tab 可区分
+      const pageKey = Math.random().toString(36).slice(2, 5);
+      const titleInject = `<script>(function(){var k="${pageKey}-",d=document,p=!1,f=function(){if(p)return;var t=d.title;if(t.indexOf(k)===0)return;p=!0;d.title=k+t.replace(k,"");p=!1};f();new MutationObserver(f).observe(d.querySelector("title")||d.head,{childList:!0})})();</script>`;
+
       timer.end();
-      return html.replace("</body>", `${widget}</body>`);
+      return html.replace("</body>", `${titleInject}\n${widget}</body>`);
     },
   };
 }

@@ -56,20 +56,6 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
   const { port, hostname, cwd, configDir, corsOrigins, contextApiUrl, logsApiUrl, logFilesJson } =
     options;
   const stateDir = createStateDirectory(cwd);
-  const pluginsDir = path.join(stateDir, "plugins");
-
-  // Build plugin paths (comma-separated for OPENCODE_PLUGINS)
-  const pluginPaths = [
-    path.join(pluginsDir, "page-context.js"),
-    path.join(pluginsDir, "vite-logs.js"),
-  ];
-
-  // Add service-logs plugin if logFiles are configured
-  if (logFilesJson) {
-    pluginPaths.push(path.join(pluginsDir, "service-logs.js"));
-  }
-
-  const pluginPathsStr = pluginPaths.join(",");
 
   log.debug("Building process environment", {
     stateDir,
@@ -77,17 +63,9 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     contextApiUrl,
     logsApiUrl,
     logFilesJson,
-    pluginPathsStr,
   });
 
-  const env = buildProcessEnv(
-    stateDir,
-    configDir,
-    contextApiUrl,
-    logsApiUrl,
-    pluginPathsStr,
-    logFilesJson,
-  );
+  const env = buildProcessEnv(stateDir, configDir, contextApiUrl, logsApiUrl, logFilesJson);
   const args = ["serve", "--port", String(port), "--hostname", hostname];
 
   if (corsOrigins && corsOrigins.length > 0) {
@@ -177,7 +155,6 @@ function buildProcessEnv(
   configDir?: string,
   contextApiUrl?: string,
   logsApiUrl?: string,
-  pluginPaths?: string,
   logFilesJson?: string,
 ): Record<string, string> {
   const env: Record<string, string> = {
@@ -185,6 +162,8 @@ function buildProcessEnv(
       Object.entries(process.env).filter(([, v]) => v !== undefined),
     ) as Record<string, string>),
     XDG_STATE_HOME: stateDir,
+    // 指向缓存目录，OpenCode 会从 <stateDir>/plugins/ 自动发现插件
+    OPENCODE_CONFIG_DIR: stateDir,
   };
 
   if (configDir) {
@@ -200,11 +179,6 @@ function buildProcessEnv(
   if (logsApiUrl) {
     env.OPENCODE_VITE_LOGS_API_URL = logsApiUrl;
     log.debug("Set OPENCODE_VITE_LOGS_API_URL", { logsApiUrl });
-  }
-
-  if (pluginPaths) {
-    env.OPENCODE_PLUGINS = pluginPaths;
-    log.debug("Set OPENCODE_PLUGINS", { pluginPaths });
   }
 
   if (logFilesJson) {

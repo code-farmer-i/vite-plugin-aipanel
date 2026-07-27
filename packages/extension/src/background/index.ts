@@ -23,6 +23,9 @@ chrome.action.onClicked.addListener((tab) => {
 
 /** Tab 切换 → 通知 Side Panel 重新连接新 Tab 的服务 + 请求新 Tab 上报页面上下文 */
 chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
+  log.debug(
+    `onActivated: tabId=${tabId} windowId=${windowId} serviceWindowIds=[${[...serviceWindowIds]}]`,
+  );
   // 只响应服务所在窗口的 Tab 切换，忽略其他窗口（DevTools/CDP 等）
   if (serviceWindowIds.size > 0 && !serviceWindowIds.has(windowId)) return;
 
@@ -72,4 +75,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === EXT_MSG.SERVICE_GONE && sender.tab?.windowId != null) {
     serviceWindowIds.delete(sender.tab.windowId);
   }
+
+  return false;
 });

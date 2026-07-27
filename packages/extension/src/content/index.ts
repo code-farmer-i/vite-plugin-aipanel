@@ -37,9 +37,6 @@ if (win[INIT_MARKER]) {
   let cachedInfo: ServiceInfo | null = null;
   /** 当前窗口 ID（从 background 转发的消息中缓存，用于跨窗口消息过滤） */
   let myWindowId: number | undefined;
-  /** 当前 Tab 的唯一标识，追加到页面标题末尾使 list_pages 中同 URL Tab 可区分 */
-  const PAGE_KEY = `${Math.random().toString(36).slice(2, 7)}`;
-  const PAGE_KEY_SUFFIX = ` [${PAGE_KEY}]`;
 
   /** 心跳超时定时器 */
   let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
@@ -141,22 +138,9 @@ if (win[INIT_MARKER]) {
 
   // ========== 页面上下文同步 ==========
 
-  /** 在页面标题末尾追加唯一标识，使同 URL Tab 在 list_pages 中可区分 */
-  let patchingTitle = false;
-  function ensurePageKey() {
-    if (!cachedInfo || patchingTitle) return;
-    const raw = document.title.replace(PAGE_KEY_SUFFIX, "");
-    if (!document.title.endsWith(PAGE_KEY_SUFFIX)) {
-      patchingTitle = true;
-      document.title = raw + PAGE_KEY_SUFFIX;
-      patchingTitle = false;
-    }
-  }
-
   /** 上报当前页面上下文（URL + 标题） */
   function reportPageContext() {
-    if (!cachedInfo) return;
-    ensurePageKey();
+    if (!cachedInfo) return; // 无服务时不发送
     chrome.runtime
       .sendMessage({
         type: EXT_MSG.PAGE_CONTEXT,
@@ -180,15 +164,6 @@ if (win[INIT_MARKER]) {
     };
     window.addEventListener("popstate", reportPageContext);
     window.addEventListener("hashchange", reportPageContext);
-
-    let lastTitle = document.title;
-    new MutationObserver(() => {
-      if (document.title !== lastTitle) {
-        lastTitle = document.title;
-        ensurePageKey();
-        reportPageContext();
-      }
-    }).observe(document.querySelector("title") || document.head, { childList: true });
 
     reportPageContext();
   }

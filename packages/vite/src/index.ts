@@ -46,7 +46,11 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
   let actualWebPort = config.webPort;
   let actualProxyPort = config.proxyPort ?? DEFAULT_PROXY_PORT;
   let projectRoot = "";
-  let pageContext: PageContext = { url: "", title: "" };
+  const pageContext: PageContext = { url: "", title: "" };
+  /** 非扩展模式使用 "default" 作为 key */
+  const DEFAULT_TAB = "default";
+  const pageContexts = new Map<string, PageContext>([[DEFAULT_TAB, pageContext]]);
+  let activeTabId = DEFAULT_TAB;
   const serviceInstanceId = crypto.randomUUID();
 
   const sseClients: Set<http.ServerResponse> = new Set();
@@ -93,11 +97,28 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         get sseClients() {
           return sseClients;
         },
-        get pageContext() {
-          return pageContext;
+        getPageContext() {
+          return (
+            pageContexts.get(activeTabId) || pageContexts.get(DEFAULT_TAB) || { url: "", title: "" }
+          );
         },
-        set pageContext(ctx) {
-          pageContext = ctx;
+        setPageContext(tabId: string, ctx: PageContext) {
+          pageContexts.set(tabId || DEFAULT_TAB, ctx);
+        },
+        setActiveTabId(tabId: string) {
+          activeTabId = tabId;
+        },
+        clearSelectedElements() {
+          const ctx = pageContexts.get(activeTabId);
+          if (ctx) {
+            ctx.selectedElements = [];
+            pageContexts.set(activeTabId, ctx);
+          }
+          // 同时清除默认上下文
+          const defaultCtx = pageContexts.get(DEFAULT_TAB);
+          if (defaultCtx) {
+            defaultCtx.selectedElements = [];
+          }
         },
         get isServiceStarted() {
           return service.isStarted;
@@ -203,7 +224,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
 
       // 页面标题注入唯一标识，使 Chrome DevTools MCP list_pages 中同 URL Tab 可区分
       const pageKey = Math.random().toString(36).slice(2, 5);
-      const titleInject = `<script>(function(){var k="${pageKey}-",d=document,p=!1,f=function(){if(p)return;var t=d.title;if(t.indexOf(k)===0)return;p=!0;d.title=k+t.replace(k,"");p=!1};f();new MutationObserver(f).observe(d.querySelector("title")||d.head,{childList:!0})})();</script>`;
+      const titleInject = `<script>(function(){var k="[${pageKey}]",d=document,p=!1,f=function(){if(p)return;var t=d.title;if(t.indexOf(k)===0)return;p=!0;d.title=k+t.replace(k,"");p=!1};f();new MutationObserver(f).observe(d.querySelector("title")||d.head,{childList:!0})})();</script>`;
 
       timer.end();
       return html.replace("</body>", `${titleInject}\n${widget}</body>`);

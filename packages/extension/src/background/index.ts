@@ -23,28 +23,39 @@ chrome.action.onClicked.addListener((tab) => {
 
 /** Tab 切换 → 通知 Side Panel 重新连接新 Tab 的服务 + 请求新 Tab 上报页面上下文 */
 chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
-  log.debug(
-    `onActivated: tabId=${tabId} windowId=${windowId} serviceWindowIds=[${[...serviceWindowIds]}]`,
-  );
-  // 只响应服务所在窗口的 Tab 切换，忽略其他窗口（DevTools/CDP 等）
   if (serviceWindowIds.size > 0 && !serviceWindowIds.has(windowId)) return;
 
   try {
     const info = await chrome.tabs.sendMessage(tabId, { type: EXT_MSG.GET_PORT_INFO });
+    log.debug(`[BG] 激活: windowId=${windowId} tabId=${tabId} sid=${info?.serviceInstanceId}`);
     chrome.runtime
-      .sendMessage({
-        type: EXT_MSG.TAB_SWITCHED,
-        portInfo: info || null,
-        tabId,
-        windowId,
-      })
+      .sendMessage({ type: EXT_MSG.TAB_SWITCHED, portInfo: info || null, tabId, windowId })
       .catch(() => {});
-    // 请求新激活的 Tab 立即上报当前页面上下文，避免使用过期数据
     chrome.tabs.sendMessage(tabId, { type: EXT_MSG.REQUEST_PAGE_CONTEXT }).catch(() => {});
   } catch {
     chrome.runtime
       .sendMessage({ type: EXT_MSG.TAB_SWITCHED, portInfo: null, tabId, windowId })
       .catch(() => {});
+  }
+});
+
+/** 窗口焦点切换 → 通知 Side Panel 当前活跃窗口/Tab（处理只切窗口不切 Tab 的场景） */
+chrome.windows.onFocusChanged.addListener(async (windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) return;
+  if (serviceWindowIds.size > 0 && !serviceWindowIds.has(windowId)) return;
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, windowId });
+    if (!tab?.id) return;
+
+    const info = await chrome.tabs.sendMessage(tab.id, { type: EXT_MSG.GET_PORT_INFO });
+    log.debug(`[BG] 聚焦窗口: windowId=${windowId} tabId=${tab.id} sid=${info?.serviceInstanceId}`);
+    chrome.runtime
+      .sendMessage({ type: EXT_MSG.TAB_SWITCHED, portInfo: info || null, tabId: tab.id, windowId })
+      .catch(() => {});
+    chrome.tabs.sendMessage(tab.id, { type: EXT_MSG.REQUEST_PAGE_CONTEXT }).catch(() => {});
+  } catch {
+    // ignore
   }
 });
 
@@ -64,7 +75,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       tabId: sender.tab?.id ?? msg.tabId,
       windowId: sender.tab?.windowId ?? msg.windowId,
     };
-    log.debug(`转发消息: type=${msg.type} tabId=${forwarded.tabId} windowId=${forwarded.windowId}`);
     chrome.runtime.sendMessage(forwarded).catch(() => {});
   }
 

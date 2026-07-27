@@ -33,13 +33,14 @@ export function useExtensionContext(
   const basePath = (path: string) => (viteBaseUrl ? `${viteBaseUrl}${path}` : path);
 
   const sendContext = (url: string, title: string) => {
-    log.debug(`sendContext: tabId=${activeTabId} tabIndex=${activeTabIndex} url=${url}`);
+    log.debug(`[ExtCtx] POST 上下文: tabId=${activeTabId} url=${url} title=${title}`);
     fetch(basePath(CONTEXT_API_PATH), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         url,
         title,
+        active: true,
         ...(activeTabId !== undefined ? { tabId: activeTabId } : {}),
         ...(activeTabIndex !== undefined ? { tabIndex: activeTabIndex } : {}),
         selectedElements: selectedElements.value,
@@ -71,21 +72,19 @@ export function useExtensionContext(
 
     // Tab 切换：更新 activeTabId
     if (msg.type === EXT_MSG.TAB_SWITCHED) {
+      log.debug(`[ExtCtx] activeTabId: ${activeTabId} → ${msg.tabId} (windowId=${msg.windowId})`);
       activeTabId = msg.tabId;
       return;
     }
 
     // 页面上下文：只接受当前活跃 Tab 的消息，避免多 Tab 串扰
     if (msg.type === EXT_MSG.PAGE_CONTEXT && msg.ctx) {
-      log.debug(
-        `收到 PAGE_CONTEXT: msg.tabId=${msg.tabId} activeTabId=${activeTabId} url=${msg.ctx.url}`,
-      );
-      // 首次收到上下文消息时，用消息中的 tabId 初始化 activeTabId（onMounted 异步查询可能未完成）
+      const accepted =
+        activeTabId === undefined || msg.tabId === undefined || msg.tabId === activeTabId;
       if (activeTabId === undefined && msg.tabId !== undefined) {
         activeTabId = msg.tabId;
-        log.debug(`activeTabId 从消息初始化: ${activeTabId}`);
       }
-      if (activeTabId !== undefined && msg.tabId !== undefined && msg.tabId !== activeTabId) return;
+      if (!accepted) return;
       extensionPageUrl.value = msg.ctx.url;
       extensionPageTitle.value = msg.ctx.title;
       updateContext(true);

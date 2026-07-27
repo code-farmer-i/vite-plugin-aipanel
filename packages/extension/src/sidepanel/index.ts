@@ -291,8 +291,6 @@ function handleTabSwitched(info: ServiceInfo | null) {
 
 /** 监听消息 */
 chrome.runtime.onMessage.addListener((msg) => {
-  // 跨窗口过滤：TAB_SWITCHED 不受限制（用户可能切换到其他窗口的同服务页面），
-  // 其余消息仅处理来自当前窗口的
   if (
     msg.type !== EXT_MSG.TAB_SWITCHED &&
     myWindowId !== undefined &&
@@ -304,8 +302,9 @@ chrome.runtime.onMessage.addListener((msg) => {
 
   switch (msg.type) {
     case EXT_MSG.TAB_SWITCHED:
-      log.debug("Tab 切换:", msg.portInfo);
-      // 更新当前窗口 ID，后续消息过滤基于新窗口
+      log.debug(
+        `[SP] 激活: windowId=${msg.windowId} tabId=${msg.tabId} sid=${msg.portInfo?.serviceInstanceId}`,
+      );
       if (msg.windowId !== undefined) {
         myWindowId = msg.windowId;
       }
@@ -314,7 +313,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 
     case EXT_MSG.SERVICE_APPEARED:
       if (msg.serviceInstanceId && msg.proxyPort && msg.vitePort) {
-        log.debug(`服务上线: ${msg.serviceInstanceId}`);
+        log.debug(`[SP] 服务上线: sid=${msg.serviceInstanceId}`);
         handleServiceAppeared({
           serviceInstanceId: msg.serviceInstanceId,
           vitePort: msg.vitePort,

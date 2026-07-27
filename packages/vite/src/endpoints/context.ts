@@ -1,5 +1,6 @@
 import type { ViteDevServer } from "vite";
 import { CONTEXT_API_PATH } from "@vite-plugin-opencode-assistant/shared";
+import type { OpenCodeSelectedElement, PageContext } from "@vite-plugin-opencode-assistant/shared";
 import { RequestContext, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
 import type { EndpointContext } from "./types";
 
@@ -22,14 +23,16 @@ export function setupContextEndpoint(server: ViteDevServer, ctx: EndpointContext
     }
 
     if (req.method === "GET") {
+      const pc = ctx.getPageContext();
+      log.debug(`[Context] GET → url=${pc.url} title=${pc.title} tabId=${pc.tabId}`);
       res.writeHead(200);
-      res.end(JSON.stringify(ctx.pageContext));
+      res.end(JSON.stringify(pc));
       reqCtx.end(200);
       return;
     }
 
     if (req.method === "DELETE") {
-      ctx.pageContext.selectedElements = [];
+      ctx.clearSelectedElements();
       log.debug("Selected elements cleared", { sseClients: ctx.sseClients.size });
 
       let sentCount = 0;
@@ -58,24 +61,34 @@ export function setupContextEndpoint(server: ViteDevServer, ctx: EndpointContext
       req.on("end", () => {
         try {
           const data = JSON.parse(body);
-          ctx.pageContext = {
+          const tabId = data.tabId != null ? String(data.tabId) : "default";
+
+          const existing = ctx.getPageContext();
+          const newCtx: PageContext = {
             url: data.url || "",
             title: data.title || "",
-            // 保留已有的 tabId/tabIndex（避免页内 widget 覆盖 Side Panel 写入的值）
-            tabId: data.tabId ?? ctx.pageContext.tabId,
-            tabIndex: data.tabIndex ?? ctx.pageContext.tabIndex,
+            tabId: data.tabId ?? existing.tabId,
+            tabIndex: data.tabIndex ?? existing.tabIndex,
             selectedElements: data.selectedElements || [],
           };
 
+          ctx.setPageContext(tabId, newCtx);
+
+          // 来自 Side Panel 的活跃 Tab 上下文，同步更新活跃 Tab ID
+          if (data.active) {
+            ctx.setActiveTabId(tabId);
+          }
+
           log.debug("Context updated", {
-            url: ctx.pageContext.url,
-            title: ctx.pageContext.title,
-            selectedElementsCount: ctx.pageContext.selectedElements?.length || 0,
+            tabId,
+            url: newCtx.url,
+            title: newCtx.title,
+            selectedElementsCount: newCtx.selectedElements?.length || 0,
           });
 
-          if (ctx.pageContext.selectedElements && ctx.pageContext.selectedElements.length > 0) {
+          if (newCtx.selectedElements && newCtx.selectedElements.length > 0) {
             log.debug("Selected elements details", {
-              elements: ctx.pageContext.selectedElements.map((el) => ({
+              elements: newCtx.selectedElements.map((el) => ({
                 filePath: el.filePath,
                 line: el.line,
                 text: el.innerText?.substring(0, 50),

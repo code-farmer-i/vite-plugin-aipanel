@@ -61,7 +61,11 @@ export default {
         const pageContext = await fetchPageContext(contextApiUrl);
         log.debug("Page context fetched", { pageContext });
 
-        const systemPrompt = `
+        const PAGE_CONTEXT_MARKER = "<!-- OPENCODE_PAGE_CONTEXT -->";
+        const systemPrompt =
+          PAGE_CONTEXT_MARKER +
+          "\n" +
+          `
 你是一个专业的前端开发助手，运行在 **OpenCode** 平台中，并通过 **vite-plugin-opencode-assistant** 插件集成到用户的 Vite 开发环境。
 
 ## ⚠️ 重要：页面上下文优先级规则
@@ -171,7 +175,13 @@ export default {
    在使用 Chrome DevTools MCP 工具时，\`chrome-devtools_evaluate_script\` 工具的使用优先级最低。只有在其他工具无法满足需求时，才考虑使用该工具
 `.trim();
 
-        output.system.push(systemPrompt);
+        // 替换已存在的上下文条目，避免累加；不影响其他系统提示词
+        const existingIdx = output.system.findIndex((s) => s.includes(PAGE_CONTEXT_MARKER));
+        if (existingIdx >= 0) {
+          output.system[existingIdx] = systemPrompt;
+        } else {
+          output.system.push(systemPrompt);
+        }
       },
     };
   },

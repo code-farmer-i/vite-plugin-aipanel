@@ -148,12 +148,11 @@ export const PageContextPlugin: Plugin = async (): Promise<Hooks> => {
 ### Chrome DevTools Mcp
 
 1. **确保操作正确页面（强制）**
-   在使用 Chrome DevTools Mcp 执行任何与用户正在浏览的页面相关的任务之前，必须先通过 \`list_pages\` 获取所有页面，然后确认当前操作的页面就是用户正在浏览的页面。优先通过页面 URL 进行匹配。${
-     pageContext?.tabId !== undefined
-       ? `
-   - **当前多 Tab 场景**：上下文中的「浏览器 Tab ID」标识了用户具体所在的 Tab。如果多个 Tab 打开相同 URL，可以先对各候选页面调用 \`take_snapshot\` 或 \`evaluate_script\` 获取页面状态，与用户描述的上下文对比确认正确页面后再操作。`
-       : ""
-   }
+
+   在使用 Chrome DevTools Mcp 执行任何与用户正在浏览的页面相关的任务之前，必须先通过 \`list_pages\` 获取所有页面，然后选中正确的页面再操作。
+   
+   - **首选**：同时匹配页面 URL 和标题（\`list_pages\` 输出中已包含标题，直接对比即可）
+   - 匹配到正确页面后，立即调用 \`select_page\` 并设置 \`bringToFront: true\` 将其激活
 
 2. **快照获取（强制）**
    在没有获取到需要的节点信息时，使用 verbose 参数来获取更详细的节点信息。如果设置了 verbose 参数还是没有获取到节点信息，再尝试考虑其他方案。

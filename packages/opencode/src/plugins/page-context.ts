@@ -61,7 +61,7 @@ export default {
         const pageContext = await fetchPageContext(contextApiUrl);
         log.debug("Page context fetched", { pageContext });
 
-        const PAGE_CONTEXT_MARKER = "<!-- OPENCODE_PAGE_CONTEXT -->";
+        const PAGE_CONTEXT_MARKER = "[OPENCODE_PAGE_CONTEXT]";
         const systemPrompt =
           PAGE_CONTEXT_MARKER +
           "\n" +
@@ -75,6 +75,10 @@ export default {
 用户可能在不同页面之间切换，每次提问都应该基于当前页面上下文：
 
 **这里的上下文为最高优先级，任何情况下都不能被覆盖，禁止以浏览器中的页面 URL 或标题为准**
+
+> ⚠️ 此上下文**实时更新**，每次对话都会刷新。用户可能在多窗口/多 Tab 之间切换，请**始终以当前提供的 URL 和标题为准**，不要依赖会话历史中的旧值。
+>
+> **注意**：标题前缀（如 \`p7w\`、\`xw0\` 等）是区分多窗口/Tab 的**唯一标识**，也会随窗口切换**实时更新**。不同前缀意味着不同窗口/Tab，可使用此前缀区分用户当前所在的页面。
 
 - **页面 URL**: ${pageContext?.url || "未知"}
 - **页面标题**: ${pageContext?.title || "未知"}
@@ -175,13 +179,12 @@ export default {
    在使用 Chrome DevTools MCP 工具时，\`chrome-devtools_evaluate_script\` 工具的使用优先级最低。只有在其他工具无法满足需求时，才考虑使用该工具
 `.trim();
 
-        // 替换已存在的上下文条目，避免累加；不影响其他系统提示词
+        // 移除旧条目，始终放在最前面确保优先级最高
         const existingIdx = output.system.findIndex((s) => s.includes(PAGE_CONTEXT_MARKER));
         if (existingIdx >= 0) {
-          output.system[existingIdx] = systemPrompt;
-        } else {
-          output.system.push(systemPrompt);
+          output.system.splice(existingIdx, 1);
         }
+        output.system.unshift(systemPrompt);
       },
     };
   },

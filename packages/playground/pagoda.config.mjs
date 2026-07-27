@@ -29,7 +29,7 @@ export default defineConfig({
             ...opencode({
               displayMode: "extension",
               // warmupChromeMcp: false,
-              // verbose: true,
+              verbose: true,
             }),
           );
           return config;

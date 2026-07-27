@@ -54,6 +54,8 @@ const appInstances = new Map<string, AppInstance>();
 let wrapperEl: HTMLDivElement | null = null;
 let noServiceEl: HTMLDivElement | null = null;
 let activeServiceId: string | null = null;
+/** 当前 sidepanel 所属的窗口 ID，用于跨窗口消息过滤 */
+let myWindowId: number | undefined;
 
 /** 创建 wrapper 容器（overflow:hidden 确保所有实例保持渲染） */
 function createWrapper(): HTMLDivElement {
@@ -140,6 +142,7 @@ async function createAppInstance(info: ServiceInfo): Promise<AppInstance> {
     displayMode: "extension",
     open: true,
     verbose: info.verbose,
+    myWindowId,
   };
 
   if (info.verbose) {
@@ -273,12 +276,26 @@ function handleTabSwitched(info: ServiceInfo | null) {
 
 // === 初始化 ===
 (async () => {
+  // 获取当前 sidepanel 所属窗口 ID，用于过滤跨窗口消息
+  try {
+    const currentWin = await chrome.windows.getCurrent();
+    myWindowId = currentWin.id;
+    log.debug(`Side Panel 窗口 ID: ${myWindowId}`);
+  } catch {
+    log.warn("无法获取当前窗口 ID，多窗口隔离将不可用");
+  }
+
   await initContainers();
   mountAppForActiveTab();
 })();
 
 /** 监听消息 */
 chrome.runtime.onMessage.addListener((msg) => {
+  // 跨窗口过滤：仅处理来自当前窗口或无窗口上下文的消息
+  if (myWindowId !== undefined && msg.windowId !== undefined && msg.windowId !== myWindowId) {
+    return;
+  }
+
   switch (msg.type) {
     case EXT_MSG.TAB_SWITCHED:
       log.debug("Tab 切换:", msg.portInfo);

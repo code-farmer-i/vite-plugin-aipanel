@@ -35,6 +35,8 @@ if (win[INIT_MARKER]) {
   }
 
   let cachedInfo: ServiceInfo | null = null;
+  /** 当前窗口 ID（从 background 转发的消息中缓存，用于跨窗口消息过滤） */
+  let myWindowId: number | undefined;
 
   /** 心跳超时定时器 */
   let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
@@ -226,7 +228,11 @@ if (win[INIT_MARKER]) {
     }
 
     // 服务下线 → 清除缓存，确保下次 GET_PORT_INFO 走真实检测
+    // 按 windowId 过滤，防止跨窗口 SSE 断连误清除当前窗口的缓存
     if (msg.type === EXT_MSG.SERVICE_GONE) {
+      if (msg.windowId !== undefined && myWindowId !== undefined && msg.windowId !== myWindowId) {
+        return false; // 来自其他窗口，忽略
+      }
       if (cachedInfo && msg.serviceInstanceId === cachedInfo.serviceInstanceId) {
         log.debug(`服务下线，清除缓存: ${cachedInfo.serviceInstanceId}`);
         cachedInfo = null;
@@ -263,6 +269,14 @@ if (win[INIT_MARKER]) {
           serviceInstanceId: cachedInfo?.serviceInstanceId,
         })
         .catch(() => {});
+    }
+  });
+
+  // 查询自身窗口 ID（用于跨窗口 SERVICE_GONE 过滤）
+  chrome.runtime.sendMessage({ type: EXT_MSG.CS_QUERY_WINDOW }, (response) => {
+    if (response?.windowId) {
+      myWindowId = response.windowId;
+      log.debug(`窗口 ID: ${myWindowId}`);
     }
   });
 

@@ -46,6 +46,7 @@ const {
   splitMode,
   vitePort = "",
   serviceInstanceId = "",
+  myWindowId,
 } = props.config;
 
 const opencodeLog = createLogger("OpenCode");
@@ -116,7 +117,7 @@ const {
 } = useSessions({ showNotification, viteBaseUrl: viteBaseUrl.value });
 
 const { updateContext } = isExtensionMode
-  ? useExtensionContext(serviceStatus, selectedElements, viteBaseUrl.value, serviceInstanceId)
+  ? useExtensionContext(serviceStatus, selectedElements, viteBaseUrl.value, serviceInstanceId, myWindowId)
   : usePageContext(serviceStatus, selectedElements, viteBaseUrl.value);
 
 // Server SSE: 监听 Vite server 事件 (服务启动状态)
@@ -160,6 +161,7 @@ watch(serverSSE.isConnected, (connected, wasConnected) => {
     chrome.runtime.sendMessage({
       type: EXT_MSG.SERVICE_GONE,
       serviceInstanceId,
+      windowId: myWindowId,
     }).catch(() => { });
   } else if (connected && !wasConnected && sseWasDown && serviceInstanceId) {
     sseWasDown = false;
@@ -170,6 +172,7 @@ watch(serverSSE.isConnected, (connected, wasConnected) => {
       proxyPort,
       vitePort,
       serviceInstanceId,
+      windowId: myWindowId,
     }).catch(() => { });
   }
 });

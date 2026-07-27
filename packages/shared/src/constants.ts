@@ -114,6 +114,7 @@ export const EXT_MSG = {
   REQUEST_PAGE_CONTEXT: "REQUEST_PAGE_CONTEXT",
   SELECTION_START: "SELECTION_START",
   SELECTION_STOP: "SELECTION_STOP",
+  CS_QUERY_WINDOW: "__CS_QUERY_WINDOW__",
 } as const;
 
 /** ==================== Widget PostMessage 类型 ==================== */

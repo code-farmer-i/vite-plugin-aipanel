@@ -209,6 +209,8 @@ export interface WidgetOptions {
   vitePort?: string;
   /** 服务实例唯一标识（扩展模式多实例隔离用） */
   serviceInstanceId?: string;
+  /** 当前窗口 ID（扩展模式多窗口隔离用） */
+  myWindowId?: number;
   /** OpenCode Web 服务端口 */
   webPort?: number;
   /** 项目根目录 */

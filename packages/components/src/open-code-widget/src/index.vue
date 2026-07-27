@@ -104,10 +104,11 @@ const promptDockVisible = ref(true);
 const reviewPanelVisible = ref(false);
 const isRestoring = ref(true);
 const iframeLoaded = ref(false);
+const iframeReady = ref(false);
 const splitPanelWidth = ref(props.splitPanelWidth);
 
 const syncStateToIframe = () => {
-  if (!iframeLoaded.value) return;
+  if (!iframeLoaded.value || !iframeReady.value) return;
   sendMessageToIframe(WIDGET_MSG.PROMPT_DOCK_VISIBILITY, { visible: promptDockVisible.value });
   sendMessageToIframe(WIDGET_MSG.MINIMIZE_STATE, { minimized: minimized.value });
   sendMessageToIframe(WIDGET_MSG.REVIEW_PANEL_TOGGLE, { visible: reviewPanelVisible.value });
@@ -116,7 +117,6 @@ const syncStateToIframe = () => {
 const handleFrameLoaded = () => {
   emit("frame-loaded");
   iframeLoaded.value = true;
-  syncStateToIframe();
 };
 
 watch(
@@ -374,15 +374,24 @@ const handleWindowResize = () => {
   }
 };
 
+const handleIframeMessage = (event: MessageEvent) => {
+  if (event.data?.type === WIDGET_MSG.READY) {
+    iframeReady.value = true;
+    syncStateToIframe();
+  }
+};
+
 onMounted(() => {
   if (typeof window !== "undefined") {
     window.addEventListener("resize", handleWindowResize);
+    window.addEventListener("message", handleIframeMessage);
   }
 });
 
 onUnmounted(() => {
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleWindowResize);
+    window.removeEventListener("message", handleIframeMessage);
   }
 });
 

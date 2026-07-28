@@ -223,7 +223,28 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
       });
 
       // 页面标题注入唯一标识（sessionStorage 持久化，同 Tab 刷新不变，新 Tab 重生成）
-      const titleInject = `<script>(function(){var K="_opencode_pk",s=sessionStorage,k=s.getItem(K)||(function(){var v=Math.random().toString(36).slice(2,5);s.setItem(K,v);return v})(),d=document,p=!1,f=function(){if(p)return;var t=d.title;if(t.indexOf(k)===0)return;p=!0;d.title=k+t.replace(k,"");p=!1};f();new MutationObserver(f).observe(d.querySelector("title")||d.head,{childList:!0})})();</script>`;
+      const titleInject = `<script>
+        (function () {
+          var KEY = "_opencode_pk";
+          var prefix = sessionStorage.getItem(KEY);
+          if (!prefix) {
+            prefix = "[" + Math.random().toString(36).slice(2, 5) + "]";
+            sessionStorage.setItem(KEY, prefix);
+          }
+          var applied = false;
+          function apply() {
+            if (applied) return;
+            var title = document.title;
+            if (title.indexOf(prefix) === 0) return;
+            applied = true;
+            document.title = prefix + title.replace(prefix, "");
+            applied = false;
+          }
+          apply();
+          var target = document.querySelector("title") || document.head;
+          new MutationObserver(apply).observe(target, { childList: true });
+        })();
+      </script>`;
 
       timer.end();
       return html.replace("</body>", `${titleInject}\n${widget}</body>`);

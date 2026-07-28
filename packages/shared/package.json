@@ -1,6 +1,6 @@
 {
   "name": "@vite-plugin-opencode-assistant/shared",
-  "version": "1.1.22",
+  "version": "1.1.23",
   "type": "module",
   "sideEffects": false,
   "main": "lib/index.cjs",

@@ -1,6 +1,6 @@
 import type { ViteDevServer } from "vite";
 import { CONTEXT_API_PATH } from "@vite-plugin-opencode-assistant/shared";
-import type { OpenCodeSelectedElement, PageContext } from "@vite-plugin-opencode-assistant/shared";
+import type { PageContext } from "@vite-plugin-opencode-assistant/shared";
 import { RequestContext, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
 import type { EndpointContext } from "./types";
 

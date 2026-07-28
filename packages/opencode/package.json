@@ -1,6 +1,6 @@
 {
   "name": "@vite-plugin-opencode-assistant/opencode",
-  "version": "1.1.17",
+  "version": "1.1.20",
   "type": "module",
   "main": "lib/index.cjs",
   "module": "es/index.js",
@@ -26,6 +26,6 @@
   },
   "dependencies": {
     "@vite-plugin-opencode-assistant/shared": "workspace:*",
-    "@opencode-ai/plugin": "^1.17.15"
+    "@opencode-ai/plugin": "^1.18.0"
   }
 }

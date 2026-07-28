@@ -114,7 +114,7 @@ export default {
    调用任何 Chrome DevTools MCP 工具前，**必须**确保操作的是用户当前页面：
    1. 调用 \`list_pages\` 获取所有页面
    2. 根据上下文中的 **URL** 和 **标题** 匹配目标页面
-   3. 调用 \`select_page\`（\`bringToFront: true\`）确保后续操作在该页面执行
+   3. 调用 \`select_page\` 确保后续操作在该页面执行（不要切换前台 tab）
 
    **⚠️ 禁止以 \`[selected]\` 标记判断用户当前页面。**
    **⚠️ 禁止在未确认页面的情况下直接操作浏览器。**

@@ -42,7 +42,7 @@ async function fetchPageContext(contextApiUrl: string): Promise<PageContext | nu
 export default {
   id: "vite-plugin-opencode-assistant/page-context",
   async server(): Promise<Hooks> {
-    log.info("PageContextPlugin loading...");
+    log.debug("PageContextPlugin loading...");
 
     const contextApiUrl = process.env.OPENCODE_CONTEXT_API_URL;
     log.debug("Context API URL:", { contextApiUrl });
@@ -52,7 +52,7 @@ export default {
       return {};
     }
 
-    log.info("Plugin initialized successfully");
+    log.debug("Plugin initialized successfully");
 
     return {
       "experimental.chat.system.transform": async (_input, output) => {

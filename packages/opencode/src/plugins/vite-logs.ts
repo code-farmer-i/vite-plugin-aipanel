@@ -18,7 +18,7 @@ const log = createLogger("OpenCodePluginViteLogs");
 export default {
   id: "vite-plugin-opencode-assistant/vite-logs",
   async server(): Promise<Hooks> {
-    log.info("ViteLogsPlugin loading...");
+    log.debug("ViteLogsPlugin loading...");
 
     const logsApiUrl = process.env.OPENCODE_VITE_LOGS_API_URL;
     log.debug("Vite Logs API URL:", { logsApiUrl });
@@ -28,7 +28,7 @@ export default {
       return {};
     }
 
-    log.info("Plugin initialized successfully");
+    log.debug("Plugin initialized successfully");
 
     // 定义 get_vite_dev_logs 工具
     const getViteDevLogsTool = tool({

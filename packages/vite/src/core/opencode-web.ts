@@ -3,6 +3,7 @@ import type { ResultPromise } from "execa";
 import fs from "fs";
 import { createRequire } from "module";
 import path from "path";
+import { pathToFileURL } from "url";
 import type { WebOptions } from "@vite-plugin-opencode-assistant/shared";
 import { createLogger, getProcessLogBuffer } from "@vite-plugin-opencode-assistant/shared/node";
 
@@ -13,23 +14,23 @@ const log = createLogger("OpenCodeWeb");
 
 export function prepareOpenCodeRuntime(cwd: string): string {
   const cacheDir = path.join(cwd, "node_modules", ".cache", "opencode");
-  const pluginsDir = path.join(cacheDir, "plugins");
 
-  log.debug("Setting up OpenCode runtime", { cacheDir, pluginsDir });
+  log.debug("Setting up OpenCode runtime", { cacheDir });
 
-  if (!fs.existsSync(pluginsDir)) {
-    fs.mkdirSync(pluginsDir, { recursive: true });
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true });
   }
 
-  // Copy all plugin files from source to target
+  // 通过 opencode.json 的 plugins 字段 + file:// 协议加载插件，无需复制文件
   const sourcePluginsDir = resolveSourcePluginsDir();
-  copyPluginFiles(sourcePluginsDir, pluginsDir);
+  const plugins = resolvePluginEntries(sourcePluginsDir);
 
-  const mcpConfigPath = path.join(cacheDir, "opencode.json");
+  const opencodeConfigPath = path.join(cacheDir, "opencode.json");
   fs.writeFileSync(
-    mcpConfigPath,
+    opencodeConfigPath,
     JSON.stringify(
       {
+        plugin: plugins,
         mcp: {
           "chrome-devtools": {
             type: "local",
@@ -45,8 +46,8 @@ export function prepareOpenCodeRuntime(cwd: string): string {
 
   log.debug("OpenCode runtime ready", {
     cacheDir,
-    pluginsDir,
-    mcpConfigPath,
+    opencodeConfigPath,
+    pluginCount: plugins.length,
   });
 
   return cacheDir;
@@ -137,17 +138,16 @@ function resolveSourcePluginsDir(): string {
   return candidatePaths[0];
 }
 
-function copyPluginFiles(sourceDir: string, targetDir: string): void {
-  const files = fs.readdirSync(sourceDir).filter((f) => f.endsWith(".js") || f.endsWith(".d.ts"));
+function resolvePluginEntries(sourceDir: string): string[] {
+  const files = fs.readdirSync(sourceDir).filter((f) => f.endsWith(".js"));
 
-  for (const file of files) {
-    const sourcePath = path.join(sourceDir, file);
-    const targetPath = path.join(targetDir, file);
-    fs.copyFileSync(sourcePath, targetPath);
-    log.debug("Plugin file copied", { source: sourcePath, target: targetPath });
-  }
+  const entries = files.map((file) => {
+    const absolutePath = path.join(sourceDir, file);
+    return pathToFileURL(absolutePath).href;
+  });
 
-  log.debug("All plugin files copied", { count: files.length, files });
+  log.debug("Resolved plugin entries", { count: entries.length, entries });
+  return entries;
 }
 
 function buildProcessEnv(
@@ -162,7 +162,7 @@ function buildProcessEnv(
       Object.entries(process.env).filter(([, v]) => v !== undefined),
     ) as Record<string, string>),
     XDG_STATE_HOME: stateDir,
-    // 指向缓存目录，OpenCode 会从 <stateDir>/plugins/ 自动发现插件
+    // 指向缓存目录，OpenCode 通过 opencode.json 中 plugins 字段加载插件
     OPENCODE_CONFIG_DIR: stateDir,
   };
 

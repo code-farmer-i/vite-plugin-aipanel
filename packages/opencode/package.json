@@ -26,7 +26,6 @@
   },
   "dependencies": {
     "@vite-plugin-opencode-assistant/shared": "workspace:*",
-    "@opencode-ai/plugin": "^1.18.0",
-    "ws": "^8.18.0"
+    "@opencode-ai/plugin": "^1.18.0"
   }
 }

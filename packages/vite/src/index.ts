@@ -51,8 +51,6 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
   const DEFAULT_TAB = "default";
   const pageContexts = new Map<string, PageContext>([[DEFAULT_TAB, pageContext]]);
   let activeTabId = DEFAULT_TAB;
-  /** 页面标题前缀标识，服务启动时生成，同一次服务运行内不变 */
-  const pageKey = Math.random().toString(36).slice(2, 5);
   const serviceInstanceId = crypto.randomUUID();
 
   const sseClients: Set<http.ServerResponse> = new Set();
@@ -224,8 +222,8 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         verbose: config.verbose,
       });
 
-      // 页面标题注入唯一标识，使 Chrome DevTools MCP list_pages 中同 URL Tab 可区分
-      const titleInject = `<script>(function(){var k="[${pageKey}]",d=document,p=!1,f=function(){if(p)return;var t=d.title;if(t.indexOf(k)===0)return;p=!0;d.title=k+t.replace(k,"");p=!1};f();new MutationObserver(f).observe(d.querySelector("title")||d.head,{childList:!0})})();</script>`;
+      // 页面标题注入唯一标识（sessionStorage 持久化，同 Tab 刷新不变，新 Tab 重生成）
+      const titleInject = `<script>(function(){var K="_opencode_pk",s=sessionStorage,k=s.getItem(K)||(function(){var v=Math.random().toString(36).slice(2,5);s.setItem(K,v);return v})(),d=document,p=!1,f=function(){if(p)return;var t=d.title;if(t.indexOf(k)===0)return;p=!0;d.title=k+t.replace(k,"");p=!1};f();new MutationObserver(f).observe(d.querySelector("title")||d.head,{childList:!0})})();</script>`;
 
       timer.end();
       return html.replace("</body>", `${titleInject}\n${widget}</body>`);

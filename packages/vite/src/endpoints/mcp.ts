@@ -27,8 +27,6 @@ export function setupMcpEndpoint(
   mcp: McpProxy,
   getPageContext: () => PageContext,
 ) {
-  const projectOrigins = getProjectOrigins(server);
-
   server.middlewares.use(async (req, res, next) => {
     if (!req.url?.startsWith(MCP_API_PATH)) return next();
     const url = new URL(req.url, `http://localhost`);
@@ -65,7 +63,7 @@ export function setupMcpEndpoint(
     }
 
     if (req.method === "POST") {
-      await handlePost(req, res, mcp, projectOrigins, getPageContext);
+      await handlePost(req, res, mcp, getProjectOrigins(server), getPageContext);
       return;
     }
 
@@ -170,7 +168,12 @@ async function handleListPages(
   const text: string | undefined = listResult?.result?.content?.[0]?.text;
   const allPages = text ? parseListPages(text) : [];
 
+  log.debug("Chrome pages", { total: allPages.length, urls: allPages.map((p) => p.url) });
+  log.debug("project origins", { origins: projectOrigins });
+
   const filtered = allPages.filter((p) => isProjectPage(p.url, projectOrigins));
+
+  log.debug("filtered pages", { count: filtered.length, pageIds: filtered.map((p) => p.pageId) });
 
   if (filtered.length === 0) {
     sendMcpResult(res, id, "暂无项目页面，请先在浏览器中打开本地开发页面", mcp.sessionId);
@@ -212,27 +215,52 @@ async function handleDevTool(
   args: Record<string, unknown>,
   projectOrigins: string[],
 ) {
-  // devtools_select_page 不需要校验选中页面
-  if (mapped !== "select_page") {
-    const passed = await ensureProjectPageSelected(mcp, projectOrigins);
-    if (!passed) {
-      sendMcpError(
-        res,
-        id,
-        -32000,
-        "Chrome DevTools 当前未选中项目页面，请先调用 devtools_list_pages 查看可用页面，再调用 devtools_select_page 选择目标页面",
-        mcp.sessionId,
-      );
-      return;
-    }
+  // 提取并校验 pageId
+  const pageId = args["pageId"];
+  if (typeof pageId !== "number") {
+    sendMcpError(
+      res,
+      id,
+      -32000,
+      "缺少 pageId 参数，请先调用 devtools_list_pages 获取可用页面列表",
+      mcp.sessionId,
+    );
+    return;
   }
 
-  // 转发到 chrome-devtools-mcp
+  // 实时验证 pageId 是否为项目页面
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const checkResult: any = await mcp.callChromeDevTool("list_pages", {});
+  const checkText: string | undefined = checkResult?.result?.content?.[0]?.text;
+  const checkPages = checkText ? parseListPages(checkText) : [];
+  const projectPages = checkPages.filter((p) => isProjectPage(p.url, projectOrigins));
+  const isValid = projectPages.some((p) => p.pageId === pageId);
+
+  log.debug("handleDevTool validation", {
+    pageId,
+    totalChromePages: checkPages.length,
+    projectPages: projectPages.length,
+    projectPageIds: projectPages.map((p) => p.pageId),
+    origins: projectOrigins,
+    isValid,
+  });
+
+  if (!isValid) {
+    sendMcpError(res, id, -32000, "pageId 无效或非项目页面", mcp.sessionId);
+    return;
+  }
+
+  // 选中目标页面再转发
+  await mcp.callChromeDevTool("select_page", { pageId, bringToFront: false });
+
+  // 转发到 chrome-devtools-mcp（剥离 pageId，底层工具不认识此参数）
+  const forwardArgs = { ...args };
+  delete forwardArgs["pageId"];
   const forwardBody = JSON.stringify({
     jsonrpc: "2.0",
     id,
     method: "tools/call",
-    params: { name: mapped, arguments: args },
+    params: { name: mapped, arguments: forwardArgs },
   });
 
   const responseText = await mcp.forward(forwardBody);
@@ -245,20 +273,6 @@ async function handleDevTool(
 async function handleForward(res: McpResponse, body: string, mcp: McpProxy) {
   const responseText = await mcp.forward(body);
   sendMcpJson(res, 200, responseText, mcp.sessionId);
-}
-
-// ========== Chrome 校验 ==========
-
-/** 校验 Chrome 当前是否选中了某个项目页面 */
-async function ensureProjectPageSelected(
-  mcp: McpProxy,
-  projectOrigins: string[],
-): Promise<boolean> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const checkResult: any = await mcp.callChromeDevTool("list_pages", {});
-  const checkText: string | undefined = checkResult?.result?.content?.[0]?.text;
-  const checkPages = checkText ? parseListPages(checkText) : [];
-  return checkPages.some((p) => p.selected && isProjectPage(p.url, projectOrigins));
 }
 
 // ========== 响应工具 ==========

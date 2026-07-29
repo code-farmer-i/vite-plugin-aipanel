@@ -13,13 +13,16 @@ const log = createLogger("McpChrome");
 
 /** 从 Vite 服务器解析的所有 URL 中提取项目 origin 列表 */
 export function getProjectOrigins(server: ViteDevServer): string[] {
-  const urls = server.resolvedUrls?.local ?? [];
-  return [...new Set(urls.map((u) => new URL(u).origin))];
+  const local = server.resolvedUrls?.local ?? [];
+  const network = server.resolvedUrls?.network ?? [];
+  const origins = [...new Set([...local, ...network].map((u) => new URL(u).origin))];
+  log.debug("project origins", { origins });
+  return origins;
 }
 
 /** 判断页面 URL 是否属于项目的某个 origin */
 export function isProjectPage(url: string, origins: string[]): boolean {
-  return origins.length > 0 ? origins.some((origin) => url.startsWith(origin)) : true;
+  return origins.some((origin) => url.startsWith(origin));
 }
 
 // ========== 页面解析 ==========

@@ -10,7 +10,7 @@ import {
   getProjectOrigins,
   isProjectPage,
 } from "../core/mcp-chrome";
-import { CUSTOM_TOOLS, TOOL_MAP } from "./mcp-tools";
+import { CUSTOM_TOOLS, TOOL_MAP } from "../core/mcp-tools";
 
 const log = createLogger("McpEndpoint");
 

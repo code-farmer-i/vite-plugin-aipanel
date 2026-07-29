@@ -5,6 +5,7 @@ import { createRequire } from "module";
 import path from "path";
 import { pathToFileURL } from "url";
 import type { WebOptions } from "@vite-plugin-opencode-assistant/shared";
+import { MCP_API_PATH } from "@vite-plugin-opencode-assistant/shared";
 import { createLogger, getProcessLogBuffer } from "@vite-plugin-opencode-assistant/shared/node";
 
 const require = createRequire(path.join(process.cwd(), "package.json"));
@@ -12,7 +13,7 @@ const packageDir = resolvePackageDir();
 
 const log = createLogger("OpenCodeWeb");
 
-export function prepareOpenCodeRuntime(cwd: string): string {
+export function prepareOpenCodeRuntime(cwd: string, vitePort: number, mcpToken: string): string {
   const cacheDir = path.join(cwd, "node_modules", ".cache", "opencode");
 
   log.debug("Setting up OpenCode runtime", { cacheDir });
@@ -33,9 +34,8 @@ export function prepareOpenCodeRuntime(cwd: string): string {
         plugin: plugins,
         mcp: {
           "chrome-devtools": {
-            type: "local",
-            command: ["npx", "-y", "chrome-devtools-mcp@latest", "--autoConnect"],
-            enabled: true,
+            type: "remote",
+            url: `http://localhost:${vitePort}${MCP_API_PATH}?token=${mcpToken}`,
           },
         },
       },

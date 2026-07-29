@@ -283,6 +283,10 @@ export interface PageContext {
   url: string;
   /** 当前页面标题 */
   title: string;
+  /** 页面唯一标识（sessionStorage 持久化，同 Tab 刷新不变，新 Tab 重生成） */
+  sessionId?: string;
+  /** Chrome DevTools 中的 pageId，通过 MCP list_pages 解析得到 */
+  pageId?: number;
   /** 当前活跃的浏览器 Tab ID（扩展模式），用于在多 Tab 场景下标识具体是哪个 Tab */
   tabId?: number;
   /** Tab 在标签栏的位置索引（从 0 开始），用于 MCP 匹配 Page ID */

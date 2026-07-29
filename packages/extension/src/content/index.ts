@@ -144,7 +144,11 @@ if (win[INIT_MARKER]) {
     chrome.runtime
       .sendMessage({
         type: EXT_MSG.PAGE_CONTEXT,
-        ctx: { url: location.href, title: document.title },
+        ctx: {
+          url: location.href,
+          title: document.title,
+          sessionId: sessionStorage.getItem("_opencode_pk") || undefined,
+        },
         serviceInstanceId: cachedInfo.serviceInstanceId,
       })
       .catch(() => {});

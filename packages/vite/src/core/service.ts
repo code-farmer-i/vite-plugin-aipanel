@@ -20,6 +20,7 @@ import {
 } from "../utils/system";
 import type { OpenCodeAPI } from "./api";
 import { startProxyServer } from "./proxy-server";
+import type { McpProxy } from "./mcp-proxy";
 
 const log = createLogger("Service");
 
@@ -59,10 +60,13 @@ export class OpenCodeService {
   }
 
   async start(
-    corsOrigins?: string[],
-    contextApiUrl?: string,
-    logsApiUrl?: string,
-    viteOrigin?: string,
+    mcpToken: string,
+    vitePort: number,
+    corsOrigins: string[],
+    contextApiUrl: string,
+    logsApiUrl: string,
+    viteOrigin: string,
+    mcp: McpProxy,
   ): Promise<void> {
     if (this.isStarted && this.webProcess) {
       log.debug("Services already started, skipping");
@@ -131,7 +135,7 @@ Please install OpenCode first:
       log.debug(`Using workspace root: ${this.workspaceRoot}`);
 
       this.sendTaskUpdate("preparing_runtime");
-      const configDir = prepareOpenCodeRuntime(this.workspaceRoot);
+      const configDir = prepareOpenCodeRuntime(this.workspaceRoot, vitePort, mcpToken);
 
       timer.checkpoint("Plugin setup complete");
 
@@ -232,7 +236,8 @@ Please install OpenCode first:
       this.sendTaskUpdate("warming_up_chrome");
       let warmupFailed = false;
       try {
-        await this.api.warmupChromeMcp(this.workspaceRoot!, viteOrigin);
+        const ok = await mcp.verify();
+        if (!ok) throw new Error("MCP tools list returned empty");
         timer.checkpoint("Chrome MCP warmup complete");
       } catch (e) {
         log.warn("Chrome MCP warmup failed", { error: e });

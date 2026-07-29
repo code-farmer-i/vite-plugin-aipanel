@@ -7,12 +7,14 @@ import { setupSseEndpoint } from "./sse";
 import { setupSessionsEndpoint } from "./sessions";
 import { setupWarmupEndpoint } from "./warmup";
 import { setupLogsEndpoint } from "./logs";
+import { setupMcpEndpoint, MCP_API_PATH } from "./mcp";
+import type { McpProxy } from "../core/mcp-proxy";
 import { LOGS_API_PATH } from "@vite-plugin-opencode-assistant/shared";
 
 export * from "./types";
-export { LOGS_API_PATH };
+export { LOGS_API_PATH, MCP_API_PATH };
 
-export function setupMiddlewares(server: ViteDevServer, ctx: EndpointContext) {
+export function setupMiddlewares(server: ViteDevServer, ctx: EndpointContext, mcp?: McpProxy) {
   setupWidgetEndpoints(server, ctx);
   setupContextEndpoint(server, ctx);
   setupStartEndpoint(server, ctx);
@@ -20,4 +22,5 @@ export function setupMiddlewares(server: ViteDevServer, ctx: EndpointContext) {
   setupSessionsEndpoint(server, ctx);
   setupWarmupEndpoint(server, ctx);
   setupLogsEndpoint(server);
+  if (mcp) setupMcpEndpoint(server, mcp, () => ctx.getPageContext());
 }

@@ -62,6 +62,9 @@ export const START_API_PATH = "/__opencode_start__";
 /** 会话列表 API 路径 */
 export const SESSIONS_API_PATH = "/__opencode_sessions__";
 
+/** MCP 代理 API 路径 */
+export const MCP_API_PATH = "/__opencode_mcp__";
+
 /** SSE 事件流路径 */
 export const SSE_EVENTS_PATH = "/__opencode_events__";
 

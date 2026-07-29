@@ -15,7 +15,9 @@ import { setupMiddlewares, LOGS_API_PATH } from "./endpoints/index";
 import { injectWidget } from "./core/injector";
 import { OpenCodeAPI } from "./core/api";
 import { OpenCodeService } from "./core/service";
+import { McpProxy } from "./core/mcp-proxy";
 import { resolveWidgetPath, resolveWidgetStylePath } from "./utils/paths";
+import { findGitRoot } from "./utils/system";
 
 export default function opencodePlugin(options: OpenCodeOptions = {}): Plugin[] {
   const plugins: Plugin[] = [];
@@ -55,6 +57,8 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
 
   const sseClients: Set<http.ServerResponse> = new Set();
 
+  const mcpProxy = new McpProxy();
+
   const api = new OpenCodeAPI(
     config.hostname,
     () => actualWebPort,
@@ -73,6 +77,8 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
       actualProxyPort = port;
     },
   );
+  // 提前设置 workspaceRoot，避免 widget 过早调用 getSessions 时拿到 null
+  service.workspaceRoot = findGitRoot(process.cwd());
 
   return {
     name: "vite-plugin-opencode",
@@ -90,60 +96,65 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
       let viteOrigin = "";
       const getViteOrigin = () => viteOrigin;
 
-      setupMiddlewares(server, {
-        get webUrl() {
-          return actualWebPort ? `http://${config.hostname}:${actualWebPort}` : null;
+      setupMiddlewares(
+        server,
+        {
+          get webUrl() {
+            return actualWebPort ? `http://${config.hostname}:${actualWebPort}` : null;
+          },
+          get sseClients() {
+            return sseClients;
+          },
+          getPageContext() {
+            return (
+              pageContexts.get(activeTabId) ||
+              pageContexts.get(DEFAULT_TAB) || { url: "", title: "" }
+            );
+          },
+          setPageContext(tabId: string, ctx: PageContext) {
+            pageContexts.set(tabId || DEFAULT_TAB, ctx);
+          },
+          setActiveTabId(tabId: string) {
+            activeTabId = tabId;
+          },
+          clearSelectedElements() {
+            const ctx = pageContexts.get(activeTabId);
+            if (ctx) {
+              ctx.selectedElements = [];
+              pageContexts.set(activeTabId, ctx);
+            }
+            // 同时清除默认上下文
+            const defaultCtx = pageContexts.get(DEFAULT_TAB);
+            if (defaultCtx) {
+              defaultCtx.selectedElements = [];
+            }
+          },
+          get isServiceStarted() {
+            return service.isStarted;
+          },
+          get currentTask() {
+            return service.currentTask;
+          },
+          get actualProxyPort() {
+            return actualProxyPort;
+          },
+          get actualWebPort() {
+            return actualWebPort;
+          },
+          get serviceInstanceId() {
+            return serviceInstanceId;
+          },
+          getSessions: () => api.getSessions(service.workspaceRoot!),
+          createSession: () => api.createSession(service.workspaceRoot!),
+          deleteSession: (id) => api.deleteSession(id),
+          resolveWidgetPath,
+          resolveWidgetStylePath,
+          getAvailableModels: () => service.getAvailableModels(),
+          retryWarmupChromeMcp: (selectedModel) =>
+            service.retryWarmupChromeMcp(getViteOrigin(), selectedModel),
         },
-        get sseClients() {
-          return sseClients;
-        },
-        getPageContext() {
-          return (
-            pageContexts.get(activeTabId) || pageContexts.get(DEFAULT_TAB) || { url: "", title: "" }
-          );
-        },
-        setPageContext(tabId: string, ctx: PageContext) {
-          pageContexts.set(tabId || DEFAULT_TAB, ctx);
-        },
-        setActiveTabId(tabId: string) {
-          activeTabId = tabId;
-        },
-        clearSelectedElements() {
-          const ctx = pageContexts.get(activeTabId);
-          if (ctx) {
-            ctx.selectedElements = [];
-            pageContexts.set(activeTabId, ctx);
-          }
-          // 同时清除默认上下文
-          const defaultCtx = pageContexts.get(DEFAULT_TAB);
-          if (defaultCtx) {
-            defaultCtx.selectedElements = [];
-          }
-        },
-        get isServiceStarted() {
-          return service.isStarted;
-        },
-        get currentTask() {
-          return service.currentTask;
-        },
-        get actualProxyPort() {
-          return actualProxyPort;
-        },
-        get actualWebPort() {
-          return actualWebPort;
-        },
-        get serviceInstanceId() {
-          return serviceInstanceId;
-        },
-        getSessions: () => api.getSessions(service.workspaceRoot!),
-        createSession: () => api.createSession(service.workspaceRoot!),
-        deleteSession: (id) => api.deleteSession(id),
-        resolveWidgetPath,
-        resolveWidgetStylePath,
-        getAvailableModels: () => service.getAvailableModels(),
-        retryWarmupChromeMcp: (selectedModel) =>
-          service.retryWarmupChromeMcp(getViteOrigin(), selectedModel),
-      });
+        mcpProxy,
+      );
 
       server.httpServer?.on("listening", async () => {
         log.debug("Vite server listening event fired");
@@ -182,7 +193,17 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         });
 
         try {
-          await service.start([viteOrigin], contextApiUrl, logsApiUrl, viteOrigin);
+          // MCP 先就绪（用本地包，秒启动），warmup 依赖它
+          await mcpProxy.start();
+          await service.start(
+            mcpProxy.accessToken,
+            vitePort,
+            [viteOrigin],
+            contextApiUrl,
+            logsApiUrl,
+            viteOrigin,
+            mcpProxy,
+          );
         } catch (e) {
           log.error("Failed to start services", { error: e });
         }
@@ -191,10 +212,12 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
       server.httpServer?.on("close", () => {
         log.debug("HTTP server closing");
         service.stop();
+        mcpProxy.stop();
       });
 
       const cleanup = async () => {
         log.debug("Process cleanup triggered");
+        mcpProxy.stop();
         await service.stop();
         process.exit(0);
       };
@@ -222,27 +245,13 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         verbose: config.verbose,
       });
 
-      // 页面标题注入唯一标识（sessionStorage 持久化，同 Tab 刷新不变，新 Tab 重生成）
+      // sessionStorage 注入唯一标识（同 Tab 刷新不变，新 Tab 重生成）
       const titleInject = `<script>
         (function () {
           var KEY = "_opencode_pk";
-          var prefix = sessionStorage.getItem(KEY);
-          if (!prefix) {
-            prefix = "[" + Math.random().toString(36).slice(2, 5) + "]";
-            sessionStorage.setItem(KEY, prefix);
+          if (!sessionStorage.getItem(KEY)) {
+            sessionStorage.setItem(KEY, "[" + Math.random().toString(36).slice(2, 5) + "]");
           }
-          var applied = false;
-          function apply() {
-            if (applied) return;
-            var title = document.title;
-            if (title.indexOf(prefix) === 0) return;
-            applied = true;
-            document.title = prefix + title.replace(prefix, "");
-            applied = false;
-          }
-          apply();
-          var target = document.querySelector("title") || document.head;
-          new MutationObserver(apply).observe(target, { childList: true });
         })();
       </script>`;
 

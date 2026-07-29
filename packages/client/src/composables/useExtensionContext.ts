@@ -28,6 +28,7 @@ export function useExtensionContext(
 
   const extensionPageUrl = ref("");
   const extensionPageTitle = ref("");
+  const extensionSessionId = ref("");
   const log = createLogger("ExtCtx");
 
   const basePath = (path: string) => (viteBaseUrl ? `${viteBaseUrl}${path}` : path);
@@ -40,6 +41,7 @@ export function useExtensionContext(
       body: JSON.stringify({
         url,
         title,
+        sessionId: extensionSessionId.value,
         active: true,
         ...(activeTabId !== undefined ? { tabId: activeTabId } : {}),
         ...(activeTabIndex !== undefined ? { tabIndex: activeTabIndex } : {}),
@@ -65,7 +67,7 @@ export function useExtensionContext(
     serviceInstanceId?: string;
     tabId?: number;
     windowId?: number;
-    ctx?: { url: string; title: string };
+    ctx?: { url: string; title: string; sessionId?: string };
   }) => {
     // 按 serviceInstanceId 过滤，仅处理来自当前服务实例的上下文消息
     if (msg.serviceInstanceId && msg.serviceInstanceId !== serviceInstanceId) return;
@@ -87,6 +89,7 @@ export function useExtensionContext(
       if (!accepted) return;
       extensionPageUrl.value = msg.ctx.url;
       extensionPageTitle.value = msg.ctx.title;
+      extensionSessionId.value = msg.ctx.sessionId || "";
       updateContext(true);
     }
   };

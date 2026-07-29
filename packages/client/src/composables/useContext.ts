@@ -16,11 +16,16 @@ export function useContext(
   // 扩展模式：使用目标页面通过 PAGE_CONTEXT 消息发来的 URL/标题
   const extensionPageUrl = ref("");
   const extensionPageTitle = ref("");
+  const extensionSessionId = ref("");
 
   const getPageUrl = () =>
     displayMode === "extension" ? extensionPageUrl.value : window.location.href;
   const getPageTitle = () =>
     displayMode === "extension" ? extensionPageTitle.value : document.title;
+  const getSessionId = () =>
+    displayMode === "extension"
+      ? extensionSessionId.value
+      : sessionStorage.getItem("_opencode_pk") || "";
 
   const sendContext = (url: string, title: string) => {
     fetch(CONTEXT_API_PATH, {
@@ -29,6 +34,7 @@ export function useContext(
       body: JSON.stringify({
         url,
         title,
+        sessionId: getSessionId(),
         selectedElements: selectedElements.value,
       }),
     }).catch(() => {});
@@ -53,11 +59,12 @@ export function useContext(
   // 扩展模式：监听 PAGE_CONTEXT 消息获取目标页面 URL/标题
   const handleExtensionPageContext = (msg: {
     type: string;
-    ctx?: { url: string; title: string };
+    ctx?: { url: string; title: string; sessionId?: string };
   }) => {
     if (msg.type === EXT_MSG.PAGE_CONTEXT && msg.ctx) {
       extensionPageUrl.value = msg.ctx.url;
       extensionPageTitle.value = msg.ctx.title;
+      extensionSessionId.value = msg.ctx.sessionId || "";
       updateContext(true);
     }
   };

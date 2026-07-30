@@ -13,19 +13,22 @@ Agent 自动获得以下工具：
 获取 Vite 开发服务器进程日志（内存缓冲区，最近 500 条）。
 
 **参数：**
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `level` | `string` | - | 日志级别：`error`, `warn`, `info`, `debug`, `log`。多个逗号分隔 |
-| `limit` | `number` | `50` | 返回条数，最大 200 |
-| `source` | `string` | - | 来源过滤：`console`(控制台), `opencode-stdout`(服务输出), `opencode-stderr`(服务错误) |
+
+| 参数     | 类型     | 默认值 | 说明                                                                                  |
+| -------- | -------- | ------ | ------------------------------------------------------------------------------------- |
+| `level`  | `string` | -      | 日志级别：`error`, `warn`, `info`, `debug`, `log`。多个逗号分隔                       |
+| `limit`  | `number` | `50`   | 返回条数，最大 200                                                                    |
+| `source` | `string` | -      | 来源过滤：`console`(控制台), `opencode-stdout`(服务输出), `opencode-stderr`(服务错误) |
 
 **包含的日志内容：**
+
 - Vite HMR 热更新日志
 - 构建编译日志
 - OpenCode Web 进程输出
 - 插件运行日志
 
 **何时使用：**
+
 - 用户报告"页面没更新"、"HMR 失效"
 - 构建报错或编译失败
 - 页面白屏、样式丢失、模块加载失败
@@ -46,22 +49,23 @@ Agent → 调用 get_vite_dev_logs({ level: "error,warn", limit: 30 })
 
 ```bash
 # 查询所有日志
-curl "http://localhost:5173/__opencode_logs__"
+curl "http://localhost:5173/__opencode_process_logs__"
 
 # 只查错误和警告，最近 20 条
-curl "http://localhost:5173/__opencode_logs__?level=error,warn&limit=20"
+curl "http://localhost:5173/__opencode_process_logs__?level=error,warn&limit=20"
 
 # 只查 OpenCode 服务输出
-curl "http://localhost:5173/__opencode_logs__?source=opencode-stdout"
+curl "http://localhost:5173/__opencode_process_logs__?source=opencode-stdout"
 
 # 按时间过滤
-curl "http://localhost:5173/__opencode_logs__?since=2026-07-10T10:00:00.000Z"
+curl "http://localhost:5173/__opencode_process_logs__?since=2026-07-10T10:00:00.000Z"
 
 # 清空日志缓冲
-curl -X DELETE http://localhost:5173/__opencode_logs__
+curl -X DELETE http://localhost:5173/__opencode_process_logs__
 ```
 
 返回格式：
+
 ```json
 {
   "logs": [
@@ -112,12 +116,12 @@ some-command 2>&1 >/dev/null | tee /tmp/error-only.log
 opencodeAssistant({
   logFiles: [
     {
-      name: "backend-logs",                              // 工具名 get_backend-logs_logs
-      path: "/path/to/backend/logs/error.log",           // 日志文件绝对路径
-      description: "后端服务错误日志，排查 API 报错使用",    // 告诉 Agent 何时用
+      name: "backend-logs", // 工具名 get_backend-logs_logs
+      path: "/path/to/backend/logs/error.log", // 日志文件绝对路径
+      description: "后端服务错误日志，排查 API 报错使用", // 告诉 Agent 何时用
     },
     {
-      name: "slr-debug",                                 // 工具名 get_slr-debug_logs
+      name: "slr-debug", // 工具名 get_slr-debug_logs
       path: "/tmp/cost-of-use-slr-debug.log",
       description: "SLR 调试日志，排查费用计算问题使用",
     },
@@ -130,7 +134,8 @@ opencodeAssistant({
 ## 日志缓冲区
 
 日志保存在**内存缓冲区**中：
+
 - 最大容量：**500 条**
 - 超出容量时自动丢弃最早的日志
 - 重启开发服务器后缓冲区清空
-- 可通过 `DELETE /__opencode_logs__` 手动清空
+- 可通过 `DELETE /__opencode_process_logs__` 手动清空

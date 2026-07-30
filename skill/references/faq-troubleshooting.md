@@ -77,17 +77,7 @@ curl http://localhost:9222/json/version
 
 ### 手动重试预热
 
-预热失败后在面板中点击"重试"，或通过 API：
-
-```bash
-# 查看可用模型
-curl http://localhost:5173/__opencode_warmup__
-
-# 用指定模型重试
-curl -X POST http://localhost:5173/__opencode_warmup__ \
-  -H "Content-Type: application/json" \
-  -d '{"providerID":"openai","modelID":"gpt-4o"}'
-```
+预热失败后在面板中点击"重试"按钮，选择一个可用模型即可重新验证。
 
 ## 元素选择问题
 
@@ -127,7 +117,7 @@ curl -X POST http://localhost:5173/__opencode_warmup__ \
 
 - 确认 OpenCode Web 服务端口可访问：`curl http://127.0.0.1:5097`
 - 检查代理端口是否正确：`curl http://127.0.0.1:6097`
-- 查看日志排查：`curl "http://localhost:5173/__opencode_logs__?level=error"`
+- 查看日志排查：`curl "http://localhost:5173/__opencode_process_logs__?level=error"`
 
 ## 日志查看
 
@@ -135,7 +125,7 @@ curl -X POST http://localhost:5173/__opencode_warmup__ \
 
 ```bash
 # 查看最近的错误日志
-curl "http://localhost:5173/__opencode_logs__?level=error&limit=20"
+curl "http://localhost:5173/__opencode_process_logs__?level=error&limit=20"
 
 # 或在 AI 对话中直接问
 "帮我看看 Vite 开发服务器有没有错误"

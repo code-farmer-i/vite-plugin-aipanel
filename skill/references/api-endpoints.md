@@ -4,16 +4,16 @@
 
 ## 端点总览
 
-| 路径 | 方法 | 说明 |
-|------|------|------|
-| `/__opencode_start__` | GET | 服务状态和端口信息 |
-| `/__opencode_sessions__` | GET/POST/DELETE | 会话 CRUD |
-| `/__opencode_events__` | GET (SSE) | 服务事件流 |
-| `/__opencode_context__` | GET/POST/DELETE | 页面上下文 |
-| `/__opencode_logs__` | GET/DELETE | 进程日志 |
-| `/__opencode_warmup__` | GET/POST | Chrome MCP 预热 |
-| `/__opencode_widget__.js` | GET | 挂件脚本 |
-| `/__opencode_widget__.css` | GET | 挂件样式 |
+| 路径                         | 方法            | 说明               |
+| ---------------------------- | --------------- | ------------------ |
+| `/__opencode_start__`        | GET             | 服务状态和端口信息 |
+| `/__opencode_sessions__`     | GET/POST/DELETE | 会话 CRUD          |
+| `/__opencode_events__`       | GET (SSE)       | 服务事件流         |
+| `/__opencode_context__`      | GET/POST/DELETE | 页面上下文         |
+| `/__opencode_process_logs__` | GET/DELETE      | 进程日志           |
+| `/__opencode_warmup__`       | GET/POST        | Chrome MCP 预热    |
+| `/__opencode_widget__.js`    | GET             | 挂件脚本           |
+| `/__opencode_widget__.css`   | GET             | 挂件样式           |
 
 ---
 
@@ -26,6 +26,7 @@ curl http://localhost:5173/__opencode_start__
 ```
 
 **响应：**
+
 ```json
 {
   "success": true,
@@ -47,6 +48,7 @@ curl http://localhost:5173/__opencode_sessions__
 ```
 
 **响应：** `SessionInfo[]`
+
 ```json
 [
   {
@@ -89,29 +91,29 @@ curl -N http://localhost:5173/__opencode_events__
 
 **事件类型：**
 
-| 事件 | 说明 | 数据格式 |
-|------|------|----------|
-| `CONNECTED` | 客户端连接成功 | `{ "type": "CONNECTED" }` |
-| `STATUS_SYNC` | 服务状态同步 | `{ "type": "STATUS_SYNC", "isStarted": true, "task": "ready" }` |
-| `TASK_UPDATE` | 任务状态更新 | `{ "type": "TASK_UPDATE", "task": "warming_up_chrome" }` |
-| `CLEAR_ELEMENTS` | 清除选中元素 | `{ "type": "CLEAR_ELEMENTS" }` |
+| 事件             | 说明           | 数据格式                                                        |
+| ---------------- | -------------- | --------------------------------------------------------------- |
+| `CONNECTED`      | 客户端连接成功 | `{ "type": "CONNECTED" }`                                       |
+| `STATUS_SYNC`    | 服务状态同步   | `{ "type": "STATUS_SYNC", "isStarted": true, "task": "ready" }` |
+| `TASK_UPDATE`    | 任务状态更新   | `{ "type": "TASK_UPDATE", "task": "warming_up_chrome" }`        |
+| `CLEAR_ELEMENTS` | 清除选中元素   | `{ "type": "CLEAR_ELEMENTS" }`                                  |
 
 **TASK_UPDATE 的 task 可能值：**
 
-| task | 说明 |
-|------|------|
-| `checking_opencode` | 检查 OpenCode 安装 |
-| `allocating_port` | 分配服务端口 |
-| `preparing_runtime` | 准备运行环境 |
-| `starting_web` | 启动 OpenCode Web |
-| `waiting_web_ready` | 等待服务就绪（最长 5 分钟） |
-| `starting_proxy` | 启动代理服务 |
-| `warming_up_chrome` | 预热 Chrome DevTools MCP |
-| `creating_session` | 创建初始会话 |
-| `ready` | 全部就绪 |
-| `opencode_not_installed` | OpenCode 未安装 |
-| `web_start_timeout` | 服务启动超时 |
-| `chrome_mcp_failed` | Chrome MCP 预热失败（附 errorType/errorMessage） |
+| task                     | 说明                                             |
+| ------------------------ | ------------------------------------------------ |
+| `checking_opencode`      | 检查 OpenCode 安装                               |
+| `allocating_port`        | 分配服务端口                                     |
+| `preparing_runtime`      | 准备运行环境                                     |
+| `starting_web`           | 启动 OpenCode Web                                |
+| `waiting_web_ready`      | 等待服务就绪（最长 5 分钟）                      |
+| `starting_proxy`         | 启动代理服务                                     |
+| `warming_up_chrome`      | 预热 Chrome DevTools MCP                         |
+| `creating_session`       | 创建初始会话                                     |
+| `ready`                  | 全部就绪                                         |
+| `opencode_not_installed` | OpenCode 未安装                                  |
+| `web_start_timeout`      | 服务启动超时                                     |
+| `chrome_mcp_failed`      | Chrome MCP 预热失败（附 errorType/errorMessage） |
 
 ---
 
@@ -124,6 +126,7 @@ curl http://localhost:5173/__opencode_context__
 ```
 
 **响应：**
+
 ```json
 {
   "url": "http://localhost:5173/products/42",
@@ -158,7 +161,7 @@ curl -X DELETE http://localhost:5173/__opencode_context__
 
 ---
 
-## `/__opencode_logs__`
+## `/__opencode_process_logs__`
 
 详见 [features-logs](features-logs.md)
 
@@ -173,11 +176,18 @@ curl http://localhost:5173/__opencode_warmup__
 ```
 
 **响应：**
+
 ```json
 {
   "success": true,
   "models": [
-    { "providerID": "openai", "modelID": "gpt-4o-mini", "name": "GPT-4o Mini", "inputCost": 0.15, "releaseDate": "..." }
+    {
+      "providerID": "openai",
+      "modelID": "gpt-4o-mini",
+      "name": "GPT-4o Mini",
+      "inputCost": 0.15,
+      "releaseDate": "..."
+    }
   ]
 }
 ```
@@ -197,11 +207,13 @@ curl -X POST http://localhost:5173/__opencode_warmup__ \
 ```
 
 **响应（成功）：**
+
 ```json
 { "success": true }
 ```
 
 **响应（失败）：**
+
 ```json
 {
   "success": false,

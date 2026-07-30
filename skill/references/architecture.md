@@ -117,7 +117,7 @@
 
 ```
 AI Agent 调用 get_vite_dev_logs 工具
-→ OpenCode ViteLogsPlugin → GET /__opencode_logs__
+→ OpenCode ViteLogsPlugin → GET /__opencode_process_logs__
 → 内存缓冲区查询 → 返回格式化日志
 ```
 

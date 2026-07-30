@@ -3,6 +3,7 @@
 ## 功能说明
 
 Chrome DevTools MCP 让 OpenCode Agent 能够通过浏览器自动化工具来：
+
 - 获取页面 DOM 快照
 - 执行 JavaScript
 - 模拟用户交互
@@ -29,49 +30,33 @@ google-chrome --remote-debugging-port=9222
 
 ```ts
 opencodeAssistant({
-  chromeDevtoolsPort: 9222,  // 默认值
+  chromeDevtoolsPort: 9222, // 默认值
 });
 ```
 
-## 预热机制
+## 预热验证
 
-插件启动时会自动执行预热流程：
-
-1. 检查 Chrome DevTools Protocol 是否可用（端口 9222）
-2. 创建临时会话 `__chrome_mcp_warmup__`
-3. 使用最便宜的 AI 模型发送测试消息
-4. 验证 AI 是否能正确使用 `chrome-devtools_list_pages` 工具
-5. 无论成功/失败，清理临时会话
+插件启动时会自动检查 Chrome DevTools MCP 是否可用。如果验证通过，面板显示"准备完成"，AI 可正常使用浏览器工具。
 
 ### 预热失败
 
 如果预热失败，面板会显示错误提示，包含：
 
-| 错误类型 | 含义 | 解决方案 |
-|---------|------|----------|
+| 错误类型               | 含义                  | 解决方案                                      |
+| ---------------------- | --------------------- | --------------------------------------------- |
 | `CHROME_NOT_CONNECTED` | Chrome 远程调试未开启 | 以 `--remote-debugging-port=9222` 启动 Chrome |
-| `AI_TIMEOUT` | AI 60 秒未响应 | 检查 AI 模型配置和网络 |
-| `AI_RESPONSE_ERROR` | AI 响应不含 "ready" | 检查 AI 模型是否支持 tool 调用 |
-| `SESSION_ERROR` | 预热会话创建失败 | 检查 OpenCode 服务状态 |
-| `UNKNOWN` | 未知错误 | 查看日志 `__opencode_logs__` |
+| `AI_TIMEOUT`           | AI 60 秒未响应        | 检查 AI 模型配置和网络                        |
+| `AI_RESPONSE_ERROR`    | AI 响应不含 "ready"   | 检查 AI 模型是否支持 tool 调用                |
+| `SESSION_ERROR`        | 预热会话创建失败      | 检查 OpenCode 服务状态                        |
+| `UNKNOWN`              | 未知错误              | 查看日志                                      |
 
 ### 手动重试
 
 预热失败后可以手动重试：
 
-1. 面板会显示错误界面和可用模型列表（按价格排序）
-2. 选择一个模型后点击重试
-3. 也可以通过 API 重试：`POST /__opencode_warmup__`
-
-```bash
-# 使用默认模型重试
-curl -X POST http://localhost:5173/__opencode_warmup__
-
-# 指定模型重试
-curl -X POST http://localhost:5173/__opencode_warmup__ \
-  -H "Content-Type: application/json" \
-  -d '{"providerID":"openai","modelID":"gpt-4o-mini"}'
-```
+- 面板会显示错误界面和可用模型列表
+- 选择一个模型后点击重试
+- 也可以使用默认模型直接重试
 
 ## 在 AI 对话中使用
 

@@ -1,6 +1,6 @@
 # 展示模式
 
-## 三种模式
+## 四种模式
 
 ### Bubble 模式（默认）
 
@@ -44,6 +44,10 @@
 - 分隔线可拖拽调整宽度（400-800px）
 - 适合需要持续查看 AI 对话的场景
 
+### Auto 模式
+
+面板内提供模式切换按钮，用户可随时在 bubble/split/auto 之间自由切换，无需修改配置重启。
+
 ### Extension 模式
 
 利用浏览器扩展的独立侧边栏：
@@ -59,13 +63,13 @@
 opencodeAssistant({
   displayMode: "split",
   splitMode: {
-    width: 500,              // 默认宽度
-    minWidth: 400,           // 最小宽度（拖拽限制）
-    maxWidth: 800,           // 最大宽度（拖拽限制）
-    resizable: true,         // 是否允许拖拽调整
-    shrinkPage: true,        // 是否收缩主页面
-    defaultOpen: true,       // 默认展开
-    position: "right",       // left | right
+    width: 500, // 默认宽度
+    minWidth: 400, // 最小宽度（拖拽限制）
+    maxWidth: 800, // 最大宽度（拖拽限制）
+    resizable: true, // 是否允许拖拽调整
+    shrinkPage: true, // 是否收缩主页面
+    defaultOpen: true, // 默认展开
+    position: "right", // left | right
   },
 });
 ```

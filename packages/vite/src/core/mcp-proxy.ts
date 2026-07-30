@@ -39,6 +39,12 @@ export class McpProxy {
   #startPromise: Promise<void> | null = null;
   #idleTimer: ReturnType<typeof setTimeout> | null = null;
   #idleTimeout: number;
+  /** 是否正在主动停止（区别主动 stop 与进程意外退出） */
+  #stopping = false;
+  /** 自动重启计数（成功启动后重置） */
+  #restartAttempts = 0;
+  /** 重启退避最大间隔（ms） */
+  #maxRestartDelay = 30000;
   readonly sessionId: string;
   readonly accessToken: string;
 
@@ -102,7 +108,7 @@ export class McpProxy {
     });
 
     this.#proc.on("close", (code) => {
-      log.debug("MCP process closed", { code });
+      log.debug("MCP process closed", { code, stopping: this.#stopping });
       // 拒绝所有等待中的请求
       for (const resolve of this.#pending.values()) {
         resolve({ error: { code: -32000, message: `MCP process exited with code ${code}` } });
@@ -111,6 +117,11 @@ export class McpProxy {
       this.#proc = null;
       this.#rl = null;
       this.#startPromise = null;
+
+      // 非主动停止 → 自动重启
+      if (!this.#stopping) {
+        this.#scheduleRestart();
+      }
     });
 
     // 初始化 MCP 协议
@@ -119,6 +130,9 @@ export class McpProxy {
       capabilities: {},
       clientInfo: { name: "vite-plugin-opencode", version: "1.0.0" },
     });
+
+    // 启动成功，重置重启计数
+    this.#restartAttempts = 0;
 
     log.debug("MCP proxy ready");
     this.#startPromise = null;
@@ -197,7 +211,27 @@ export class McpProxy {
     }, this.#idleTimeout);
   }
 
+  /** 自动重启调度（指数退避） */
+  #scheduleRestart(): void {
+    const delay = Math.min(1000 * Math.pow(2, this.#restartAttempts), this.#maxRestartDelay);
+    this.#restartAttempts++;
+    log.info(`MCP process will restart in ${delay}ms (attempt ${this.#restartAttempts})`);
+
+    // 立即占据 startPromise，让并发请求共享同一次重启等待
+    this.#startPromise = new Promise<void>((resolve, reject) => {
+      setTimeout(() => {
+        if (this.#stopping) {
+          this.#startPromise = null;
+          resolve();
+          return;
+        }
+        this.#doStart().then(resolve, reject);
+      }, delay);
+    });
+  }
+
   stop(): void {
+    this.#stopping = true;
     if (this.#idleTimer) clearTimeout(this.#idleTimer);
     // 拒绝所有等待中的请求
     const err = new Error("MCP server shutting down");

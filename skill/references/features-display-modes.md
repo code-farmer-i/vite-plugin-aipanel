@@ -63,13 +63,13 @@
 opencodeAssistant({
   displayMode: "split",
   splitMode: {
-    width: 500, // 默认宽度
-    minWidth: 400, // 最小宽度（拖拽限制）
-    maxWidth: 800, // 最大宽度（拖拽限制）
-    resizable: true, // 是否允许拖拽调整
-    shrinkPage: true, // 是否收缩主页面
-    defaultOpen: true, // 默认展开
-    position: "right", // left | right
+    width: 500,              // 默认宽度
+    minWidth: 400,           // 最小宽度（拖拽限制）
+    maxWidth: 800,           // 最大宽度（拖拽限制）
+    resizable: true,         // 是否允许拖拽调整
+    shrinkPage: true,        // 是否收缩主页面
+    defaultOpen: true,       // 默认展开
+    position: "right",       // left | right
   },
 });
 ```

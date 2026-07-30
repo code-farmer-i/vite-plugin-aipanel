@@ -410,9 +410,6 @@ const handleToggle = async (val: boolean) => {
   }
   open.value = val;
   if (val) updateContext();
-  if (val) {
-    iframeLoading.value = false;
-  }
 };
 
 const handleSelectNode = async (element: OpenCodeSelectedElement, pageUrl?: string, pageTitle?: string) => {

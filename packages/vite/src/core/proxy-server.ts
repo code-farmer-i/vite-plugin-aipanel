@@ -676,13 +676,23 @@ function generateBridgeScript(options: ProxyServerOptions): string {
     injectMinimizeStyles();
     injectReviewPanelStyles();
     injectGeneralStyles();
-    if (window.parent !== window) {
-      window.parent.postMessage({ type: ${JSON.stringify(WIDGET_MSG.READY)} }, "*");
-    }
     setupPromptInputListener();
     applySavedStates();
+
+    let readySent = false;
+    function trySendReady() {
+      if (readySent) return;
+      const promptInput = document.querySelector('[data-component="prompt-input"]');
+      if (promptInput && window.parent !== window) {
+        window.parent.postMessage({ type: ${JSON.stringify(WIDGET_MSG.READY)} }, "*");
+        readySent = true;
+      }
+    }
+    trySendReady();
     
     const observer = new MutationObserver(function(mutations) {
+      trySendReady();
+      
       const promptInput = document.querySelector('[data-component="prompt-input"]');
       if (promptInput && !promptInput._opencodeListenerAttached) {
         setupPromptInputListener();

@@ -30,6 +30,7 @@ export function useSessions(options: UseSessionsOptions) {
 
   const loadSessions = async () => {
     loadingSessionList.value = true;
+    iframeLoading.value = true;
     try {
       const response = await fetch(basePath(SESSIONS_API_PATH));
       const data: SessionInfo[] = await response.json();

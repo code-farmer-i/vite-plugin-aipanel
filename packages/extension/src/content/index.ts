@@ -1,123 +1,28 @@
-import {
-  EXT_MSG,
-  WIDGET_MSG,
-  START_API_PATH,
-  createLogger,
-} from "@vite-plugin-opencode-assistant/shared";
+import { EXT_MSG, WIDGET_MSG, createLogger } from "@vite-plugin-opencode-assistant/shared";
 
 const log = createLogger("OpenCode CS");
 
 /**
  * OpenCode Assistant - Content Script
  *
- * 通过 postMessage 接收服务信息 + 页面上下文同步 + 选择模式消息中转。
+ * 页面上下文同步 + 选择模式消息中转。
+ * 服务检测已迁移至 Background Service Worker（轮询 /__opencode_start__）。
  * UI 在 Side Panel 中渲染。
  */
 const INIT_MARKER = "__OPENCODE_EXTENSION_INITIALIZED__";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const win = window as any;
 
-// 防御性检查：MV3 中 content script 不应重复注入到同一页面
 if (win[INIT_MARKER]) {
   log.warn("Content Script 已初始化，跳过");
 } else {
   win[INIT_MARKER] = true;
-
   log.debug("Content Script 已启动", { url: location.href });
-
-  /** 缓存的 Vite 服务信息 */
-  interface ServiceInfo {
-    proxyPort: number;
-    vitePort: string;
-    projectRoot: string;
-    serviceInstanceId: string;
-    verbose?: boolean;
-  }
-
-  let cachedInfo: ServiceInfo | null = null;
-  /** 当前窗口 ID（从 background 转发的消息中缓存，用于跨窗口消息过滤） */
-  let myWindowId: number | undefined;
-
-  /** 心跳超时定时器 */
-  let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
-  const HEARTBEAT_TIMEOUT = 12000; // 12 秒无心跳视为服务下线
-
-  /** 处理服务信息（postMessage 或 DOM 检测） */
-  function handleServiceInfo(info: ServiceInfo) {
-    const wasAlive = cachedInfo !== null;
-    const serviceChanged = cachedInfo && info.serviceInstanceId !== cachedInfo.serviceInstanceId;
-
-    // 新服务上线
-    if (!wasAlive || serviceChanged) {
-      if (wasAlive && serviceChanged) {
-        chrome.runtime
-          .sendMessage({
-            type: EXT_MSG.SERVICE_GONE,
-            serviceInstanceId: cachedInfo!.serviceInstanceId,
-          })
-          .catch(() => {});
-      }
-      cachedInfo = info;
-      chrome.runtime
-        .sendMessage({
-          type: EXT_MSG.SERVICE_APPEARED,
-          ...info,
-        })
-        .catch(() => {});
-      log.debug(`服务上线: ${info.serviceInstanceId} vite=${info.vitePort}`);
-      // 新服务上线时主动上报当前页面上下文
-      reportPageContext();
-    }
-    // 纯端口变化（同 serviceInstanceId）
-    else if (wasAlive && !serviceChanged && info.vitePort !== cachedInfo!.vitePort) {
-      cachedInfo = info;
-      chrome.runtime
-        .sendMessage({
-          type: EXT_MSG.SERVICE_APPEARED,
-          ...info,
-        })
-        .catch(() => {});
-    }
-
-    // 重置心跳超时
-    if (heartbeatTimer) clearTimeout(heartbeatTimer);
-    heartbeatTimer = setTimeout(() => {
-      if (cachedInfo) {
-        chrome.runtime
-          .sendMessage({
-            type: EXT_MSG.SERVICE_GONE,
-            serviceInstanceId: cachedInfo.serviceInstanceId,
-          })
-          .catch(() => {});
-        log.debug(`服务下线（心跳超时）: ${cachedInfo.serviceInstanceId}`);
-        cachedInfo = null;
-      }
-      heartbeatTimer = null;
-    }, HEARTBEAT_TIMEOUT);
-  }
-
-  // ========== 通过 postMessage 接收服务信息（替代 HTTP 轮询） ==========
-
-  window.addEventListener("message", (event) => {
-    if (event.origin !== location.origin) return;
-    if (event.data?.type !== WIDGET_MSG.SERVICE_INFO) return;
-    const data = event.data;
-    if (data.proxyPort && data.serviceInstanceId) {
-      handleServiceInfo({
-        proxyPort: data.proxyPort,
-        vitePort: data.vitePort || location.port,
-        projectRoot: data.projectRoot || "",
-        serviceInstanceId: data.serviceInstanceId,
-        verbose: data.verbose,
-      });
-    }
-  });
 
   // ========== 页面上下文同步 ==========
 
   /** 上报当前页面上下文（URL + 标题） */
   function reportPageContext() {
-    if (!cachedInfo) return; // 无服务时不发送
     chrome.runtime
       .sendMessage({
         type: EXT_MSG.PAGE_CONTEXT,
@@ -126,10 +31,9 @@ if (win[INIT_MARKER]) {
           title: document.title,
           sessionId: sessionStorage.getItem("_opencode_pk") || undefined,
         },
-        serviceInstanceId: cachedInfo.serviceInstanceId,
       })
       .catch(() => {});
-    log.debug(`上报上下文: url=${location.href} serviceInstanceId=${cachedInfo.serviceInstanceId}`);
+    log.debug(`上报上下文: url=${location.href}`);
   }
 
   function watchPageContext() {
@@ -152,35 +56,7 @@ if (win[INIT_MARKER]) {
   // ========== Side Panel 消息处理 ==========
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg.type === EXT_MSG.GET_PORT_INFO) {
-      if (cachedInfo && !msg.forceRefresh) {
-        // 有心跳缓存且非强制刷新 → 直接返回
-        sendResponse(cachedInfo);
-      } else {
-        // 无缓存或强制刷新 → 真实请求检测服务（按需，非轮询）
-        fetch(START_API_PATH)
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.proxyPort && data.serviceInstanceId) {
-              const info: ServiceInfo = {
-                proxyPort: data.proxyPort,
-                vitePort: location.port,
-                projectRoot: data.projectRoot || "",
-                serviceInstanceId: data.serviceInstanceId,
-              };
-              // 真正的服务响应 → 更新缓存
-              handleServiceInfo(info);
-              sendResponse(info);
-            } else {
-              sendResponse(null);
-            }
-          })
-          .catch(() => sendResponse(null));
-      }
-      return true;
-    }
-
-    // Tab 切换后 Background 请求立即上报当前页面上下文
+    // Background 请求立即上报当前页面上下文
     if (msg.type === EXT_MSG.REQUEST_PAGE_CONTEXT) {
       reportPageContext();
       sendResponse({ success: true });
@@ -200,24 +76,6 @@ if (win[INIT_MARKER]) {
       return true;
     }
 
-    // 服务下线 → 清除缓存，确保下次 GET_PORT_INFO 走真实检测
-    // 按 windowId 过滤，防止跨窗口 SSE 断连误清除当前窗口的缓存
-    if (msg.type === EXT_MSG.SERVICE_GONE) {
-      if (msg.windowId !== undefined && myWindowId !== undefined && msg.windowId !== myWindowId) {
-        return false; // 来自其他窗口，忽略
-      }
-      if (cachedInfo && msg.serviceInstanceId === cachedInfo.serviceInstanceId) {
-        log.debug(`服务下线，清除缓存: ${cachedInfo.serviceInstanceId}`);
-        cachedInfo = null;
-        if (heartbeatTimer) {
-          clearTimeout(heartbeatTimer);
-          heartbeatTimer = null;
-        }
-      }
-      sendResponse({ success: true });
-      return true;
-    }
-
     return false;
   });
 
@@ -233,23 +91,13 @@ if (win[INIT_MARKER]) {
       type === WIDGET_MSG.SELECTOR_START ||
       type === WIDGET_MSG.SELECTOR_STOP
     ) {
-      // 附加当前页面 URL、标题和 serviceInstanceId，确保按服务实例隔离
       chrome.runtime
         .sendMessage({
           ...event.data,
           pageUrl: event.data.pageUrl ?? location.href,
           pageTitle: event.data.pageTitle ?? document.title,
-          serviceInstanceId: cachedInfo?.serviceInstanceId,
         })
         .catch(() => {});
-    }
-  });
-
-  // 查询自身窗口 ID（用于跨窗口 SERVICE_GONE 过滤）
-  chrome.runtime.sendMessage({ type: EXT_MSG.CS_QUERY_WINDOW }, (response) => {
-    if (response?.windowId) {
-      myWindowId = response.windowId;
-      log.debug(`窗口 ID: ${myWindowId}`);
     }
   });
 

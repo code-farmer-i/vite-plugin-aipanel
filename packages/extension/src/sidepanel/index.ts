@@ -5,10 +5,9 @@ const log = createLogger("OpenCode SP");
 /**
  * OpenCode Assistant - Side Panel
  *
- * 面板实例存活 = workspace 中 Vite 服务存活。
- * serviceInstanceId 作为唯一隔离键，通过 Content Script 健康检查驱动实例生命周期。
- * 多实例通过 overflow:hidden + 定位偏移切换，不销毁不 display:none，
- * 所有实例始终保持完整渲染和网络连接。
+ * 服务检测由 Background Service Worker 轮询 /__opencode_start__ 完成。
+ * SP 通过 SERVICE_APPEARED / SERVICE_GONE / TAB_SWITCHED 消息驱动实例生命周期。
+ * 多实例通过 overflow:hidden + 定位偏移切换，不销毁不 display:none。
  */
 log.debug("Side Panel 入口已加载");
 
@@ -22,17 +21,10 @@ interface ServiceInfo {
   verbose?: boolean;
 }
 
-/** 从 content script 获取服务信息 */
-async function fetchServiceInfo(forceRefresh = false): Promise<ServiceInfo | null> {
+/** 从 Background 获取当前 active tab 的服务信息（触发立即轮询） */
+async function fetchServiceInfo(): Promise<ServiceInfo | null> {
   try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tabs[0]?.id) return null;
-    const info = await chrome.tabs.sendMessage(tabs[0].id, {
-      type: EXT_MSG.GET_PORT_INFO,
-      forceRefresh,
-    });
-    if (info && info.serviceInstanceId && info.proxyPort && info.vitePort) return info;
-    return null;
+    return await chrome.runtime.sendMessage({ type: "FORCE_POLL" });
   } catch {
     return null;
   }
@@ -107,7 +99,7 @@ async function initContainers() {
 
   const { createApp } = await import("vue");
   const { default: NoServicePrompt } = await import("./NoServicePrompt.vue");
-  createApp(NoServicePrompt, { onRefresh: () => mountAppForActiveTab(true) }).mount(noServiceEl);
+  createApp(NoServicePrompt, { onRefresh: () => mountAppForActiveTab() }).mount(noServiceEl);
 }
 
 /** 为指定服务创建并挂载新的 Vue App */
@@ -187,25 +179,9 @@ function destroyAppInstance(serviceInstanceId: string) {
   }
 }
 
-/** 为当前 active tab 挂载 App */
-async function mountAppForActiveTab(forceRefresh = false): Promise<boolean> {
-  if (forceRefresh) {
-    // 主动注入 content script，确保其已加载到页面中（无需刷新页面）
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const tabId = tabs[0]?.id;
-    if (tabId) {
-      await chrome.scripting
-        .executeScript({
-          target: { tabId },
-          files: ["content.js"],
-        })
-        .catch(() => {
-          // content script 可能已注入（INIT_MARKER 守卫会跳过），忽略错误
-        });
-    }
-  }
-
-  const info = await fetchServiceInfo(forceRefresh);
+/** 为当前 active tab 挂载 App（从 Background 获取服务信息） */
+async function mountAppForActiveTab(): Promise<boolean> {
+  const info = await fetchServiceInfo();
   if (!info) {
     showNoServiceOverlay();
     return false;
@@ -220,7 +196,7 @@ function handleServiceAppeared(info: ServiceInfo) {
   const existingInst = appInstances.get(info.serviceInstanceId);
 
   if (existingInst) {
-    // 已有实例：更新端口信息（可能重启后换了端口），清除 zombie 标记
+    // 已有实例：更新端口信息，清除 zombie 标记
     existingInst.vitePort = info.vitePort;
     existingInst.proxyPort = info.proxyPort;
     existingInst.zombie = false;
@@ -228,24 +204,14 @@ function handleServiceAppeared(info: ServiceInfo) {
       clearTimeout(existingInst.zombieTimer);
       existingInst.zombieTimer = null;
     }
-    // 只显示 App 如果当前 active tab 仍能检测到该服务
-    showAppIfActiveTabMatches(info.serviceInstanceId);
+    showApp(info.serviceInstanceId);
     log.debug(`复用已有实例: ${info.serviceInstanceId} vite=${info.vitePort}`);
   } else {
     log.debug(`创建新实例: ${info.serviceInstanceId} vite=${info.vitePort}`);
     createAppInstance(info).then(() => {
-      showAppIfActiveTabMatches(info.serviceInstanceId);
+      showApp(info.serviceInstanceId);
     });
   }
-}
-
-/** 仅在当前 active tab 匹配指定服务时才显示 App，否则保持 NoServicePrompt */
-function showAppIfActiveTabMatches(serviceInstanceId: string) {
-  fetchServiceInfo().then((currentInfo) => {
-    if (currentInfo && currentInfo.serviceInstanceId === serviceInstanceId) {
-      showApp(serviceInstanceId);
-    }
-  });
 }
 
 /** 处理服务下线 */
@@ -291,6 +257,7 @@ function handleTabSwitched(info: ServiceInfo | null) {
 
 /** 监听消息 */
 chrome.runtime.onMessage.addListener((msg) => {
+  // 跨窗口过滤（TAB_SWITCHED 不受此限制，因窗口切换时需要更新 myWindowId）
   if (
     msg.type !== EXT_MSG.TAB_SWITCHED &&
     myWindowId !== undefined &&

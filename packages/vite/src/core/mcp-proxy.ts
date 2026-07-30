@@ -140,7 +140,7 @@ export class McpProxy {
       throw new Error("Invalid JSON-RPC request");
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const id = msg.id;
       if (id !== undefined) {
         this.#pending.set(id, (raw) => resolve(JSON.stringify(raw)));
@@ -152,13 +152,6 @@ export class McpProxy {
       }
 
       this.#proc!.stdin!.write(rawRequest + "\n");
-
-      setTimeout(() => {
-        if (this.#pending.has(id)) {
-          this.#pending.delete(id);
-          reject(new Error("MCP forward timeout"));
-        }
-      }, 30000);
     });
   }
 
@@ -172,18 +165,11 @@ export class McpProxy {
     this.#resetIdleTimer();
     const id = this.#internalIdBase + ++this.#messageId;
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       this.#pending.set(id, resolve);
 
       const request = JSON.stringify({ jsonrpc: "2.0", id, method, params });
       this.#proc!.stdin!.write(request + "\n");
-
-      setTimeout(() => {
-        if (this.#pending.has(id)) {
-          this.#pending.delete(id);
-          reject(new Error(`MCP call timeout: ${method}`));
-        }
-      }, 30000);
     });
   }
 

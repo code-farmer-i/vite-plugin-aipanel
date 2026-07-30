@@ -107,10 +107,10 @@ async function handlePost(
       case "tools/list":
         return handleToolsList(res, id, mcp.sessionId);
       case "tools/call":
-        return handleToolsCall(res, id, body, mcp, projectOrigins, getPageContext);
+        return await handleToolsCall(res, id, body, mcp, projectOrigins, getPageContext);
       default:
         // initialize 等 → 直接转发
-        return handleForward(res, body, mcp);
+        return await handleForward(res, body, mcp);
     }
   } catch (e) {
     log.debug("MCP POST error", { error: (e as Error).message });
@@ -163,46 +163,51 @@ async function handleListPages(
   projectOrigins: string[],
   getPageContext: () => PageContext,
 ) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const listResult: any = await mcp.callChromeDevTool("list_pages", {});
-  const text: string | undefined = listResult?.result?.content?.[0]?.text;
-  const allPages = text ? parseListPages(text) : [];
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const listResult: any = await mcp.callChromeDevTool("list_pages", {});
+    const text: string | undefined = listResult?.result?.content?.[0]?.text;
+    const allPages = text ? parseListPages(text) : [];
 
-  log.debug("Chrome pages", { total: allPages.length, urls: allPages.map((p) => p.url) });
-  log.debug("project origins", { origins: projectOrigins });
+    log.debug("Chrome pages", { total: allPages.length, urls: allPages.map((p) => p.url) });
+    log.debug("project origins", { origins: projectOrigins });
 
-  const filtered = allPages.filter((p) => isProjectPage(p.url, projectOrigins));
+    const filtered = allPages.filter((p) => isProjectPage(p.url, projectOrigins));
 
-  log.debug("filtered pages", { count: filtered.length, pageIds: filtered.map((p) => p.pageId) });
+    log.debug("filtered pages", { count: filtered.length, pageIds: filtered.map((p) => p.pageId) });
 
-  if (filtered.length === 0) {
-    sendMcpResult(res, id, "暂无项目页面，请先在浏览器中打开本地开发页面", mcp.sessionId);
-    return;
+    if (filtered.length === 0) {
+      sendMcpResult(res, id, "暂无项目页面，请先在浏览器中打开本地开发页面", mcp.sessionId);
+      return;
+    }
+
+    const pc = getPageContext();
+    const chromeSelectedPageId = allPages.find((p) => p.selected)?.pageId;
+
+    const resolved = await resolveChromePageId(
+      mcp,
+      pc.url,
+      pc.title,
+      projectOrigins,
+      pc.sessionId,
+      filtered,
+      chromeSelectedPageId,
+    );
+    const activePageId = resolved.ok ? resolved.pageId : null;
+
+    const pageList = filtered.map((p) => ({
+      pageId: p.pageId,
+      url: p.url,
+      title: p.title,
+      active: activePageId != null ? p.pageId === activePageId : false,
+      selected: p.selected,
+    }));
+
+    sendMcpResult(res, id, JSON.stringify(pageList, null, 2), mcp.sessionId);
+  } catch (e) {
+    log.debug("handleListPages error", { error: (e as Error).message });
+    sendMcpError(res, id, -32603, `MCP 调用失败: ${(e as Error).message}`, mcp.sessionId);
   }
-
-  const pc = getPageContext();
-  const chromeSelectedPageId = allPages.find((p) => p.selected)?.pageId;
-
-  const resolved = await resolveChromePageId(
-    mcp,
-    pc.url,
-    pc.title,
-    projectOrigins,
-    pc.sessionId,
-    filtered,
-    chromeSelectedPageId,
-  );
-  const activePageId = resolved.ok ? resolved.pageId : null;
-
-  const pageList = filtered.map((p) => ({
-    pageId: p.pageId,
-    url: p.url,
-    title: p.title,
-    active: activePageId != null ? p.pageId === activePageId : false,
-    selected: p.selected,
-  }));
-
-  sendMcpResult(res, id, JSON.stringify(pageList, null, 2), mcp.sessionId);
 }
 
 // ========== 其他 devtools_* 工具 ==========
@@ -215,64 +220,74 @@ async function handleDevTool(
   args: Record<string, unknown>,
   projectOrigins: string[],
 ) {
-  // 提取并校验 pageId
-  const pageId = args["pageId"];
-  if (typeof pageId !== "number") {
-    sendMcpError(
-      res,
+  try {
+    // 提取并校验 pageId
+    const pageId = args["pageId"];
+    if (typeof pageId !== "number") {
+      sendMcpError(
+        res,
+        id,
+        -32000,
+        "缺少 pageId 参数，请先调用 devtools_list_pages 获取可用页面列表",
+        mcp.sessionId,
+      );
+      return;
+    }
+
+    // 实时验证 pageId 是否为项目页面
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const checkResult: any = await mcp.callChromeDevTool("list_pages", {});
+    const checkText: string | undefined = checkResult?.result?.content?.[0]?.text;
+    const checkPages = checkText ? parseListPages(checkText) : [];
+    const projectPages = checkPages.filter((p) => isProjectPage(p.url, projectOrigins));
+    const isValid = projectPages.some((p) => p.pageId === pageId);
+
+    log.debug("handleDevTool validation", {
+      pageId,
+      totalChromePages: checkPages.length,
+      projectPages: projectPages.length,
+      projectPageIds: projectPages.map((p) => p.pageId),
+      origins: projectOrigins,
+      isValid,
+    });
+
+    if (!isValid) {
+      sendMcpError(res, id, -32000, "pageId 无效或非项目页面", mcp.sessionId);
+      return;
+    }
+
+    // 选中目标页面再转发
+    await mcp.callChromeDevTool("select_page", { pageId, bringToFront: false });
+
+    // 转发到 chrome-devtools-mcp（剥离 pageId，底层工具不认识此参数）
+    const forwardArgs = { ...args };
+    delete forwardArgs["pageId"];
+    const forwardBody = JSON.stringify({
+      jsonrpc: "2.0",
       id,
-      -32000,
-      "缺少 pageId 参数，请先调用 devtools_list_pages 获取可用页面列表",
-      mcp.sessionId,
-    );
-    return;
+      method: "tools/call",
+      params: { name: mapped, arguments: forwardArgs },
+    });
+
+    const responseText = await mcp.forward(forwardBody);
+    log.debug("MCP response", { mapped, response: responseText.substring(0, 100) });
+    sendMcpJson(res, 200, responseText, mcp.sessionId);
+  } catch (e) {
+    log.debug("handleDevTool error", { error: (e as Error).message, mapped });
+    sendMcpError(res, id, -32603, `MCP 调用失败: ${(e as Error).message}`, mcp.sessionId);
   }
-
-  // 实时验证 pageId 是否为项目页面
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const checkResult: any = await mcp.callChromeDevTool("list_pages", {});
-  const checkText: string | undefined = checkResult?.result?.content?.[0]?.text;
-  const checkPages = checkText ? parseListPages(checkText) : [];
-  const projectPages = checkPages.filter((p) => isProjectPage(p.url, projectOrigins));
-  const isValid = projectPages.some((p) => p.pageId === pageId);
-
-  log.debug("handleDevTool validation", {
-    pageId,
-    totalChromePages: checkPages.length,
-    projectPages: projectPages.length,
-    projectPageIds: projectPages.map((p) => p.pageId),
-    origins: projectOrigins,
-    isValid,
-  });
-
-  if (!isValid) {
-    sendMcpError(res, id, -32000, "pageId 无效或非项目页面", mcp.sessionId);
-    return;
-  }
-
-  // 选中目标页面再转发
-  await mcp.callChromeDevTool("select_page", { pageId, bringToFront: false });
-
-  // 转发到 chrome-devtools-mcp（剥离 pageId，底层工具不认识此参数）
-  const forwardArgs = { ...args };
-  delete forwardArgs["pageId"];
-  const forwardBody = JSON.stringify({
-    jsonrpc: "2.0",
-    id,
-    method: "tools/call",
-    params: { name: mapped, arguments: forwardArgs },
-  });
-
-  const responseText = await mcp.forward(forwardBody);
-  log.debug("MCP response", { mapped, response: responseText.substring(0, 100) });
-  sendMcpJson(res, 200, responseText, mcp.sessionId);
 }
 
 // ========== 其他方法（initialize 等） ==========
 
 async function handleForward(res: McpResponse, body: string, mcp: McpProxy) {
-  const responseText = await mcp.forward(body);
-  sendMcpJson(res, 200, responseText, mcp.sessionId);
+  try {
+    const responseText = await mcp.forward(body);
+    sendMcpJson(res, 200, responseText, mcp.sessionId);
+  } catch (e) {
+    log.debug("handleForward error", { error: (e as Error).message });
+    sendMcpError(res, null, -32603, `MCP 调用失败: ${(e as Error).message}`, mcp.sessionId);
+  }
 }
 
 // ========== 响应工具 ==========

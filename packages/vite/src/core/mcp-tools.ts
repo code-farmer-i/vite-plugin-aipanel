@@ -44,6 +44,14 @@ export const CUSTOM_TOOLS: CustomTool[] = [
       properties: {},
     },
   },
+  {
+    name: "get_page_context",
+    description: "获取用户当前正在浏览的页面上下文信息，包含页面 URL、标题、页面 ID",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
 
   // ===== 截图与快照 =====
   {

@@ -81,6 +81,7 @@ defineExpose({
       <iframe
         ref="iframeRef"
         class="opencode-iframe"
+        :class="{ loaded: !frameLoading }"
         :src="iframeSrc"
         allow="clipboard-write; clipboard-read"
         referrerpolicy="origin"
@@ -106,16 +107,19 @@ defineExpose({
   right: 0;
   bottom: 0;
   background: var(--oc-overlay-bg);
-  display: none;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 10;
-  transition: opacity 0.3s ease;
+  display: flex;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
 .opencode-loading-overlay.visible {
-  display: flex;
+  opacity: 1;
+  visibility: visible;
 }
 
 .opencode-loading-spinner {
@@ -146,11 +150,15 @@ defineExpose({
   right: 0;
   bottom: 0;
   z-index: 15;
-  display: none;
+  display: flex;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
 .opencode-error-overlay.visible {
-  display: flex;
+  opacity: 1;
+  visibility: visible;
 }
 
 .opencode-empty-state-overlay {
@@ -160,16 +168,19 @@ defineExpose({
   right: 0;
   bottom: 0;
   background: var(--oc-bg-secondary);
-  display: none;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 5;
-  transition: opacity 0.3s ease;
+  display: flex;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
 .opencode-empty-state-overlay.visible {
-  display: flex;
+  opacity: 1;
+  visibility: visible;
 }
 
 .opencode-empty-state-icon {
@@ -211,5 +222,11 @@ defineExpose({
   width: 100%;
   height: 100%;
   border: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.opencode-iframe.loaded {
+  opacity: 1;
 }
 </style>

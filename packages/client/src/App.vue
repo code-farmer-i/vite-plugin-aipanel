@@ -325,8 +325,16 @@ watch(chromeMcpFailed, (failed) => {
 });
 
 // iframe 消息监听回调
+const iframeLoadTimeout = ref<ReturnType<typeof setTimeout> | null>(null);
+
 const handleIframeMessage = (event: MessageEvent) => {
   if (event.data?.type === WIDGET_MSG.READY) {
+    // iframe 内 React 应用就绪，关闭加载蒙层
+    if (iframeLoadTimeout.value) {
+      clearTimeout(iframeLoadTimeout.value);
+      iframeLoadTimeout.value = null;
+    }
+    iframeLoading.value = false;
     sendThemeToIframe();
   }
   if (event.data?.type === WIDGET_MSG.KEYDOWN) {
@@ -380,6 +388,10 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  if (iframeLoadTimeout.value) {
+    clearTimeout(iframeLoadTimeout.value);
+    iframeLoadTimeout.value = null;
+  }
   window.removeEventListener("message", handleIframeMessage);
   document.removeEventListener("visibilitychange", cleanupSelectMode);
   window.removeEventListener("pagehide", cleanupSelectMode);
@@ -494,7 +506,12 @@ const handleRemoveSelectedNode = ({ index }: { index: number; }) => {
 };
 
 const handleFrameLoaded = () => {
-  iframeLoading.value = false;
+  // iframe HTML 加载完成，但 React 应用可能还未初始化
+  // 等待 WIDGET_MSG.READY 消息来关闭蒙层，10s 兜底以防消息丢失
+  iframeLoadTimeout.value = setTimeout(() => {
+    iframeLoading.value = false;
+    iframeLoadTimeout.value = null;
+  }, 10000);
 };
 </script>
 

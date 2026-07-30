@@ -20,7 +20,7 @@ export function useSessions(options: UseSessionsOptions) {
   const sessions = ref<OpenCodeWidgetSession[]>([]);
   const loadingSessionList = ref<boolean | undefined>(undefined);
   const currentSessionId = ref<string | null>(null);
-  const iframeLoading = ref(false);
+  const iframeLoading = ref(true);
 
   const iframeSrc = computed(() => {
     return currentSessionId.value

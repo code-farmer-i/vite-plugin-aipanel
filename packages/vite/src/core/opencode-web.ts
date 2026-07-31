@@ -32,7 +32,9 @@ export function prepareOpenCodeRuntime(
   const plugins = resolvePluginEntries(sourcePluginsDir);
 
   // 构建 LSP 配置
-  const lspConfig = enableLsp ? buildLspConfig(cwd) : undefined;
+  // OpenCode 内置 ESLint LSP 有已知 bug (https://github.com/anomalyco/opencode/issues/23911)，
+  // 因此禁用它，改用 block-on-error 插件的 Node API 处理 ESLint
+  const lspConfig = buildLspConfig(cwd);
 
   const opencodeConfigPath = path.join(cacheDir, "opencode.json");
   const config: Record<string, unknown> = {
@@ -45,9 +47,9 @@ export function prepareOpenCodeRuntime(
     },
   };
 
-  if (lspConfig) {
+  if (enableLsp) {
     config.lsp = lspConfig;
-    log.debug("LSP diagnostics enabled (TypeScript + ESLint)");
+    log.info("LSP diagnostics enabled (all built-in servers, ESLint excluded)");
   } else {
     log.debug("LSP diagnostics disabled");
   }
@@ -188,34 +190,86 @@ function resolveUserTsServer(cwd: string): string | undefined {
 }
 
 /**
- * 构建 OpenCode LSP 配置（仅 TypeScript）
- * ESLint/Prettier 通过 block-on-error 插件 Node API 处理
+ * 构建 OpenCode LSP 配置
+ * - 禁用内置 ESLint LSP（有已知 bug，改用 block-on-error 插件 Node API 处理）
+ * - TypeScript 使用自定义 tsserver 路径（优先用户项目安装的版本）
+ * - Vue 使用项目安装的 @vue/language-server（绕过 OpenCode 内置 Vue LSP 不生效问题）
  */
-function buildLspConfig(
-  cwd: string,
-): Record<string, { command?: string[]; initialization?: Record<string, unknown> }> | null {
-  const cli = resolveTsServerCli();
-  if (!cli) {
-    log.warn("typescript-language-server not found in plugin bundle, LSP disabled");
-    return null;
-  }
-
-  const tsserver = resolveUserTsServer(cwd);
+function buildLspConfig(cwd: string): Record<string, unknown> {
   const lspConfig: Record<string, unknown> = {
-    typescript: {
-      command: ["node", cli, "--stdio"],
-      ...(tsserver ? { initialization: { tsserver: { path: tsserver } } } : {}),
-    },
+    // 禁用 OpenCode 内置 ESLint LSP
+    eslint: { disabled: true },
   };
 
-  if (!tsserver) {
-    log.warn("TypeScript tsserver.js not found, TS LSP may use built-in version");
+  const tsCli = resolveTsServerCli();
+  if (tsCli) {
+    const tsserver = resolveUserTsServer(cwd);
+    lspConfig.typescript = {
+      command: ["node", tsCli, "--stdio"],
+      ...(tsserver ? { initialization: { tsserver: { path: tsserver } } } : {}),
+    };
+    if (!tsserver) {
+      log.warn("TypeScript tsserver.js not found, TS LSP may use built-in version");
+    }
+  } else {
+    log.warn("typescript-language-server not found in plugin bundle, TS LSP uses built-in");
   }
 
-  return lspConfig as Record<
-    string,
-    { command?: string[]; initialization?: Record<string, unknown> }
-  >;
+  const vueCli = resolveVueServerCli();
+  if (vueCli) {
+    lspConfig.vue = {
+      command: ["node", vueCli, "--stdio"],
+    };
+    const tsdk = resolveTsdkPath(cwd);
+    if (tsdk) {
+      (lspConfig.vue as Record<string, unknown>).initialization = {
+        typescript: { tsdk },
+        vue: { hybridMode: false },
+      };
+      log.debug("Vue LSP configured", { cli: vueCli, tsdk });
+    } else {
+      log.debug("Vue LSP configured (without tsdk)", { cli: vueCli });
+    }
+  } else {
+    log.debug("vue-language-server not found in project, Vue LSP uses built-in");
+  }
+
+  return lspConfig;
+}
+
+/**
+ * 从插件自身的 node_modules 中解析 @vue/language-server 的 CLI 入口
+ */
+function resolveVueServerCli(): string | undefined {
+  try {
+    const pluginRequire = createRequire(path.join(packageDir, "package.json"));
+    const pkgDir = path.dirname(pluginRequire.resolve("@vue/language-server/package.json"));
+    const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, "package.json"), "utf-8"));
+    const bin =
+      typeof pkg.bin === "string"
+        ? pkg.bin
+        : pkg.bin?.vueLanguageServer || pkg.bin?.["vue-language-server"];
+    if (bin) {
+      const binPath = path.resolve(pkgDir, bin);
+      if (fs.existsSync(binPath)) return binPath;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 解析用户项目 TypeScript 的 lib 目录路径（tsdk）
+ */
+function resolveTsdkPath(cwd: string): string | undefined {
+  try {
+    const userRequire = createRequire(path.join(cwd, "package.json"));
+    const tsserver = userRequire.resolve("typescript/lib/tsserver.js");
+    return path.dirname(tsserver);
+  } catch {
+    return undefined;
+  }
 }
 
 function resolveSourcePluginsDir(): string {

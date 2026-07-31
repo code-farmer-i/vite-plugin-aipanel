@@ -6,9 +6,9 @@
  *   3. 错误硬阻止（可选，OPENCODE_BLOCK_ON_ERROR=1 时回滚）
  */
 
-import fs from "fs";
-import path from "path";
-import { createRequire } from "module";
+import fs from "node:fs";
+import path from "node:path";
+import { createRequire } from "node:module";
 import type { Hooks } from "@opencode-ai/plugin";
 import { setVerbose, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
 
@@ -28,19 +28,6 @@ const BLOCKED_TOOLS = new Set(["edit", "write"]);
 const LSP_ERROR_MARKER = "LSP errors detected";
 const isBlocking = () => process.env.OPENCODE_BLOCK_ON_ERROR === "1";
 
-/** 受限的文件扩展名（只对 JS/TS/Vue 做检查） */
-const CHECKED_EXTENSIONS = new Set([
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-  ".mts",
-  ".cts",
-  ".vue",
-]);
-
 export default {
   id: "vite-plugin-opencode-assistant/block-on-error",
   async server(): Promise<Hooks> {
@@ -54,6 +41,16 @@ export default {
       endColumn?: number;
       message: string;
       ruleId: string | null;
+    }
+
+    interface DiagnosticItem {
+      severity: number;
+      range: {
+        start: { line: number; character: number };
+        end: { line: number; character: number };
+      };
+      message: string;
+      source: string;
     }
 
     type ESLintConstructor = new (opts: { cwd: string }) => {
@@ -107,8 +104,9 @@ export default {
     }
 
     /** ESLint 检查，返回 { 诊断文本, 结构化数据 } */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async function lintFile(filePath: string): Promise<{ text?: string; diagnostics: any[] }> {
+    async function lintFile(
+      filePath: string,
+    ): Promise<{ text?: string; diagnostics: DiagnosticItem[] }> {
       if (!ESLintClass) return { diagnostics: [] };
       try {
         const eslint = new ESLintClass({ cwd: process.cwd() });
@@ -135,8 +133,9 @@ export default {
         }
 
         // 结构化数据（给 UI 渲染，和 LSP Diagnostic 格式一致）
+        // ESLint severity: 2=error, 1=warning → LSP DiagnosticSeverity: 1=Error, 2=Warning
         const diagnostics = messages.map((m) => ({
-          severity: m.severity,
+          severity: m.severity === 2 ? 1 : m.severity === 1 ? 2 : m.severity,
           range: {
             start: { line: (m.line || 1) - 1, character: (m.column || 1) - 1 },
             end: {
@@ -144,7 +143,7 @@ export default {
               character: (m.endColumn || m.column || 1) - 1,
             },
           },
-          message: `${m.message} (${m.ruleId})`,
+          message: `[ESLint] ${m.message} (${m.ruleId})`,
           source: "eslint",
         }));
 
@@ -170,9 +169,6 @@ export default {
         const filePath = args.filePath as string | undefined;
         if (!filePath) return;
 
-        const ext = path.extname(filePath);
-        if (!CHECKED_EXTENSIONS.has(ext)) return;
-
         try {
           const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : null;
           snapshots.set(input.callID, { filePath, content });
@@ -185,10 +181,9 @@ export default {
         if (!BLOCKED_TOOLS.has(input.tool)) return;
 
         const filePath = (input.args?.filePath as string) || "";
-        const ext = path.extname(filePath);
-        if (!CHECKED_EXTENSIONS.has(ext)) return;
+        if (!filePath) return;
 
-        log.debug("Executing after hook", { tool: input.tool, filePath, ext });
+        log.debug("Executing after hook", { tool: input.tool, filePath });
 
         loadTools();
 
@@ -202,11 +197,8 @@ export default {
           filePath,
           diagCount: eslintResult.diagnostics.length,
           hasText: !!eslintResult.text,
-          errors: eslintResult.diagnostics.filter((d: Record<string, unknown>) => d.severity === 2)
-            .length,
-          warnings: eslintResult.diagnostics.filter(
-            (d: Record<string, unknown>) => d.severity === 1,
-          ).length,
+          errors: eslintResult.diagnostics.filter((d) => d.severity === 1).length,
+          warnings: eslintResult.diagnostics.filter((d) => d.severity === 2).length,
         });
 
         // 拼接到返回值（文本 + 结构化 metadata）
@@ -240,13 +232,12 @@ export default {
         snapshots.delete(input.callID);
 
         const hasLspErrors = output.output.includes(LSP_ERROR_MARKER);
-        const hasEslintErrors = eslintResult.diagnostics.some(
-          (d: Record<string, unknown>) => d.severity === 2,
-        );
+        const hasEslintErrors = eslintResult.diagnostics.some((d) => d.severity === 1);
         if (!hasLspErrors && !hasEslintErrors) return;
 
-        // 提取所有诊断信息
-        const allDiagnostics = output.output.match(/<diagnostics[\s\S]*?<\/diagnostics>/g) ?? [];
+        // 提取所有诊断信息（从 output 文本中）
+        const outputDiagnosticBlocks =
+          output.output.match(/<diagnostics[\s\S]*?<\/diagnostics>/g) ?? [];
 
         // 回滚文件
         try {
@@ -269,12 +260,12 @@ export default {
           "",
           ...(hasEslintErrors
             ? [
-                `ESLint: ${eslintResult.diagnostics.filter((d: Record<string, unknown>) => d.severity === 2).length} error(s)`,
+                `ESLint: ${eslintResult.diagnostics.filter((d) => d.severity === 1).length} error(s)`,
               ]
             : []),
           ...(hasLspErrors ? ["TS: see diagnostics above"] : []),
           "",
-          ...allDiagnostics,
+          ...outputDiagnosticBlocks,
         ].join("\n");
         output.title = `REJECTED: ${path.basename(snap.filePath)}`;
 

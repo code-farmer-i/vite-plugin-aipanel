@@ -90,20 +90,22 @@ function updateServiceState(info: ServiceInfo | null, windowId: number) {
       chrome.runtime
         .sendMessage({ type: EXT_MSG.SERVICE_APPEARED, ...info, windowId })
         .catch(() => {});
-      log.debug(`服务上线: ${info.serviceInstanceId} vite=${info.vitePort} win=${windowId}`);
+      log.info(`服务上线: ${info.serviceInstanceId} vite=${info.vitePort} win=${windowId}`);
     } else if (portChanged) {
       services.set(windowId, info);
       chrome.runtime
         .sendMessage({ type: EXT_MSG.SERVICE_APPEARED, ...info, windowId })
         .catch(() => {});
-      log.debug(`服务端口变更: ${info.serviceInstanceId} vite=${info.vitePort}`);
+      log.info(`服务端口变更: ${info.serviceInstanceId} vite=${info.vitePort}`);
     }
   } else if (oldService) {
     services.delete(windowId);
+    log.info(
+      `[updateServiceState] 发送 SERVICE_GONE: ${oldService.serviceInstanceId} win=${windowId}`,
+    );
     chrome.runtime
       .sendMessage({ type: EXT_MSG.SERVICE_GONE, ...oldService, windowId })
       .catch(() => {});
-    log.debug(`服务下线: ${oldService.serviceInstanceId} win=${windowId}`);
   }
 }
 
@@ -182,6 +184,115 @@ chrome.windows.onFocusChanged.addListener(async (windowId) => {
   }
 });
 
+// ========== Tab URL 变更 ==========
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (!changeInfo.url) return;
+  log.info(
+    `[onUpdated] 收到 URL: ${changeInfo.url} tabWin=${tab.windowId} activeWin=${activeWindowId}`,
+  );
+  if (tab.windowId !== activeWindowId) {
+    log.info(`[onUpdated] 窗口不匹配，跳过`);
+    return;
+  }
+
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
+    if (activeTab?.id !== tabId) return;
+  } catch {
+    return;
+  }
+
+  // 同 origin 下路径切换无需更新轮询目标
+  const newOrigin = new URL(changeInfo.url).origin;
+  const currentTarget = targets.get(tab.windowId);
+  log.info(
+    `[onUpdated] URL 变更: ${changeInfo.url} origin=${newOrigin} currentTarget=${currentTarget?.origin}`,
+  );
+  if (currentTarget?.origin === newOrigin) {
+    log.info(`[onUpdated] 同 origin，跳过`);
+    return;
+  }
+
+  await setWindowTarget(tab.windowId, tabId);
+  const newTarget = targets.get(tab.windowId);
+  log.info(`[onUpdated] 新 target: ${newTarget?.origin || "无"}`);
+  await tick();
+
+  const portInfo = services.get(tab.windowId) || null;
+  log.info(`[onUpdated] 发送 TAB_SWITCHED portInfo=${portInfo?.serviceInstanceId || "null"}`);
+  chrome.runtime
+    .sendMessage({
+      type: EXT_MSG.TAB_SWITCHED,
+      portInfo,
+      tabId,
+      windowId: tab.windowId,
+    })
+    .catch(() => {});
+});
+
+// ========== Tab 关闭 ==========
+
+chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
+  if (removeInfo.windowId !== activeWindowId) return;
+
+  // 重新为该窗口查找 localhost tab 作为轮询目标
+  await setWindowTarget(removeInfo.windowId);
+  await tick();
+
+  // 如果关闭的就是当前轮询的 tab，通知 side panel
+  chrome.runtime
+    .sendMessage({
+      type: EXT_MSG.TAB_SWITCHED,
+      portInfo: services.get(removeInfo.windowId) || null,
+      tabId,
+      windowId: removeInfo.windowId,
+    })
+    .catch(() => {});
+});
+
+// ========== 窗口关闭 ==========
+
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  targets.delete(windowId);
+  services.delete(windowId);
+
+  if (windowId !== activeWindowId) return;
+
+  // 切换到另一个还活着的窗口
+  try {
+    const windows = await chrome.windows.getAll({ windowTypes: ["normal"] });
+    const nextWin = windows.find((w) => w.id !== windowId && w.id !== undefined);
+    if (nextWin?.id) {
+      activeWindowId = nextWin.id;
+      await setWindowTarget(nextWin.id);
+      await tick();
+
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, windowId: nextWin.id });
+        if (tab?.id) {
+          chrome.runtime
+            .sendMessage({
+              type: EXT_MSG.TAB_SWITCHED,
+              portInfo: services.get(nextWin.id) || null,
+              tabId: tab.id,
+              windowId: nextWin.id,
+            })
+            .catch(() => {});
+        }
+      } catch {
+        // ignore
+      }
+      return;
+    }
+  } catch {
+    // ignore
+  }
+
+  // 没有其他窗口了
+  activeWindowId = undefined;
+});
+
 // ========== 生命周期 ==========
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -220,7 +331,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 function startPolling() {
   if (pollTimer) return;
   pollTimer = setInterval(tick, POLL_INTERVAL);
-  log.debug("轮询已启动");
+  log.info("轮询已启动");
 }
 
 (async () => {

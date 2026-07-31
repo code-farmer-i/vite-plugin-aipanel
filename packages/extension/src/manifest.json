@@ -5,7 +5,8 @@
   "description": "在 localhost 页面中嵌入 OpenCode AI 助手，实现边聊天边改代码的开发体验",
   "permissions": [
     "sidePanel",
-    "scripting"
+    "scripting",
+    "tabs"
   ],
   "host_permissions": [
     "*://localhost:*/*",

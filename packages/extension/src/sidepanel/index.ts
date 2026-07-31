@@ -9,7 +9,7 @@ const log = createLogger("OpenCode SP");
  * SP 通过 SERVICE_APPEARED / SERVICE_GONE / TAB_SWITCHED 消息驱动实例生命周期。
  * 多实例通过 overflow:hidden + 定位偏移切换，不销毁不 display:none。
  */
-log.debug("Side Panel 入口已加载");
+log.info("Side Panel 入口已加载");
 
 import "@vite-plugin-opencode-assistant/client/styles.css";
 
@@ -154,7 +154,7 @@ async function createAppInstance(info: ServiceInfo): Promise<AppInstance> {
     zombieTimer: null,
   };
   appInstances.set(info.serviceInstanceId, inst);
-  log.debug(`新 App 实例已创建: ${info.serviceInstanceId} vite=${info.vitePort}`);
+  log.info(`新 App 实例已创建: ${info.serviceInstanceId} vite=${info.vitePort}`);
   return inst;
 }
 
@@ -172,7 +172,7 @@ function destroyAppInstance(serviceInstanceId: string) {
   inst.rootEl.remove();
 
   appInstances.delete(serviceInstanceId);
-  log.debug(`App 实例已销毁: ${serviceInstanceId}`);
+  log.info(`App 实例已销毁: ${serviceInstanceId}`);
 
   if (activeServiceId === serviceInstanceId) {
     showNoServiceOverlay();
@@ -205,9 +205,9 @@ function handleServiceAppeared(info: ServiceInfo) {
       existingInst.zombieTimer = null;
     }
     showApp(info.serviceInstanceId);
-    log.debug(`复用已有实例: ${info.serviceInstanceId} vite=${info.vitePort}`);
+    log.info(`复用已有实例: ${info.serviceInstanceId} vite=${info.vitePort}`);
   } else {
-    log.debug(`创建新实例: ${info.serviceInstanceId} vite=${info.vitePort}`);
+    log.info(`创建新实例: ${info.serviceInstanceId} vite=${info.vitePort}`);
     createAppInstance(info).then(() => {
       showApp(info.serviceInstanceId);
     });
@@ -217,13 +217,14 @@ function handleServiceAppeared(info: ServiceInfo) {
 /** 处理服务下线 */
 function handleServiceGone(serviceInstanceId: string) {
   const inst = appInstances.get(serviceInstanceId);
+  log.info(`[SP] handleServiceGone: ${serviceInstanceId} hasInstance=${!!inst}`);
   if (!inst || inst.zombie) return;
 
   inst.zombie = true;
   inst.zombieTimer = setTimeout(() => {
     destroyAppInstance(serviceInstanceId);
   }, 30000);
-  log.debug(`服务下线: ${serviceInstanceId} (30s后销毁)`);
+  log.info(`服务下线: ${serviceInstanceId} (30s后销毁)`);
 
   if (activeServiceId === serviceInstanceId) {
     showNoServiceOverlay();
@@ -232,7 +233,9 @@ function handleServiceGone(serviceInstanceId: string) {
 
 /** 处理 Tab 切换 */
 function handleTabSwitched(info: ServiceInfo | null) {
+  log.info(`[SP] handleTabSwitched info=${info?.serviceInstanceId || "null"}`);
   if (!info) {
+    log.info("[SP] 显示无服务覆盖层");
     showNoServiceOverlay();
     return;
   }
@@ -246,7 +249,7 @@ function handleTabSwitched(info: ServiceInfo | null) {
   try {
     const currentWin = await chrome.windows.getCurrent();
     myWindowId = currentWin.id;
-    log.debug(`Side Panel 窗口 ID: ${myWindowId}`);
+    log.info(`Side Panel 窗口 ID: ${myWindowId}`);
   } catch {
     log.warn("无法获取当前窗口 ID，多窗口隔离将不可用");
   }
@@ -269,7 +272,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 
   switch (msg.type) {
     case EXT_MSG.TAB_SWITCHED:
-      log.debug(
+      log.info(
         `[SP] 激活: windowId=${msg.windowId} tabId=${msg.tabId} sid=${msg.portInfo?.serviceInstanceId}`,
       );
       if (msg.windowId !== undefined) {
@@ -280,7 +283,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 
     case EXT_MSG.SERVICE_APPEARED:
       if (msg.serviceInstanceId && msg.proxyPort && msg.vitePort) {
-        log.debug(`[SP] 服务上线: sid=${msg.serviceInstanceId}`);
+        log.info(`[SP] 服务上线: sid=${msg.serviceInstanceId}`);
         handleServiceAppeared({
           serviceInstanceId: msg.serviceInstanceId,
           vitePort: msg.vitePort,
@@ -291,8 +294,10 @@ chrome.runtime.onMessage.addListener((msg) => {
       break;
 
     case EXT_MSG.SERVICE_GONE:
+      log.info(
+        `[SP] 收到 SERVICE_GONE: sid=${msg.serviceInstanceId} msgWindowId=${msg.windowId} myWindowId=${myWindowId}`,
+      );
       if (msg.serviceInstanceId) {
-        log.debug(`服务下线: ${msg.serviceInstanceId}`);
         handleServiceGone(msg.serviceInstanceId);
       }
       break;

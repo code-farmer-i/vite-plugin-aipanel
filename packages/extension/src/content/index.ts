@@ -17,7 +17,7 @@ if (win[INIT_MARKER]) {
   log.warn("Content Script 已初始化，跳过");
 } else {
   win[INIT_MARKER] = true;
-  log.debug("Content Script 已启动", { url: location.href });
+  log.info("Content Script 已启动", { url: location.href });
 
   // ========== 页面上下文同步 ==========
 
@@ -33,7 +33,7 @@ if (win[INIT_MARKER]) {
         },
       })
       .catch(() => {});
-    log.debug(`上报上下文: url=${location.href}`);
+    log.info(`上报上下文: url=${location.href}`);
   }
 
   function watchPageContext() {

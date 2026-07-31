@@ -226,4 +226,7 @@ export const DEFAULT_CONFIG = {
         description: string;
       }>
     | undefined,
+  // LSP 诊断配置
+  enableLsp: false,
+  enableBlockOnError: false,
 };

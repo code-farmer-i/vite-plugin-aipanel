@@ -30,6 +30,8 @@ export default defineConfig({
               displayMode: "extension",
               // warmupChromeMcp: false,
               verbose: true,
+              enableLsp: true,
+              enableBlockOnError: true,
             }),
           );
           return config;

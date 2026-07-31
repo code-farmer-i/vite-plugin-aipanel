@@ -161,6 +161,12 @@ export interface OpenCodeOptions {
   // === 日志文件配置 ===
   /** 自定义日志文件配置，为 Agent 提供查看外部服务日志的能力 */
   logFiles?: LogFileConfig[];
+
+  // === LSP 诊断配置 ===
+  /** 启用 LSP 诊断（TypeScript + ESLint），agent 编辑文件后自动返回错误信息，默认 false */
+  enableLsp?: boolean;
+  /** 启用 LSP 错误硬阻止：编辑后有错误则回滚文件并拒绝修改，默认 false */
+  enableBlockOnError?: boolean;
 }
 
 /**
@@ -185,6 +191,8 @@ export interface WebOptions {
   logsApiUrl?: string;
   /** 日志文件配置（JSON 字符串） */
   logFilesJson?: string;
+  /** 启用 LSP 错误硬阻止（环境变量透传给 OpenCode 插件） */
+  enableBlockOnError?: boolean;
 }
 
 /**

@@ -135,7 +135,12 @@ Please install OpenCode first:
       log.debug(`Using workspace root: ${this.workspaceRoot}`);
 
       this.sendTaskUpdate("preparing_runtime");
-      const configDir = prepareOpenCodeRuntime(this.workspaceRoot, vitePort, mcpToken);
+      const configDir = prepareOpenCodeRuntime(
+        this.workspaceRoot,
+        vitePort,
+        mcpToken,
+        this.config.enableLsp,
+      );
 
       timer.checkpoint("Plugin setup complete");
 
@@ -156,6 +161,7 @@ Please install OpenCode first:
         contextApiUrl,
         logsApiUrl,
         logFilesJson: this.config.logFiles ? JSON.stringify(this.config.logFiles) : undefined,
+        enableBlockOnError: this.config.enableBlockOnError,
       });
 
       timer.checkpoint("Web process started");

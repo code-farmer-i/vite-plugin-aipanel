@@ -13,10 +13,15 @@ const packageDir = resolvePackageDir();
 
 const log = createLogger("OpenCodeWeb");
 
-export function prepareOpenCodeRuntime(cwd: string, vitePort: number, mcpToken: string): string {
+export function prepareOpenCodeRuntime(
+  cwd: string,
+  vitePort: number,
+  mcpToken: string,
+  enableLsp?: boolean,
+): string {
   const cacheDir = path.join(cwd, "node_modules", ".cache", "opencode");
 
-  log.debug("Setting up OpenCode runtime", { cacheDir });
+  log.debug("Setting up OpenCode runtime", { cacheDir, enableLsp });
 
   if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir, { recursive: true });
@@ -27,28 +32,27 @@ export function prepareOpenCodeRuntime(cwd: string, vitePort: number, mcpToken: 
   const plugins = resolvePluginEntries(sourcePluginsDir);
 
   // 构建 LSP 配置：优先使用插件内置的 typescript-language-server
-  const lspConfig = buildLspConfig(cwd);
+  const lspConfig = enableLsp ? buildLspConfig(cwd) : undefined;
 
   const opencodeConfigPath = path.join(cacheDir, "opencode.json");
-  fs.writeFileSync(
-    opencodeConfigPath,
-    JSON.stringify(
-      {
-        ...(lspConfig ? { lsp: lspConfig } : { lsp: true }),
-        plugin: plugins,
-        mcp: {
-          "chrome-devtools": {
-            type: "remote",
-            url: `http://localhost:${vitePort}${MCP_API_PATH}?token=${mcpToken}`,
-          },
-        },
+  const config: Record<string, unknown> = {
+    plugin: plugins,
+    mcp: {
+      "chrome-devtools": {
+        type: "remote",
+        url: `http://localhost:${vitePort}${MCP_API_PATH}?token=${mcpToken}`,
       },
-      null,
-      2,
-    ),
-  );
+    },
+  };
 
-  log.debug("LSP diagnostics enabled (TypeScript + ESLint)");
+  if (lspConfig) {
+    config.lsp = lspConfig;
+    log.info("LSP diagnostics enabled (TypeScript + ESLint)");
+  } else {
+    log.debug("LSP diagnostics disabled");
+  }
+
+  fs.writeFileSync(opencodeConfigPath, JSON.stringify(config, null, 2));
 
   log.debug("OpenCode runtime ready", {
     cacheDir,
@@ -60,8 +64,17 @@ export function prepareOpenCodeRuntime(cwd: string, vitePort: number, mcpToken: 
 }
 
 export function startOpenCodeWeb(options: WebOptions): ResultPromise {
-  const { port, hostname, cwd, configDir, corsOrigins, contextApiUrl, logsApiUrl, logFilesJson } =
-    options;
+  const {
+    port,
+    hostname,
+    cwd,
+    configDir,
+    corsOrigins,
+    contextApiUrl,
+    logsApiUrl,
+    logFilesJson,
+    enableBlockOnError,
+  } = options;
   const stateDir = createStateDirectory(cwd);
 
   log.debug("Building process environment", {
@@ -70,9 +83,17 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     contextApiUrl,
     logsApiUrl,
     logFilesJson,
+    enableBlockOnError,
   });
 
-  const env = buildProcessEnv(stateDir, configDir, contextApiUrl, logsApiUrl, logFilesJson);
+  const env = buildProcessEnv(
+    stateDir,
+    configDir,
+    contextApiUrl,
+    logsApiUrl,
+    logFilesJson,
+    enableBlockOnError,
+  );
   const args = ["serve", "--port", String(port), "--hostname", hostname];
 
   if (corsOrigins && corsOrigins.length > 0) {
@@ -235,6 +256,7 @@ function buildProcessEnv(
   contextApiUrl?: string,
   logsApiUrl?: string,
   logFilesJson?: string,
+  enableBlockOnError?: boolean,
 ): Record<string, string> {
   const env: Record<string, string> = {
     ...(Object.fromEntries(
@@ -263,6 +285,11 @@ function buildProcessEnv(
   if (logFilesJson) {
     env.OPENCODE_LOG_FILES_JSON = logFilesJson;
     log.debug("Set OPENCODE_LOG_FILES_JSON", { logFilesJson });
+  }
+
+  if (enableBlockOnError) {
+    env.OPENCODE_BLOCK_ON_ERROR = "1";
+    log.debug("Set OPENCODE_BLOCK_ON_ERROR=1");
   }
 
   return env;

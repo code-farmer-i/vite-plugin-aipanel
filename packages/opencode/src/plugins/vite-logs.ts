@@ -5,7 +5,12 @@
 
 import type { Hooks } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import { createLogger } from "@vite-plugin-opencode-assistant/shared/node";
+import { setVerbose, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
+
+// 子进程通过环境变量接收 verbose 配置
+if (process.env.OPENCODE_VERBOSE === "1") {
+  setVerbose(true);
+}
 
 const log = createLogger("OpenCodePluginViteLogs");
 

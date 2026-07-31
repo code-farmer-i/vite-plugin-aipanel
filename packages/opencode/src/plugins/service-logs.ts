@@ -1,9 +1,17 @@
 import type { Hooks } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import type { LogFileConfig } from "@vite-plugin-opencode-assistant/shared";
-import { createLogger } from "@vite-plugin-opencode-assistant/shared/node";
-import { readLogFileTail } from "@vite-plugin-opencode-assistant/shared/node";
+import {
+  setVerbose,
+  createLogger,
+  readLogFileTail,
+} from "@vite-plugin-opencode-assistant/shared/node";
 import type { FileLogEntry } from "@vite-plugin-opencode-assistant/shared/node";
+
+// 子进程通过环境变量接收 verbose 配置
+if (process.env.OPENCODE_VERBOSE === "1") {
+  setVerbose(true);
+}
 
 const log = createLogger("ServiceLogsPlugin");
 

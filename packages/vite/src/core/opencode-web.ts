@@ -31,7 +31,7 @@ export function prepareOpenCodeRuntime(
   const sourcePluginsDir = resolveSourcePluginsDir();
   const plugins = resolvePluginEntries(sourcePluginsDir);
 
-  // 构建 LSP 配置：优先使用插件内置的 typescript-language-server
+  // 构建 LSP 配置
   const lspConfig = enableLsp ? buildLspConfig(cwd) : undefined;
 
   const opencodeConfigPath = path.join(cacheDir, "opencode.json");
@@ -47,7 +47,7 @@ export function prepareOpenCodeRuntime(
 
   if (lspConfig) {
     config.lsp = lspConfig;
-    log.info("LSP diagnostics enabled (TypeScript + ESLint)");
+    log.debug("LSP diagnostics enabled (TypeScript + ESLint)");
   } else {
     log.debug("LSP diagnostics disabled");
   }
@@ -74,6 +74,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     logsApiUrl,
     logFilesJson,
     enableBlockOnError,
+    verbose,
   } = options;
   const stateDir = createStateDirectory(cwd);
 
@@ -84,6 +85,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     logsApiUrl,
     logFilesJson,
     enableBlockOnError,
+    verbose,
   });
 
   const env = buildProcessEnv(
@@ -93,6 +95,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     logsApiUrl,
     logFilesJson,
     enableBlockOnError,
+    verbose,
   );
   const args = ["serve", "--port", String(port), "--hostname", hostname];
 
@@ -185,18 +188,15 @@ function resolveUserTsServer(cwd: string): string | undefined {
 }
 
 /**
- * 构建 OpenCode LSP 配置：
- * - TypeScript: 使用插件内置的 typescript-language-server + 用户项目的 tsserver
- * - ESLint / Oxlint / Vue 等其余 server 保持 OpenCode 内置行为
+ * 构建 OpenCode LSP 配置（仅 TypeScript）
+ * ESLint/Prettier 通过 block-on-error 插件 Node API 处理
  */
 function buildLspConfig(
   cwd: string,
 ): Record<string, { command?: string[]; initialization?: Record<string, unknown> }> | null {
   const cli = resolveTsServerCli();
   if (!cli) {
-    log.warn(
-      "typescript-language-server not found in plugin bundle, falling back to default LSP config",
-    );
+    log.warn("typescript-language-server not found in plugin bundle, LSP disabled");
     return null;
   }
 
@@ -204,20 +204,12 @@ function buildLspConfig(
   const lspConfig: Record<string, unknown> = {
     typescript: {
       command: ["node", cli, "--stdio"],
-      ...(tsserver
-        ? {
-            initialization: {
-              tsserver: { path: tsserver },
-            },
-          }
-        : {}),
+      ...(tsserver ? { initialization: { tsserver: { path: tsserver } } } : {}),
     },
   };
 
   if (!tsserver) {
-    log.warn(
-      "TypeScript tsserver.js not found in project, TypeScript LSP may use built-in version",
-    );
+    log.warn("TypeScript tsserver.js not found, TS LSP may use built-in version");
   }
 
   return lspConfig as Record<
@@ -257,6 +249,7 @@ function buildProcessEnv(
   logsApiUrl?: string,
   logFilesJson?: string,
   enableBlockOnError?: boolean,
+  verbose?: boolean,
 ): Record<string, string> {
   const env: Record<string, string> = {
     ...(Object.fromEntries(
@@ -290,6 +283,11 @@ function buildProcessEnv(
   if (enableBlockOnError) {
     env.OPENCODE_BLOCK_ON_ERROR = "1";
     log.debug("Set OPENCODE_BLOCK_ON_ERROR=1");
+  }
+
+  if (verbose) {
+    env.OPENCODE_VERBOSE = "1";
+    log.debug("Set OPENCODE_VERBOSE=1");
   }
 
   return env;

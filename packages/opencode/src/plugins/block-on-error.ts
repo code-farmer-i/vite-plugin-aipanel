@@ -1,113 +1,284 @@
 /**
- * @fileoverview LSP 错误硬阻止插件
- * @description 在 edit/write 工具执行后检查 LSP 诊断，如果有错误则回滚文件并返回失败
+ * @fileoverview 质量门禁插件
+ * @description edit/write 工具执行后：
+ *   1. Prettier 格式化（自动）
+ *   2. ESLint 检查（Node API，绕过 LSP Bug 2）
+ *   3. 错误硬阻止（可选，OPENCODE_BLOCK_ON_ERROR=1 时回滚）
  */
 
 import fs from "fs";
 import path from "path";
+import { createRequire } from "module";
 import type { Hooks } from "@opencode-ai/plugin";
-import { createLogger } from "@vite-plugin-opencode-assistant/shared/node";
+import { setVerbose, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
+
+// 子进程通过环境变量接收 verbose 配置
+if (process.env.OPENCODE_VERBOSE === "1") {
+  setVerbose(true);
+}
 
 const log = createLogger("BlockOnError");
 
-/** 编辑/写入前保存的文件快照 */
 interface Snapshot {
   filePath: string;
-  content: string | null; // null 表示文件不存在
+  content: string | null;
 }
 
 const BLOCKED_TOOLS = new Set(["edit", "write"]);
 const LSP_ERROR_MARKER = "LSP errors detected";
+const isBlocking = () => process.env.OPENCODE_BLOCK_ON_ERROR === "1";
+
+/** 受限的文件扩展名（只对 JS/TS/Vue 做检查） */
+const CHECKED_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".mts",
+  ".cts",
+  ".vue",
+]);
 
 export default {
   id: "vite-plugin-opencode-assistant/block-on-error",
   async server(): Promise<Hooks> {
-    /** callID → 文件快照 */
     const snapshots = new Map<string, Snapshot>();
+
+    interface LintMessage {
+      severity: number;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+      message: string;
+      ruleId: string | null;
+    }
+
+    type ESLintConstructor = new (opts: { cwd: string }) => {
+      lintFiles: (p: string) => Promise<Array<{ messages: LintMessage[] }>>;
+    };
+
+    // 懒加载项目中的 prettier / eslint
+    let prettierModule: typeof import("prettier") | undefined;
+    let ESLintClass: ESLintConstructor | undefined;
+
+    function loadTools() {
+      if (prettierModule && ESLintClass) return;
+      const cwd = process.cwd();
+      log.debug("Loading tools", { cwd });
+      try {
+        const req = createRequire(path.join(cwd, "package.json"));
+        prettierModule ??= req("prettier");
+        log.debug("prettier loaded");
+      } catch (e) {
+        log.warn("prettier not found", { error: (e as Error).message });
+      }
+      try {
+        const req = createRequire(path.join(cwd, "package.json"));
+        const eslintModule = req("eslint");
+        ESLintClass ??= eslintModule.ESLint ?? eslintModule.FlatESLint;
+        log.debug("eslint loaded", { hasClass: !!ESLintClass });
+      } catch (e) {
+        log.warn("eslint not found", { error: (e as Error).message });
+      }
+    }
+
+    /** Prettier 格式化，有变更则写回 */
+    async function formatFile(filePath: string): Promise<string | undefined> {
+      if (!prettierModule) return undefined;
+      try {
+        const content = fs.readFileSync(filePath, "utf-8");
+        const config = await prettierModule.resolveConfig(filePath);
+        const formatted = await prettierModule.format(content, {
+          ...(config ?? {}),
+          filepath: filePath,
+        });
+        if (formatted !== content) {
+          fs.writeFileSync(filePath, formatted, "utf-8");
+          log.debug("Prettier formatted", { filePath });
+          return "File has been formatted with Prettier.";
+        }
+      } catch (err) {
+        log.warn("Prettier failed", { filePath, error: (err as Error).message });
+      }
+      return undefined;
+    }
+
+    /** ESLint 检查，返回 { 诊断文本, 结构化数据 } */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async function lintFile(filePath: string): Promise<{ text?: string; diagnostics: any[] }> {
+      if (!ESLintClass) return { diagnostics: [] };
+      try {
+        const eslint = new ESLintClass({ cwd: process.cwd() });
+        const results = await eslint.lintFiles(filePath);
+        const messages: LintMessage[] = results[0]?.messages ?? [];
+        if (messages.length === 0) return { diagnostics: [] };
+
+        // 文本输出（给 LLM 看）
+        const lines: string[] = [];
+        const errors = messages.filter((m) => m.severity === 2);
+        const warnings = messages.filter((m) => m.severity === 1);
+        if (errors.length > 0) {
+          lines.push(
+            ...errors.map((m) => `ERROR [${m.line}:${m.column}] ${m.message} (${m.ruleId})`),
+          );
+        }
+        if (warnings.length > 0) {
+          lines.push(
+            ...warnings
+              .slice(0, 5)
+              .map((m) => `WARN [${m.line}:${m.column}] ${m.message} (${m.ruleId})`),
+          );
+          if (warnings.length > 5) lines.push(`... and ${warnings.length - 5} more warnings`);
+        }
+
+        // 结构化数据（给 UI 渲染，和 LSP Diagnostic 格式一致）
+        const diagnostics = messages.map((m) => ({
+          severity: m.severity,
+          range: {
+            start: { line: (m.line || 1) - 1, character: (m.column || 1) - 1 },
+            end: {
+              line: (m.endLine || m.line || 1) - 1,
+              character: (m.endColumn || m.column || 1) - 1,
+            },
+          },
+          message: `${m.message} (${m.ruleId})`,
+          source: "eslint",
+        }));
+
+        return {
+          text:
+            lines.length > 0
+              ? `<diagnostics file="${filePath}">\n${lines.join("\n")}\n</diagnostics>`
+              : undefined,
+          diagnostics,
+        };
+      } catch (err) {
+        log.warn("ESLint failed", { filePath, error: (err as Error).message });
+      }
+      return { diagnostics: [] };
+    }
 
     return {
       "tool.execute.before": async (input, output) => {
-        if (process.env.OPENCODE_BLOCK_ON_ERROR !== "1") return;
         if (!BLOCKED_TOOLS.has(input.tool)) return;
+        if (!isBlocking()) return;
 
         const args = output.args as Record<string, unknown>;
         const filePath = args.filePath as string | undefined;
-        if (!filePath) {
-          log.debug("No filePath in tool args, skipping snapshot", { tool: input.tool });
-          return;
-        }
+        if (!filePath) return;
+
+        const ext = path.extname(filePath);
+        if (!CHECKED_EXTENSIONS.has(ext)) return;
 
         try {
           const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : null;
           snapshots.set(input.callID, { filePath, content });
-          log.debug("Snapshot saved", {
-            tool: input.tool,
-            filePath,
-            callID: input.callID,
-            exists: content !== null,
-          });
         } catch (err) {
           log.warn("Failed to save file snapshot", { filePath, error: (err as Error).message });
         }
       },
 
       "tool.execute.after": async (input, output) => {
-        if (process.env.OPENCODE_BLOCK_ON_ERROR !== "1") return;
         if (!BLOCKED_TOOLS.has(input.tool)) return;
 
-        const snap = snapshots.get(input.callID);
-        if (!snap) {
-          log.debug("No snapshot found for callID, skipping rollback check", {
-            callID: input.callID,
-          });
-          return;
+        const filePath = (input.args?.filePath as string) || "";
+        const ext = path.extname(filePath);
+        if (!CHECKED_EXTENSIONS.has(ext)) return;
+
+        log.debug("Executing after hook", { tool: input.tool, filePath, ext });
+
+        loadTools();
+
+        // 1. Prettier 格式化
+        const formatMsg = await formatFile(filePath);
+        if (formatMsg) log.debug("Format applied", { filePath });
+
+        // 2. ESLint 检查
+        const eslintResult = await lintFile(filePath);
+        log.debug("Lint result", {
+          filePath,
+          diagCount: eslintResult.diagnostics.length,
+          hasText: !!eslintResult.text,
+          errors: eslintResult.diagnostics.filter((d: Record<string, unknown>) => d.severity === 2)
+            .length,
+          warnings: eslintResult.diagnostics.filter(
+            (d: Record<string, unknown>) => d.severity === 1,
+          ).length,
+        });
+
+        // 拼接到返回值（文本 + 结构化 metadata）
+        const extraLines: string[] = [];
+        if (formatMsg) extraLines.push(formatMsg);
+        if (eslintResult.text) extraLines.push(eslintResult.text);
+        if (extraLines.length > 0) {
+          output.output += "\n\n" + extraLines.join("\n\n");
         }
+
+        // 写入 metadata.diagnostics 供 UI 渲染
+        if (eslintResult.diagnostics.length > 0) {
+          const meta = (output.metadata ?? (output.metadata = {})) as Record<string, unknown>;
+          const existing = (meta.diagnostics ?? (meta.diagnostics = {})) as Record<
+            string,
+            unknown[]
+          >;
+          existing[filePath] = [...(existing[filePath] ?? []), ...eslintResult.diagnostics];
+          log.debug("Metadata updated", {
+            filePath,
+            total: existing[filePath].length,
+            keys: Object.keys(existing),
+          });
+        }
+
+        // 3. 错误回滚（仅 blocking 模式）
+        if (!isBlocking()) return;
+
+        const snap = snapshots.get(input.callID);
+        if (!snap) return;
         snapshots.delete(input.callID);
 
-        // 检查 output 中是否包含 LSP 错误
-        const hasErrors = output.output.includes(LSP_ERROR_MARKER);
-        if (!hasErrors) {
-          log.debug("No LSP errors detected, edit allowed", { filePath: snap.filePath });
-          return;
-        }
+        const hasLspErrors = output.output.includes(LSP_ERROR_MARKER);
+        const hasEslintErrors = eslintResult.diagnostics.some(
+          (d: Record<string, unknown>) => d.severity === 2,
+        );
+        if (!hasLspErrors && !hasEslintErrors) return;
 
-        // 提取错误信息
-        const diagnosticsMatch = output.output.match(/<diagnostics[\s\S]*?<\/diagnostics>/);
-        const errorBlock = diagnosticsMatch ? diagnosticsMatch[0] : "Unknown errors";
+        // 提取所有诊断信息
+        const allDiagnostics = output.output.match(/<diagnostics[\s\S]*?<\/diagnostics>/g) ?? [];
 
         // 回滚文件
         try {
           if (snap.content === null) {
-            // 文件之前不存在（新建后出错），删除它
-            if (fs.existsSync(snap.filePath)) {
-              fs.unlinkSync(snap.filePath);
-              log.info("Rolled back: deleted newly created file", { filePath: snap.filePath });
-            }
+            if (fs.existsSync(snap.filePath)) fs.unlinkSync(snap.filePath);
           } else {
-            // 恢复原始内容
             fs.writeFileSync(snap.filePath, snap.content, "utf-8");
-            log.info("Rolled back: restored original file content", { filePath: snap.filePath });
           }
+          log.debug("Rolled back", { filePath: snap.filePath });
         } catch (err) {
-          log.error("Failed to rollback file", {
-            filePath: snap.filePath,
-            error: (err as Error).message,
-          });
+          log.error("Rollback failed", { filePath: snap.filePath, error: (err as Error).message });
         }
 
-        // 替换 output，告知 agent 编辑被拒绝
+        const sources: string[] = [];
+        if (hasLspErrors) sources.push("TS");
+        if (hasEslintErrors) sources.push("ESLint");
+
         output.output = [
-          `BLOCKED: Changes to \`${snap.filePath}\` were reverted due to errors. Fix these errors and try again.`,
+          `❌ BLOCKED: Changes were reverted due to ${sources.join(" + ")} errors.`,
           "",
-          errorBlock,
+          ...(hasEslintErrors
+            ? [
+                `ESLint: ${eslintResult.diagnostics.filter((d: Record<string, unknown>) => d.severity === 2).length} error(s)`,
+              ]
+            : []),
+          ...(hasLspErrors ? ["TS: see diagnostics above"] : []),
+          "",
+          ...allDiagnostics,
         ].join("\n");
         output.title = `REJECTED: ${path.basename(snap.filePath)}`;
 
-        log.warn("Edit blocked due to LSP errors", {
-          tool: input.tool,
-          filePath: snap.filePath,
-          callID: input.callID,
-        });
+        log.warn("Edit blocked", { tool: input.tool, filePath: snap.filePath, sources });
       },
     };
   },

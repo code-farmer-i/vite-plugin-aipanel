@@ -162,6 +162,7 @@ Please install OpenCode first:
         logsApiUrl,
         logFilesJson: this.config.logFiles ? JSON.stringify(this.config.logFiles) : undefined,
         enableBlockOnError: this.config.enableBlockOnError,
+        verbose: this.config.verbose,
       });
 
       timer.checkpoint("Web process started");

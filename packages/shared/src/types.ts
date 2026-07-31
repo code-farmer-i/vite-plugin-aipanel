@@ -193,6 +193,8 @@ export interface WebOptions {
   logFilesJson?: string;
   /** 启用 LSP 错误硬阻止（环境变量透传给 OpenCode 插件） */
   enableBlockOnError?: boolean;
+  /** 启用 verbose 模式（环境变量透传，调试日志输出） */
+  verbose?: boolean;
 }
 
 /**

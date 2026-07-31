@@ -22,6 +22,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
+    "prepare-eslint-lsp": "node scripts/prepare-eslint-lsp.mjs",
     "build": "pagoda-cli build && vite build -c vite.client.config.ts",
     "dev": "pagoda-cli dev",
     "test": "vitest run",

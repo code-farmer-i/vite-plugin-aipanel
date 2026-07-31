@@ -12,6 +12,13 @@ if (process.env.OPENCODE_VERBOSE === "1") {
 }
 
 const log = createLogger("OpenCodePluginPageContext");
+const isLintEnabled = () => process.env.OPENCODE_ENABLE_LINT === "1";
+
+const QUALITY_GATE_SECTION = `
+## 质量门禁
+- 每次使用 edit 或 write 修改文件后，如果工具返回 \`BLOCKED\` 和 \`<diagnostics>\` 错误，说明修改引入了 TS/ESLint 错误，**文件已被自动回滚**。
+- 你必须根据诊断信息修复代码后重新编辑，直到没有 BLOCKED 为止。
+- 这是硬性要求，跳过错误继续执行会导致修改丢失。`.trim();
 
 export default {
   id: "vite-plugin-opencode-assistant/page-context",
@@ -23,10 +30,7 @@ export default {
         log.debug("System transform hook called");
 
         const PAGE_CONTEXT_MARKER = "[OPENCODE_PAGE_CONTEXT]";
-        const systemPrompt =
-          PAGE_CONTEXT_MARKER +
-          "\n" +
-          `
+        const basePrompt = `
 你是专业的前端开发助手，通过 OpenCode iframe 嵌入在用户正在开发的网页中运行。所有 DevTools 工具自动操作当前对话关联的页面。
 
 ## 语言要求
@@ -43,11 +47,6 @@ export default {
 ### 2. 执行
 给出清晰、可执行的方案。
 
-## 质量门禁
-- 每次使用 edit 或 write 修改文件后，如果工具返回 \`BLOCKED\` 和 \`<diagnostics>\` 错误，说明修改引入了 TS/ESLint 错误，**文件已被自动回滚**。
-- 你必须根据诊断信息修复代码后重新编辑，直到没有 BLOCKED 为止。
-- 这是硬性要求，跳过错误继续执行会导致修改丢失。
-
 ## 排错原则
 排查问题时禁止猜测原因，必须收集运行时证据：复现 → 加日志 → 分析 → 修复 → 验证。
 
@@ -56,6 +55,9 @@ export default {
 - \`devtools_evaluate\` 优先级最低，仅在别无选择时使用
 - HTTP 200 不代表业务成功，必须解析响应体检查业务状态码
 - SPA 单页应用大部分情况不需要刷新页面`.trim();
+
+        const qualityGate = isLintEnabled() ? "\n\n" + QUALITY_GATE_SECTION : "";
+        const systemPrompt = PAGE_CONTEXT_MARKER + "\n" + basePrompt + qualityGate;
 
         const existingIdx = output.system?.findIndex((s) => s.includes(PAGE_CONTEXT_MARKER));
         if (existingIdx >= 0) {

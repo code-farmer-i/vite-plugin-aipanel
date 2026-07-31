@@ -163,6 +163,7 @@ Please install OpenCode first:
         logFilesJson: this.config.logFiles ? JSON.stringify(this.config.logFiles) : undefined,
         enableBlockOnError: this.config.enableBlockOnError,
         verbose: this.config.verbose,
+        enableLsp: this.config.enableLsp,
       });
 
       timer.checkpoint("Web process started");

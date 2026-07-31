@@ -27,6 +27,7 @@ interface Snapshot {
 const BLOCKED_TOOLS = new Set(["edit", "write"]);
 const LSP_ERROR_MARKER = "LSP errors detected";
 const isBlocking = () => process.env.OPENCODE_BLOCK_ON_ERROR === "1";
+const isLintEnabled = () => process.env.OPENCODE_ENABLE_LINT === "1";
 
 export default {
   id: "vite-plugin-opencode-assistant/block-on-error",
@@ -179,6 +180,7 @@ export default {
 
       "tool.execute.after": async (input, output) => {
         if (!BLOCKED_TOOLS.has(input.tool)) return;
+        if (!isLintEnabled()) return;
 
         const filePath = (input.args?.filePath as string) || "";
         if (!filePath) return;

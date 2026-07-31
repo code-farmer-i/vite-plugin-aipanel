@@ -195,6 +195,8 @@ export interface WebOptions {
   enableBlockOnError?: boolean;
   /** 启用 verbose 模式（环境变量透传，调试日志输出） */
   verbose?: boolean;
+  /** 启用 LSP / 质量门禁（环境变量透传，控制 block-on-error 插件运行） */
+  enableLsp?: boolean;
 }
 
 /**

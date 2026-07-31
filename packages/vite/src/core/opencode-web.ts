@@ -77,6 +77,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     logFilesJson,
     enableBlockOnError,
     verbose,
+    enableLsp,
   } = options;
   const stateDir = createStateDirectory(cwd);
 
@@ -88,6 +89,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     logFilesJson,
     enableBlockOnError,
     verbose,
+    enableLsp,
   });
 
   const env = buildProcessEnv(
@@ -98,6 +100,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     logFilesJson,
     enableBlockOnError,
     verbose,
+    enableLsp,
   );
   const args = ["serve", "--port", String(port), "--hostname", hostname];
 
@@ -304,6 +307,7 @@ function buildProcessEnv(
   logFilesJson?: string,
   enableBlockOnError?: boolean,
   verbose?: boolean,
+  enableLsp?: boolean,
 ): Record<string, string> {
   const env: Record<string, string> = {
     ...(Object.fromEntries(
@@ -342,6 +346,11 @@ function buildProcessEnv(
   if (verbose) {
     env.OPENCODE_VERBOSE = "1";
     log.debug("Set OPENCODE_VERBOSE=1");
+  }
+
+  if (enableLsp) {
+    env.OPENCODE_ENABLE_LINT = "1";
+    log.debug("Set OPENCODE_ENABLE_LINT=1");
   }
 
   return env;

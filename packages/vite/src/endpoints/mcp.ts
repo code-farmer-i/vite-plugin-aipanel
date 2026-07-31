@@ -156,7 +156,7 @@ function handleToolsCall(
     case "devtools_list_pages":
       return handleListPages(res, id, mcp, projectOrigins, getPageContext);
     default:
-      return handleDevTool(res, id, mcp, mapped, params?.arguments || {}, projectOrigins);
+      return handleDevTool(res, id, mcp, mapped, params?.arguments || {}, projectOrigins, toolName);
   }
 }
 
@@ -291,6 +291,7 @@ async function handleDevTool(
   mapped: string,
   args: Record<string, unknown>,
   projectOrigins: string[],
+  toolName?: string,
 ) {
   try {
     // 提取并校验 pageId
@@ -326,6 +327,23 @@ async function handleDevTool(
     if (!isValid) {
       sendMcpError(res, id, -32000, "pageId 无效或非项目页面", mcp.sessionId);
       return;
+    }
+
+    // devtools_navigate: 校验跳转目标 URL 是否属于本项目
+    if (toolName === "devtools_navigate" && args["type"] === "url") {
+      const targetUrl = args["url"];
+      if (typeof targetUrl === "string" && targetUrl.length > 0) {
+        if (!isProjectPage(targetUrl, projectOrigins)) {
+          sendMcpError(
+            res,
+            id,
+            -32000,
+            `不允许跳转到非本项目页面: ${targetUrl}。仅允许导航到项目页面 (${projectOrigins.join(", ")})`,
+            mcp.sessionId,
+          );
+          return;
+        }
+      }
     }
 
     // 选中目标页面再转发

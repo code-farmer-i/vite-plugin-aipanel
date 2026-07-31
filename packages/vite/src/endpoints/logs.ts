@@ -4,11 +4,11 @@
  */
 
 import type { ViteDevServer } from "vite";
-import { getProcessLogBuffer, type ProcessLogEntry } from "@vite-plugin-opencode-assistant/shared/node";
 import {
-  RequestContext,
-  createLogger,
+  getProcessLogBuffer,
+  type ProcessLogEntry,
 } from "@vite-plugin-opencode-assistant/shared/node";
+import { RequestContext, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
 import { LOGS_API_PATH } from "@vite-plugin-opencode-assistant/shared";
 
 const log = createLogger("Endpoints:Logs");
@@ -105,7 +105,7 @@ export function setupLogsEndpoint(server: ViteDevServer) {
     // DELETE - 清空日志缓冲区
     if (req.method === "DELETE") {
       buffer.clear();
-      log.info("Log buffer cleared");
+      log.debug("Log buffer cleared");
 
       res.writeHead(200);
       res.end(JSON.stringify({ success: true, message: "Log buffer cleared" }));

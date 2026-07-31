@@ -26,11 +26,15 @@ export function prepareOpenCodeRuntime(cwd: string, vitePort: number, mcpToken: 
   const sourcePluginsDir = resolveSourcePluginsDir();
   const plugins = resolvePluginEntries(sourcePluginsDir);
 
+  // 构建 LSP 配置：优先使用插件内置的 typescript-language-server
+  const lspConfig = buildLspConfig(cwd);
+
   const opencodeConfigPath = path.join(cacheDir, "opencode.json");
   fs.writeFileSync(
     opencodeConfigPath,
     JSON.stringify(
       {
+        ...(lspConfig ? { lsp: lspConfig } : { lsp: true }),
         plugin: plugins,
         mcp: {
           "chrome-devtools": {
@@ -43,6 +47,8 @@ export function prepareOpenCodeRuntime(cwd: string, vitePort: number, mcpToken: 
       2,
     ),
   );
+
+  log.debug("LSP diagnostics enabled (TypeScript + ESLint)");
 
   log.debug("OpenCode runtime ready", {
     cacheDir,
@@ -124,6 +130,79 @@ function createStateDirectory(cwd: string): string {
 function resolvePackageDir(): string {
   const entryPath = require.resolve("@vite-plugin-opencode-assistant/opencode");
   return path.dirname(path.dirname(entryPath));
+}
+
+/**
+ * 从插件自身的 node_modules 中解析 typescript-language-server 的 CLI 入口
+ */
+function resolveTsServerCli(): string | undefined {
+  try {
+    const pluginRequire = createRequire(path.join(packageDir, "package.json"));
+    const pkgDir = path.dirname(pluginRequire.resolve("typescript-language-server/package.json"));
+    // ESM 入口优先
+    const cliMjs = path.join(pkgDir, "lib", "cli.mjs");
+    if (fs.existsSync(cliMjs)) return cliMjs;
+    // CJS fallback
+    const cliJs = path.join(pkgDir, "lib", "cli.js");
+    if (fs.existsSync(cliJs)) return cliJs;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 从用户项目中解析 TypeScript 的 tsserver.js 路径
+ */
+function resolveUserTsServer(cwd: string): string | undefined {
+  try {
+    const userRequire = createRequire(path.join(cwd, "package.json"));
+    return userRequire.resolve("typescript/lib/tsserver.js");
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 构建 OpenCode LSP 配置：
+ * - TypeScript: 使用插件内置的 typescript-language-server + 用户项目的 tsserver
+ * - ESLint / Oxlint / Vue 等其余 server 保持 OpenCode 内置行为
+ */
+function buildLspConfig(
+  cwd: string,
+): Record<string, { command?: string[]; initialization?: Record<string, unknown> }> | null {
+  const cli = resolveTsServerCli();
+  if (!cli) {
+    log.warn(
+      "typescript-language-server not found in plugin bundle, falling back to default LSP config",
+    );
+    return null;
+  }
+
+  const tsserver = resolveUserTsServer(cwd);
+  const lspConfig: Record<string, unknown> = {
+    typescript: {
+      command: ["node", cli, "--stdio"],
+      ...(tsserver
+        ? {
+            initialization: {
+              tsserver: { path: tsserver },
+            },
+          }
+        : {}),
+    },
+  };
+
+  if (!tsserver) {
+    log.warn(
+      "TypeScript tsserver.js not found in project, TypeScript LSP may use built-in version",
+    );
+  }
+
+  return lspConfig as Record<
+    string,
+    { command?: string[]; initialization?: Record<string, unknown> }
+  >;
 }
 
 function resolveSourcePluginsDir(): string {

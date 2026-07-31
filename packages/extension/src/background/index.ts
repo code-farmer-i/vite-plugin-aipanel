@@ -20,7 +20,10 @@ function isLocalHost(hostname: string): boolean {
   return /^(10\.\d{1,3}\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(hostname);
 }
 
-// ========== 按窗口追踪的服务状态 ==========
+// ========== 状态 ==========
+//
+// 核心原则：服务是独立实体（由 serviceInstanceId 标识），不绑定到窗口或 Tab。
+// Tab 只是"指向"某个服务 — 多个 Tab 可指向同一服务，也可不指向任何服务。
 
 interface ServiceInfo {
   proxyPort: number;
@@ -30,15 +33,20 @@ interface ServiceInfo {
   verbose?: boolean;
 }
 
-/** windowId → 该窗口的轮询目标 */
-const targets = new Map<number, { origin: string }>();
-/** windowId → 该窗口当前检测到的服务 */
-const services = new Map<number, ServiceInfo>();
+/** 所有已知的服务（serviceInstanceId → 服务信息），独立于 Tab/窗口 */
+const services = new Map<string, ServiceInfo>();
+
+/** tabId → 该 Tab 当前指向的 serviceInstanceId */
+const tabService = new Map<number, string>();
+
+/** windowId → 该窗口当前活跃的 tabId */
+const activeTabs = new Map<number, number>();
+
 /** 当前焦点窗口 */
 let activeWindowId: number | undefined;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-// ========== 轮询 ==========
+// ========== 服务检测 ==========
 
 async function fetchService(origin: string): Promise<ServiceInfo | null> {
   try {
@@ -59,96 +67,130 @@ async function fetchService(origin: string): Promise<ServiceInfo | null> {
   return null;
 }
 
-/** 只轮询焦点窗口的 target */
-async function tick() {
-  if (activeWindowId === undefined) return;
-
-  const target = targets.get(activeWindowId);
-  const info = target ? await fetchService(target.origin) : null;
-  updateServiceState(info, activeWindowId);
+/** 轮询指定 Tab 上的服务端点 */
+async function pollTab(tabId: number): Promise<ServiceInfo | null> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab.url || !isLocalHost(new URL(tab.url).hostname)) {
+      return null;
+    }
+    return await fetchService(new URL(tab.url).origin);
+  } catch {
+    return null;
+  }
 }
 
-// ========== 状态更新（按窗口隔离） ==========
+/** 获取当前活跃窗口活跃 Tab 的服务信息 */
+function getActiveService(): ServiceInfo | null {
+  if (activeWindowId === undefined) return null;
+  const tabId = activeTabs.get(activeWindowId);
+  if (tabId === undefined) return null;
+  const sid = tabService.get(tabId);
+  return sid ? (services.get(sid) ?? null) : null;
+}
 
-function updateServiceState(info: ServiceInfo | null, windowId: number) {
-  const oldService = services.get(windowId);
+/** 统计某个服务被多少个 Tab 引用 */
+function countTabsForService(serviceInstanceId: string): number {
+  let count = 0;
+  for (const [, sid] of tabService) {
+    if (sid === serviceInstanceId) count++;
+  }
+  return count;
+}
+
+// ========== 状态更新与广播 ==========
+
+/**
+ * 更新活跃 Tab 的服务映射。
+ * 仅在以下情况广播消息：
+ *  - 新服务出现（之前不知道这个 serviceInstanceId）→ SERVICE_APPEARED
+ *  - 服务端口变更 → SERVICE_APPEARED
+ *  - 服务从活跃 Tab 消失且无其他 Tab 引用 → SERVICE_GONE
+ */
+function updateActiveTabService(tabId: number, windowId: number, info: ServiceInfo | null): void {
+  const oldSid = tabService.get(tabId);
 
   if (info) {
-    const isNew = !oldService || info.serviceInstanceId !== oldService.serviceInstanceId;
-    const portChanged =
-      oldService &&
-      info.serviceInstanceId === oldService.serviceInstanceId &&
-      info.vitePort !== oldService.vitePort;
+    const known = services.get(info.serviceInstanceId);
+    const isNewService = !known;
+    const portChanged = known && known.vitePort !== info.vitePort;
 
-    if (isNew) {
-      if (oldService) {
+    // 更新全局服务注册表
+    services.set(info.serviceInstanceId, info);
+    // 更新 Tab → 服务映射（会覆盖 tabId 之前指向的旧服务）
+    tabService.set(tabId, info.serviceInstanceId);
+
+    // 清理被此 Tab 替换掉的旧服务（如 Tab 导航到另一个 localhost 服务）
+    if (oldSid && oldSid !== info.serviceInstanceId && countTabsForService(oldSid) === 0) {
+      const oldInfo = services.get(oldSid);
+      services.delete(oldSid);
+      if (oldInfo) {
         chrome.runtime
-          .sendMessage({ type: EXT_MSG.SERVICE_GONE, ...oldService, windowId })
+          .sendMessage({ type: EXT_MSG.SERVICE_GONE, ...oldInfo, windowId })
           .catch(() => {});
+        log.info(`服务下线（Tab 导航离开）: ${oldSid} tab=${tabId} win=${windowId}`);
       }
-      services.set(windowId, info);
+    }
+
+    if (isNewService) {
       chrome.runtime
         .sendMessage({ type: EXT_MSG.SERVICE_APPEARED, ...info, windowId })
         .catch(() => {});
-      log.info(`服务上线: ${info.serviceInstanceId} vite=${info.vitePort} win=${windowId}`);
+      log.info(
+        `服务上线: ${info.serviceInstanceId} vite=${info.vitePort} tab=${tabId} win=${windowId}`,
+      );
     } else if (portChanged) {
-      services.set(windowId, info);
       chrome.runtime
         .sendMessage({ type: EXT_MSG.SERVICE_APPEARED, ...info, windowId })
         .catch(() => {});
       log.info(`服务端口变更: ${info.serviceInstanceId} vite=${info.vitePort}`);
     }
-  } else if (oldService) {
-    services.delete(windowId);
-    log.info(
-      `[updateServiceState] 发送 SERVICE_GONE: ${oldService.serviceInstanceId} win=${windowId}`,
-    );
-    chrome.runtime
-      .sendMessage({ type: EXT_MSG.SERVICE_GONE, ...oldService, windowId })
-      .catch(() => {});
-  }
-}
+  } else {
+    // 活跃 Tab 上无服务
+    if (oldSid) {
+      tabService.delete(tabId);
 
-// ========== 切换轮询目标 ==========
-
-/** 根据 tab 信息更新该窗口的轮询目标 */
-async function setWindowTarget(windowId: number, tabId?: number): Promise<void> {
-  if (tabId !== undefined) {
-    try {
-      const tab = await chrome.tabs.get(tabId);
-      if (tab.url && isLocalHost(new URL(tab.url).hostname)) {
-        targets.set(windowId, { origin: new URL(tab.url).origin });
-        return;
+      // 检查该服务是否还被其他 Tab 引用
+      if (countTabsForService(oldSid) === 0) {
+        const oldInfo = services.get(oldSid);
+        services.delete(oldSid);
+        if (oldInfo) {
+          chrome.runtime
+            .sendMessage({ type: EXT_MSG.SERVICE_GONE, ...oldInfo, windowId })
+            .catch(() => {});
+          log.info(`服务下线: ${oldSid} tab=${tabId} win=${windowId}`);
+        }
       }
-    } catch {
-      // tab 不存在
     }
   }
-  // tabId 未提供或非 localhost → 尝试找该窗口第一个 localhost 标签页
-  try {
-    const tabs = await chrome.tabs.query({ active: true, windowId });
-    const localTab = tabs.find((t) => t.url && isLocalHost(new URL(t.url).hostname));
-    if (localTab && localTab.url) {
-      targets.set(windowId, { origin: new URL(localTab.url).origin });
-      return;
-    }
-  } catch {
-    // ignore
-  }
-  targets.delete(windowId);
 }
 
-// ========== Tab / 窗口切换 ==========
+// ========== 轮询 ==========
+
+async function tick(): Promise<void> {
+  if (activeWindowId === undefined) return;
+  const tabId = activeTabs.get(activeWindowId);
+  if (tabId === undefined) return;
+
+  const info = await pollTab(tabId);
+  updateActiveTabService(tabId, activeWindowId, info);
+}
+
+// ========== Tab 激活 ==========
 
 chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
   activeWindowId = windowId;
-  await setWindowTarget(windowId, tabId);
-  await tick();
+  activeTabs.set(windowId, tabId);
 
+  // 轮询新活跃 Tab
+  const info = await pollTab(tabId);
+  updateActiveTabService(tabId, windowId, info);
+
+  // 通知 Side Panel
   chrome.runtime
     .sendMessage({
       type: EXT_MSG.TAB_SWITCHED,
-      portInfo: services.get(windowId) || null,
+      portInfo: getActiveService(),
       tabId,
       windowId,
     })
@@ -157,21 +199,26 @@ chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
   chrome.tabs.sendMessage(tabId, { type: EXT_MSG.REQUEST_PAGE_CONTEXT }).catch(() => {});
 });
 
+// ========== 窗口焦点变化 ==========
+
 chrome.windows.onFocusChanged.addListener(async (windowId) => {
   if (windowId === chrome.windows.WINDOW_ID_NONE) return;
   if (windowId === activeWindowId) return;
 
   activeWindowId = windowId;
-  await setWindowTarget(windowId);
-  await tick();
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, windowId });
     if (tab?.id) {
+      activeTabs.set(windowId, tab.id);
+
+      const info = await pollTab(tab.id);
+      updateActiveTabService(tab.id, windowId, info);
+
       chrome.runtime
         .sendMessage({
           type: EXT_MSG.TAB_SWITCHED,
-          portInfo: services.get(windowId) || null,
+          portInfo: getActiveService(),
           tabId: tab.id,
           windowId,
         })
@@ -188,43 +235,32 @@ chrome.windows.onFocusChanged.addListener(async (windowId) => {
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!changeInfo.url) return;
-  log.info(
-    `[onUpdated] 收到 URL: ${changeInfo.url} tabWin=${tab.windowId} activeWin=${activeWindowId}`,
-  );
-  if (tab.windowId !== activeWindowId) {
-    log.info(`[onUpdated] 窗口不匹配，跳过`);
-    return;
-  }
 
-  try {
-    const [activeTab] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
-    if (activeTab?.id !== tabId) return;
-  } catch {
-    return;
-  }
+  // 只处理当前活跃窗口的活跃 Tab
+  if (tab.windowId !== activeWindowId) return;
+  if (tabId !== activeTabs.get(tab.windowId)) return;
 
-  // 同 origin 下路径切换无需更新轮询目标
   const newOrigin = new URL(changeInfo.url).origin;
-  const currentTarget = targets.get(tab.windowId);
-  log.info(
-    `[onUpdated] URL 变更: ${changeInfo.url} origin=${newOrigin} currentTarget=${currentTarget?.origin}`,
-  );
-  if (currentTarget?.origin === newOrigin) {
-    log.info(`[onUpdated] 同 origin，跳过`);
-    return;
+  const oldSid = tabService.get(tabId);
+
+  // 同 origin 路径切换 — 无需重新轮询
+  if (oldSid) {
+    const oldInfo = services.get(oldSid);
+    const oldOrigin = oldInfo ? `http://127.0.0.1:${oldInfo.vitePort}` : null;
+    if (oldOrigin && new URL(oldOrigin).origin === newOrigin) {
+      return;
+    }
   }
 
-  await setWindowTarget(tab.windowId, tabId);
-  const newTarget = targets.get(tab.windowId);
-  log.info(`[onUpdated] 新 target: ${newTarget?.origin || "无"}`);
-  await tick();
+  log.info(`[onUpdated] URL 变更: ${changeInfo.url} tab=${tabId}`);
 
-  const portInfo = services.get(tab.windowId) || null;
-  log.info(`[onUpdated] 发送 TAB_SWITCHED portInfo=${portInfo?.serviceInstanceId || "null"}`);
+  const info = isLocalHost(new URL(changeInfo.url).hostname) ? await fetchService(newOrigin) : null;
+  updateActiveTabService(tabId, tab.windowId, info);
+
   chrome.runtime
     .sendMessage({
       type: EXT_MSG.TAB_SWITCHED,
-      portInfo,
+      portInfo: getActiveService(),
       tabId,
       windowId: tab.windowId,
     })
@@ -234,47 +270,75 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 // ========== Tab 关闭 ==========
 
 chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
-  if (removeInfo.windowId !== activeWindowId) return;
+  const oldSid = tabService.get(tabId);
+  tabService.delete(tabId);
 
-  // 重新为该窗口查找 localhost tab 作为轮询目标
-  await setWindowTarget(removeInfo.windowId);
-  await tick();
+  // 更新活跃 Tab 记录
+  if (activeTabs.get(removeInfo.windowId) === tabId) {
+    activeTabs.delete(removeInfo.windowId);
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, windowId: removeInfo.windowId });
+      if (tab?.id) {
+        activeTabs.set(removeInfo.windowId, tab.id);
 
-  // 如果关闭的就是当前轮询的 tab，通知 side panel
-  chrome.runtime
-    .sendMessage({
-      type: EXT_MSG.TAB_SWITCHED,
-      portInfo: services.get(removeInfo.windowId) || null,
-      tabId,
-      windowId: removeInfo.windowId,
-    })
-    .catch(() => {});
+        const info = await pollTab(tab.id);
+        updateActiveTabService(tab.id, removeInfo.windowId, info);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 被关闭 Tab 上的服务若无其他 Tab 引用，广播下线
+  if (oldSid && countTabsForService(oldSid) === 0) {
+    const oldInfo = services.get(oldSid);
+    services.delete(oldSid);
+    if (oldInfo) {
+      chrome.runtime
+        .sendMessage({ type: EXT_MSG.SERVICE_GONE, ...oldInfo, windowId: removeInfo.windowId })
+        .catch(() => {});
+      log.info(`服务下线（Tab 关闭）: ${oldSid} tab=${tabId}`);
+    }
+  }
+
+  // 通知 Side Panel
+  if (removeInfo.windowId === activeWindowId) {
+    chrome.runtime
+      .sendMessage({
+        type: EXT_MSG.TAB_SWITCHED,
+        portInfo: getActiveService(),
+        tabId,
+        windowId: removeInfo.windowId,
+      })
+      .catch(() => {});
+  }
 });
 
 // ========== 窗口关闭 ==========
 
 chrome.windows.onRemoved.addListener(async (windowId) => {
-  targets.delete(windowId);
-  services.delete(windowId);
+  activeTabs.delete(windowId);
 
   if (windowId !== activeWindowId) return;
 
-  // 切换到另一个还活着的窗口
+  // 切换到另一个活着的窗口
   try {
     const windows = await chrome.windows.getAll({ windowTypes: ["normal"] });
     const nextWin = windows.find((w) => w.id !== windowId && w.id !== undefined);
     if (nextWin?.id) {
       activeWindowId = nextWin.id;
-      await setWindowTarget(nextWin.id);
-      await tick();
-
       try {
         const [tab] = await chrome.tabs.query({ active: true, windowId: nextWin.id });
         if (tab?.id) {
+          activeTabs.set(nextWin.id, tab.id);
+
+          const info = await pollTab(tab.id);
+          updateActiveTabService(tab.id, nextWin.id, info);
+
           chrome.runtime
             .sendMessage({
               type: EXT_MSG.TAB_SWITCHED,
-              portInfo: services.get(nextWin.id) || null,
+              portInfo: getActiveService(),
               tabId: tab.id,
               windowId: nextWin.id,
             })
@@ -289,7 +353,6 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
     // ignore
   }
 
-  // 没有其他窗口了
   activeWindowId = undefined;
 });
 
@@ -318,7 +381,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "FORCE_POLL") {
     tick().then(() => {
-      sendResponse((activeWindowId !== undefined ? services.get(activeWindowId) : null) || null);
+      sendResponse(getActiveService());
     });
     return true;
   }
@@ -338,7 +401,16 @@ function startPolling() {
   const [win] = await chrome.windows.getAll({ windowTypes: ["normal"] });
   if (win?.id) {
     activeWindowId = win.id;
-    await setWindowTarget(win.id);
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, windowId: win.id });
+      if (tab?.id) {
+        activeTabs.set(win.id, tab.id);
+        const info = await pollTab(tab.id);
+        updateActiveTabService(tab.id, win.id, info);
+      }
+    } catch {
+      // ignore
+    }
   }
   await tick();
   startPolling();

@@ -16,8 +16,8 @@ const isLintEnabled = () => process.env.OPENCODE_ENABLE_LINT === "1";
 
 const QUALITY_GATE_SECTION = `
 ## 质量门禁
-- 每次使用 edit 或 write 修改文件后，如果工具返回 \`BLOCKED\` 和 \`<diagnostics>\` 错误，说明修改引入了 TS/ESLint 错误，**文件已被自动回滚**。
-- 你必须根据诊断信息修复代码后重新编辑，直到没有 BLOCKED 为止。
+- 每次使用 edit 或 write 修改文件后，如果工具返回 \`BLOCKED\` 和 \`<diagnostics>\` 错误，**文件已被自动回滚**。
+- 错误可能是本次修改引入的，也可能是文件中已存在的历史问题。无论是哪种，你都必须根据诊断信息一并修复，直到没有 BLOCKED 为止。
 - 这是硬性要求，跳过错误继续执行会导致修改丢失。`.trim();
 
 export default {

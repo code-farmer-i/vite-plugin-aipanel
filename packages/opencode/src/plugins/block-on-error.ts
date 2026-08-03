@@ -35,7 +35,7 @@ interface Snapshot {
 // ESLint severity: 2=error, 1=warn → LSP DiagnosticSeverity: 1=Error, 2=Warning
 // 参考 eslint/lib/shared/severity.js、shared/constants.ts
 
-const BLOCKED_TOOLS = new Set(["edit", "write"]);
+const BLOCKED_TOOLS = new Set(["edit", "write", "apply_patch"]);
 const isBlocking = () => process.env.OPENCODE_BLOCK_ON_ERROR === "1";
 const isLintEnabled = () => process.env.OPENCODE_ENABLE_LINT === "1";
 

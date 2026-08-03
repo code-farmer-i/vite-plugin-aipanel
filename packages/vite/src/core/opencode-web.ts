@@ -39,6 +39,7 @@ export function prepareOpenCodeRuntime(
   const opencodeConfigPath = path.join(cacheDir, "opencode.json");
   const config: Record<string, unknown> = {
     plugin: plugins,
+    formatter: true,
     mcp: {
       "chrome-devtools": {
         type: "remote",

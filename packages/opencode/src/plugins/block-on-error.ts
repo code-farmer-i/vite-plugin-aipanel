@@ -1,9 +1,8 @@
 /**
  * @fileoverview 质量门禁插件
  * @description edit/write 工具执行后：
- *   1. Prettier 格式化（自动）
- *   2. ESLint 检查（Node API，绕过 LSP Bug 2）
- *   3. 错误硬阻止（可选，OPENCODE_BLOCK_ON_ERROR=1 时回滚）
+ *   1. ESLint 检查（Node API，绕过 LSP Bug）
+ *   2. 错误硬阻止（可选，OPENCODE_BLOCK_ON_ERROR=1 时回滚）
  */
 
 import fs from "node:fs";
@@ -25,7 +24,6 @@ interface Snapshot {
 }
 
 const BLOCKED_TOOLS = new Set(["edit", "write"]);
-const LSP_ERROR_MARKER = "LSP errors detected";
 const isBlocking = () => process.env.OPENCODE_BLOCK_ON_ERROR === "1";
 const isLintEnabled = () => process.env.OPENCODE_ENABLE_LINT === "1";
 
@@ -58,21 +56,12 @@ export default {
       lintFiles: (p: string) => Promise<Array<{ messages: LintMessage[] }>>;
     };
 
-    // 懒加载项目中的 prettier / eslint
-    let prettierModule: typeof import("prettier") | undefined;
     let ESLintClass: ESLintConstructor | undefined;
 
-    function loadTools() {
-      if (prettierModule && ESLintClass) return;
+    function loadESLint() {
+      if (ESLintClass) return;
       const cwd = process.cwd();
-      log.debug("Loading tools", { cwd });
-      try {
-        const req = createRequire(path.join(cwd, "package.json"));
-        prettierModule ??= req("prettier");
-        log.debug("prettier loaded");
-      } catch (e) {
-        log.warn("prettier not found", { error: (e as Error).message });
-      }
+      log.debug("Loading eslint", { cwd });
       try {
         const req = createRequire(path.join(cwd, "package.json"));
         const eslintModule = req("eslint");
@@ -81,27 +70,6 @@ export default {
       } catch (e) {
         log.warn("eslint not found", { error: (e as Error).message });
       }
-    }
-
-    /** Prettier 格式化，有变更则写回 */
-    async function formatFile(filePath: string): Promise<string | undefined> {
-      if (!prettierModule) return undefined;
-      try {
-        const content = fs.readFileSync(filePath, "utf-8");
-        const config = await prettierModule.resolveConfig(filePath);
-        const formatted = await prettierModule.format(content, {
-          ...(config ?? {}),
-          filepath: filePath,
-        });
-        if (formatted !== content) {
-          fs.writeFileSync(filePath, formatted, "utf-8");
-          log.debug("Prettier formatted", { filePath });
-          return "File has been formatted with Prettier.";
-        }
-      } catch (err) {
-        log.warn("Prettier failed", { filePath, error: (err as Error).message });
-      }
-      return undefined;
     }
 
     /** ESLint 检查，返回 { 诊断文本, 结构化数据 } */
@@ -187,13 +155,9 @@ export default {
 
         log.debug("Executing after hook", { tool: input.tool, filePath });
 
-        loadTools();
+        loadESLint();
 
-        // 1. Prettier 格式化
-        const formatMsg = await formatFile(filePath);
-        if (formatMsg) log.debug("Format applied", { filePath });
-
-        // 2. ESLint 检查
+        // 1. ESLint 检查
         const eslintResult = await lintFile(filePath);
         log.debug("Lint result", {
           filePath,
@@ -203,12 +167,18 @@ export default {
           warnings: eslintResult.diagnostics.filter((d) => d.severity === 2).length,
         });
 
-        // 拼接到返回值（文本 + 结构化 metadata）
-        const extraLines: string[] = [];
-        if (formatMsg) extraLines.push(formatMsg);
-        if (eslintResult.text) extraLines.push(eslintResult.text);
-        if (extraLines.length > 0) {
-          output.output += "\n\n" + extraLines.join("\n\n");
+        // 2. 提取 LSP 诊断（OpenCode 内置 TS/Vue 类型检查结果在 output 中）
+        //    OpenCode 输出格式: "LSP errors detected in this file, please fix:\n<diagnostics>..."
+        const hasLspErrors = output.output.includes("LSP errors detected");
+        const lspDiagnosticBlocks = hasLspErrors
+          ? (output.output.match(/<diagnostics[\s\S]*?<\/diagnostics>/g) ?? [])
+          : [];
+
+        const hasEslintErrors = eslintResult.diagnostics.some((d) => d.severity === 1);
+
+        // 诊断信息追加到 output（无论是否 blocking）
+        if (eslintResult.text) {
+          output.output += "\n\n" + eslintResult.text;
         }
 
         // 写入 metadata.diagnostics 供 UI 渲染
@@ -222,7 +192,6 @@ export default {
           log.debug("Metadata updated", {
             filePath,
             total: existing[filePath].length,
-            keys: Object.keys(existing),
           });
         }
 
@@ -233,13 +202,7 @@ export default {
         if (!snap) return;
         snapshots.delete(input.callID);
 
-        const hasLspErrors = output.output.includes(LSP_ERROR_MARKER);
-        const hasEslintErrors = eslintResult.diagnostics.some((d) => d.severity === 1);
         if (!hasLspErrors && !hasEslintErrors) return;
-
-        // 提取所有诊断信息（从 output 文本中）
-        const outputDiagnosticBlocks =
-          output.output.match(/<diagnostics[\s\S]*?<\/diagnostics>/g) ?? [];
 
         // 回滚文件
         try {
@@ -267,7 +230,7 @@ export default {
             : []),
           ...(hasLspErrors ? ["TS: see diagnostics above"] : []),
           "",
-          ...outputDiagnosticBlocks,
+          ...lspDiagnosticBlocks,
         ].join("\n");
         output.title = `REJECTED: ${path.basename(snap.filePath)}`;
 

@@ -8,6 +8,7 @@ import type { WebOptions } from "@vite-plugin-opencode-assistant/shared";
 import {
   MCP_API_PATH,
   VSCODE_EXTENSION_PORT,
+  VSCODE_PORT_DIR,
   ENV_VSCODE_MODE,
   ENV_VSCODE_PORT,
   createLogger,
@@ -25,7 +26,7 @@ export function prepareOpenCodeRuntime(
   mcpToken: string,
   enableLsp?: boolean,
 ): string {
-  const cacheDir = path.join(cwd, "node_modules", ".cache", "opencode");
+  const cacheDir = path.join(cwd, VSCODE_PORT_DIR);
 
   log.debug("Setting up OpenCode runtime", { cacheDir, enableLsp });
 
@@ -162,7 +163,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
 }
 
 function createStateDirectory(cwd: string): string {
-  const stateDir = path.join(cwd, "node_modules", ".cache", "opencode");
+  const stateDir = path.join(cwd, VSCODE_PORT_DIR);
 
   if (!fs.existsSync(stateDir)) {
     fs.mkdirSync(stateDir, { recursive: true });
@@ -317,11 +318,44 @@ function buildFormatterConfig(pkdDir: string): boolean | Record<string, unknown>
   };
 }
 
+/** 从当前工作目录向上查找项目根目录（含 node_modules/.cache/opencode/port） */
+function findProjectRoot(): string | null {
+  let dir = path.resolve(process.cwd());
+  const root = path.parse(dir).root;
+  while (dir !== root) {
+    const portFile = path.join(dir, VSCODE_PORT_DIR, "port");
+    if (fs.existsSync(portFile)) {
+      log.debug("Found VSCode port file", { dir, portFile });
+      return dir;
+    }
+    dir = path.dirname(dir);
+  }
+  log.debug("VSCode port file not found", { cwd: process.cwd() });
+  return null;
+}
+
+/** 从 node_modules/.cache/opencode/port 读取 VS Code 扩展端口 */
+function readVSCodePort(): number | null {
+  const projectRoot = findProjectRoot();
+  if (!projectRoot) return null;
+  try {
+    const portFile = path.join(projectRoot, VSCODE_PORT_DIR, "port");
+    const port = parseInt(fs.readFileSync(portFile, "utf-8").trim(), 10);
+    log.debug("VSCode port read", { port, file: portFile });
+    return isNaN(port) ? null : port;
+  } catch (e) {
+    log.debug("Failed to read VSCode port", { error: (e as Error).message });
+    return null;
+  }
+}
+
 /** HTTP 健康检查，确认 VS Code 扩展服务已启动 */
 function isFormatServiceRunning(): boolean {
+  const port = readVSCodePort();
+  if (!port) return false;
   try {
     require("child_process").execSync(
-      `node -e "const h=require('http');h.get('http://127.0.0.1:${VSCODE_EXTENSION_PORT}/health',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"`,
+      `node -e "const h=require('http');h.get('http://127.0.0.1:${port}/health',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"`,
       { timeout: 500, stdio: "ignore" },
     );
     return true;
@@ -454,8 +488,9 @@ function buildProcessEnv(
   }
 
   if (isFormatServiceRunning()) {
+    const port = readVSCodePort();
     env[ENV_VSCODE_MODE] = "1";
-    env[ENV_VSCODE_PORT] = String(VSCODE_EXTENSION_PORT);
+    env[ENV_VSCODE_PORT] = String(port ?? VSCODE_EXTENSION_PORT);
     log.debug("Set OPENCODE_VSCODE_MODE=1");
   }
 

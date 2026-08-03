@@ -9,10 +9,9 @@ import {
   ChromeMcpWarmupError,
   ChromeMcpWarmupErrorType,
 } from "@vite-plugin-opencode-assistant/shared";
-import { createLogger } from "@vite-plugin-opencode-assistant/shared/node";
+import { createLogger, findAvailablePort } from "@vite-plugin-opencode-assistant/shared/node";
 import {
   checkOpenCodeInstalled,
-  findAvailablePort,
   findGitRoot,
   getOpenCodeVersion,
   killOrphanOpenCodeProcesses,

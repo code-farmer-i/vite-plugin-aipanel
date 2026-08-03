@@ -18,7 +18,37 @@ if (!filePath) {
 }
 
 const absPath = path.resolve(filePath);
-const PORT = Number(process.env.OPENCODE_VSCODE_PORT) || 51939;
+
+/** 从文件路径向上查找项目根目录（含 node_modules/.cache/opencode/port） */
+function findProjectRoot(file) {
+  let dir = path.dirname(path.resolve(file));
+  const root = path.parse(dir).root;
+  while (dir !== root) {
+    const portFile = path.join(dir, "node_modules", ".cache", "opencode", "port");
+    try {
+      if (fs.existsSync(portFile)) return dir;
+    } catch {
+      /* skip */
+    }
+    dir = path.dirname(dir);
+  }
+  return null;
+}
+
+/** 读取端口文件 */
+function readPort(projectRoot) {
+  if (!projectRoot) return null;
+  try {
+    const portFile = path.join(projectRoot, "node_modules", ".cache", "opencode", "port");
+    const port = parseInt(fs.readFileSync(portFile, "utf-8").trim(), 10);
+    return isNaN(port) ? null : port;
+  } catch {
+    return null;
+  }
+}
+
+const projectRoot = findProjectRoot(absPath);
+const PORT = readPort(projectRoot);
 
 /** HTTP 健康检查 */
 function probeHealth(port) {
@@ -76,6 +106,12 @@ function formatViaExtension(port) {
 }
 
 async function main() {
+  if (!PORT) {
+    const now = new Date();
+    fs.utimesSync(absPath, now, now);
+    process.exit(0);
+  }
+
   const port = await probeHealth(PORT);
 
   if (port) {

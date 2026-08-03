@@ -1,10 +1,9 @@
 import { spawn } from "child_process";
 import fs from "fs";
 import http from "http";
-import net from "net";
 import path from "path";
 import type { ResultPromise } from "execa";
-import { MAX_PORT_TRIES, SERVER_CHECK_INTERVAL } from "@vite-plugin-opencode-assistant/shared";
+import { SERVER_CHECK_INTERVAL } from "@vite-plugin-opencode-assistant/shared";
 import { PerformanceTimer, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
 
 const log = createLogger("Utils");
@@ -105,46 +104,6 @@ export function getOpenCodeVersion(): Promise<string | null> {
   });
 }
 
-export async function isPortAvailable(port: number, hostname?: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-
-    server.once("error", (err) => {
-      log.debug(`Port ${port} is not available`, { error: (err as Error).message });
-      resolve(false);
-    });
-
-    server.once("listening", () => {
-      server.close();
-      log.debug(`Port ${port} is available`);
-      resolve(true);
-    });
-
-    server.listen(port, hostname);
-  });
-}
-
-export async function findAvailablePort(
-  startPort: number,
-  hostname?: string,
-  maxTries = MAX_PORT_TRIES,
-): Promise<number> {
-  const timer = log.timer("findAvailablePort", { startPort, hostname, maxTries });
-
-  log.debug(`Looking for available port starting from ${startPort}`);
-
-  for (let port = startPort; port < startPort + maxTries; port++) {
-    if (await isPortAvailable(port, hostname)) {
-      timer.end(`✓ Found available port: ${port}`);
-      return port;
-    }
-    log.debug(`Port ${port} is in use, trying next...`);
-  }
-
-  timer.end("❌ No available port found");
-  throw new Error(`No available port found after ${maxTries} tries starting from ${startPort}`);
-}
-
 export async function killOrphanOpenCodeProcesses(): Promise<number> {
   const timer = log.timer("killOrphanOpenCodeProcesses");
 
@@ -242,7 +201,9 @@ export function findGitRoot(startDir: string, maxDepth = 10): string {
         return currentDir;
       }
     } catch (err) {
-      log.debug(`Error checking .git directory at ${currentDir}`, { error: (err as Error).message });
+      log.debug(`Error checking .git directory at ${currentDir}`, {
+        error: (err as Error).message,
+      });
     }
 
     const parentDir = path.dirname(currentDir);

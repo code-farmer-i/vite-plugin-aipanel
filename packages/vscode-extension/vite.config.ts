@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
+import { builtinModules } from "module";
 
 export default defineConfig({
   build: {
@@ -12,7 +13,7 @@ export default defineConfig({
       fileName: () => "extension.js",
     },
     rollupOptions: {
-      external: ["vscode", "http", "path", "fs"],
+      external: ["vscode", ...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
       output: {
         entryFileNames: "extension.js",
       },

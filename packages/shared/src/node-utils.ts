@@ -35,3 +35,33 @@ export async function checkChromeDevToolsAvailable(
     });
   });
 }
+
+/**
+ * 检查指定端口是否可用
+ */
+export async function isPortAvailable(port: number, hostname?: string): Promise<boolean> {
+  const net = await import("net");
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => {
+      server.close();
+      resolve(true);
+    });
+    server.listen(port, hostname);
+  });
+}
+
+/**
+ * 从 startPort 开始寻找可用端口
+ */
+export async function findAvailablePort(
+  startPort: number,
+  hostname?: string,
+  maxTries = 100,
+): Promise<number> {
+  for (let port = startPort; port < startPort + maxTries; port++) {
+    if (await isPortAvailable(port, hostname)) return port;
+  }
+  throw new Error(`No available port in range ${startPort}-${startPort + maxTries}`);
+}

@@ -1,9 +1,26 @@
 import * as vscode from "vscode";
 import * as http from "http";
+import {
+  SEVERITY_ERROR,
+  SEVERITY_WARN,
+  VSCODE_EXTENSION_PORT,
+} from "@vite-plugin-opencode-assistant/shared/node";
 
 let server: http.Server | null = null;
 
-/** 将 VS Code Diagnostic 映射为纯数据 */
+/** VS Code DiagnosticSeverity → LSP severity */
+function toSharedSeverity(severity: vscode.DiagnosticSeverity): number {
+  switch (severity) {
+    case vscode.DiagnosticSeverity.Error:
+      return SEVERITY_ERROR;
+    case vscode.DiagnosticSeverity.Warning:
+      return SEVERITY_WARN;
+    default:
+      return SEVERITY_WARN;
+  }
+}
+
+/** 将 VS Code Diagnostic 映射为纯数据（severity 使用 LSP 规范值） */
 function mapDiagnostics(diags: readonly vscode.Diagnostic[]): unknown[] {
   return diags
     .filter(
@@ -12,7 +29,7 @@ function mapDiagnostics(diags: readonly vscode.Diagnostic[]): unknown[] {
         d.severity === vscode.DiagnosticSeverity.Warning,
     )
     .map((d) => ({
-      severity: d.severity,
+      severity: toSharedSeverity(d.severity),
       range: {
         start: { line: d.range.start.line, character: d.range.start.character },
         end: { line: d.range.end.line, character: d.range.end.character },
@@ -47,13 +64,21 @@ async function getDiagnostics(filePath: string): Promise<{ diagnostics: unknown[
 function startServer(port: number): http.Server {
   const srv = http.createServer(async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     if (req.method === "OPTIONS") {
       res.writeHead(204);
       res.end();
       return;
     }
+
+    // 健康检查
+    if (req.method === "GET" && req.url === "/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok" }));
+      return;
+    }
+
     if (req.method !== "POST") {
       res.writeHead(405);
       res.end("Method Not Allowed");
@@ -94,7 +119,7 @@ function startServer(port: number): http.Server {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const port = 51939;
+  const port = VSCODE_EXTENSION_PORT;
   try {
     server = startServer(port);
     console.log(`[OpenCode VSCode Extension] Format server on port ${port}`);

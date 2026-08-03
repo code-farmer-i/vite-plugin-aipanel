@@ -38,6 +38,7 @@
     "install-ext": "code --install-extension *.vsix"
   },
   "devDependencies": {
+    "@vite-plugin-opencode-assistant/shared": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.0.0",

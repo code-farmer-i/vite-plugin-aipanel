@@ -10,7 +10,15 @@ import http from "node:http";
 import path from "node:path";
 import { createRequire } from "node:module";
 import type { Hooks } from "@opencode-ai/plugin";
-import { setVerbose, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
+import {
+  setVerbose,
+  createLogger,
+  SEVERITY_ERROR,
+  SEVERITY_WARN,
+  VSCODE_EXTENSION_PORT,
+  ENV_VSCODE_MODE,
+  ENV_VSCODE_PORT,
+} from "@vite-plugin-opencode-assistant/shared/node";
 
 // 子进程通过环境变量接收 verbose 配置
 if (process.env.OPENCODE_VERBOSE === "1") {
@@ -24,6 +32,9 @@ interface Snapshot {
   content: string | null;
 }
 
+// ESLint severity: 2=error, 1=warn → LSP DiagnosticSeverity: 1=Error, 2=Warning
+// 参考 eslint/lib/shared/severity.js、shared/constants.ts
+
 const BLOCKED_TOOLS = new Set(["edit", "write"]);
 const isBlocking = () => process.env.OPENCODE_BLOCK_ON_ERROR === "1";
 const isLintEnabled = () => process.env.OPENCODE_ENABLE_LINT === "1";
@@ -34,7 +45,7 @@ export default {
     const snapshots = new Map<string, Snapshot>();
 
     // 通过环境变量判断 VS Code 扩展是否可用（由 vite 插件启动时探测并设置）
-    const vscodeMode = process.env.OPENCODE_VSCODE_MODE === "1";
+    const vscodeMode = process.env[ENV_VSCODE_MODE] === "1";
     log.info(vscodeMode ? "VS Code diagnostics mode" : "Fallback mode (ESLint + LSP)");
 
     interface LintMessage {
@@ -77,7 +88,7 @@ export default {
       }
     }
 
-    const VSCODE_PORT = Number(process.env.OPENCODE_VSCODE_PORT) || 51939;
+    const VSCODE_PORT = Number(process.env[ENV_VSCODE_PORT]) || VSCODE_EXTENSION_PORT;
 
     /** 通过 HTTP 从 VS Code 扩展获取诊断 */
     function fetchVSCodeDiagnostics(filePath: string): Promise<DiagnosticItem[]> {
@@ -124,12 +135,28 @@ export default {
         const eslint = new ESLintClass({ cwd: process.cwd() });
         const results = await eslint.lintFiles(filePath);
         const messages: LintMessage[] = results[0]?.messages ?? [];
+        log.debug("ESLint raw messages", {
+          filePath,
+          count: messages.length,
+          severities: messages.map((m) => m.severity),
+          ruleIds: messages.map((m) => m.ruleId),
+        });
         if (messages.length === 0) return { diagnostics: [] };
 
-        // 文本输出（给 LLM 看）
+        // 文本输出（给 LLM 看），使用 ESLint 原生 severity 过滤
+        const ESLINT_ERROR = 2;
+        const ESLINT_WARN = 1;
         const lines: string[] = [];
-        const errors = messages.filter((m) => m.severity === 2);
-        const warnings = messages.filter((m) => m.severity === 1);
+        const errors = messages.filter((m) => m.severity === ESLINT_ERROR);
+        const warnings = messages.filter((m) => m.severity === ESLINT_WARN);
+        log.debug("ESLint filtered", {
+          errors: errors.length,
+          warnings: warnings.length,
+          ESLINT_ERROR,
+          ESLINT_WARN,
+          SEVERITY_ERROR,
+          SEVERITY_WARN,
+        });
         if (errors.length > 0) {
           lines.push(
             ...errors.map((m) => `ERROR [${m.line}:${m.column}] ${m.message} (${m.ruleId})`),
@@ -144,10 +171,14 @@ export default {
           if (warnings.length > 5) lines.push(`... and ${warnings.length - 5} more warnings`);
         }
 
-        // 结构化数据（给 UI 渲染，和 LSP Diagnostic 格式一致）
-        // ESLint severity: 2=error, 1=warning → LSP DiagnosticSeverity: 1=Error, 2=Warning
+        // 结构化数据（LSP severity: 1=Error, 2=Warning），ESLint 2/1 映射到 LSP 1/2
         const diagnostics = messages.map((m) => ({
-          severity: m.severity === 2 ? 1 : m.severity === 1 ? 2 : m.severity,
+          severity:
+            m.severity === ESLINT_ERROR
+              ? SEVERITY_ERROR
+              : m.severity === ESLINT_WARN
+                ? SEVERITY_WARN
+                : m.severity,
           range: {
             start: { line: (m.line || 1) - 1, character: (m.column || 1) - 1 },
             end: {
@@ -159,13 +190,17 @@ export default {
           source: "eslint",
         }));
 
-        return {
-          text:
-            lines.length > 0
-              ? `<diagnostics file="${filePath}">\n${lines.join("\n")}\n</diagnostics>`
-              : undefined,
+        const result = {
+          text: lines.length > 0 ? lines.join("\n") : undefined,
           diagnostics,
         };
+        log.debug("ESLint lintFile result", {
+          hasText: !!result.text,
+          textLength: result.text?.length,
+          diagCount: diagnostics.length,
+          textPreview: result.text?.slice(0, 200),
+        });
+        return result;
       } catch (err) {
         log.warn("ESLint failed", { filePath, error: (err as Error).message });
       }
@@ -208,10 +243,10 @@ export default {
 
           if (diagnostics.length > 0) {
             const lines = diagnostics.map((d) => {
-              const level = d.severity === 1 ? "ERROR" : "WARN";
+              const level = d.severity === SEVERITY_ERROR ? "ERROR" : "WARN";
               return `${level} [${d.range.start.line + 1}:${d.range.start.character + 1}] ${d.message}`;
             });
-            diagText = `<diagnostics file="${filePath}">\n${lines.join("\n")}\n</diagnostics>`;
+            diagText = lines.join("\n");
           }
         } else {
           // 降级方案：ESLint Node API + OpenCode LSP
@@ -221,7 +256,12 @@ export default {
           diagText = eslintResult.text;
         }
 
-        const hasErrors = diagnostics.some((d) => d.severity === 1);
+        log.debug("DiagText status", {
+          hasDiagText: !!diagText,
+          diagTextPreview: diagText?.slice(0, 200),
+        });
+
+        const hasErrors = diagnostics.some((d) => d.severity === SEVERITY_ERROR);
         // 降级模式下还需要检测 OpenCode LSP 错误
         const hasLspErrors = !vscodeMode && output.output.includes("LSP errors detected");
         const anyError = hasErrors || hasLspErrors;
@@ -230,7 +270,7 @@ export default {
           filePath,
           vscodeMode,
           count: diagnostics.length,
-          errors: diagnostics.filter((d) => d.severity === 1).length,
+          errors: diagnostics.filter((d) => d.severity === SEVERITY_ERROR).length,
           hasLspErrors,
         });
 
@@ -274,13 +314,14 @@ export default {
           output.output = [
             "❌ BLOCKED: Changes were reverted due to VS Code diagnostics errors.",
             "",
-            ...diagnostics.filter((d) => d.severity === 1).map((d) => `${d.message}`),
+            ...diagnostics.filter((d) => d.severity === SEVERITY_ERROR).map((d) => `${d.message}`),
           ].join("\n");
         } else {
           const sources: string[] = [];
           if (hasLspErrors) sources.push("TS");
           if (hasErrors) sources.push("ESLint");
 
+          // LSP 诊断块从 output 提取，ESLint 错误直接内联 diagText
           const lspBlocks = hasLspErrors
             ? (output.output.match(/<diagnostics[\s\S]*?<\/diagnostics>/g) ?? [])
             : [];
@@ -289,9 +330,12 @@ export default {
             `❌ BLOCKED: Changes were reverted due to ${sources.join(" + ")} errors.`,
             "",
             ...(hasErrors
-              ? [`ESLint: ${diagnostics.filter((d) => d.severity === 1).length} error(s)`]
+              ? [
+                  `ESLint: ${diagnostics.filter((d) => d.severity === SEVERITY_ERROR).length} error(s)`,
+                ]
               : []),
-            ...(hasLspErrors ? ["TS: see diagnostics above"] : []),
+            ...(diagText ? [diagText] : []),
+            ...(hasLspErrors ? ["", "TS errors:"] : []),
             "",
             ...lspBlocks,
           ].join("\n");

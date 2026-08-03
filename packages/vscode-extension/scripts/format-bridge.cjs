@@ -10,7 +10,6 @@
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
-const net = require("net");
 
 const filePath = process.argv[2];
 if (!filePath) {
@@ -19,22 +18,20 @@ if (!filePath) {
 }
 
 const absPath = path.resolve(filePath);
+const PORT = Number(process.env.OPENCODE_VSCODE_PORT) || 51939;
 
-/** TCP 端口探测 */
-function probePort(port) {
+/** HTTP 健康检查 */
+function probeHealth(port) {
   return new Promise((resolve) => {
-    const socket = new net.Socket();
-    socket.setTimeout(100);
-    socket.connect(port, "127.0.0.1");
-    socket.on("connect", () => {
-      socket.destroy();
-      resolve(port);
+    const req = http.get(`http://127.0.0.1:${port}/health`, (res) => {
+      res.resume();
+      resolve(res.statusCode === 200 ? port : null);
     });
-    socket.on("error", () => resolve(null));
-    socket.on("timeout", () => {
-      socket.destroy();
+    req.setTimeout(500, () => {
+      req.destroy();
       resolve(null);
     });
+    req.on("error", () => resolve(null));
   });
 }
 
@@ -79,7 +76,7 @@ function formatViaExtension(port) {
 }
 
 async function main() {
-  const port = await probePort(Number(process.env.OPENCODE_VSCODE_PORT) || 51939);
+  const port = await probeHealth(PORT);
 
   if (port) {
     try {

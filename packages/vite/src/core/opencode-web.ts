@@ -2,12 +2,17 @@ import { execa } from "execa";
 import type { ResultPromise } from "execa";
 import fs from "fs";
 import { createRequire } from "module";
-import { Socket } from "net";
 import path from "path";
 import { pathToFileURL } from "url";
 import type { WebOptions } from "@vite-plugin-opencode-assistant/shared";
-import { MCP_API_PATH } from "@vite-plugin-opencode-assistant/shared";
-import { createLogger, getProcessLogBuffer } from "@vite-plugin-opencode-assistant/shared/node";
+import {
+  MCP_API_PATH,
+  VSCODE_EXTENSION_PORT,
+  ENV_VSCODE_MODE,
+  ENV_VSCODE_PORT,
+  createLogger,
+  getProcessLogBuffer,
+} from "@vite-plugin-opencode-assistant/shared/node";
 
 const require = createRequire(path.join(process.cwd(), "package.json"));
 const packageDir = resolvePackageDir();
@@ -312,23 +317,17 @@ function buildFormatterConfig(pkdDir: string): boolean | Record<string, unknown>
   };
 }
 
-/** TCP 端口探测 */
-function checkPort(port: number): boolean {
+/** HTTP 健康检查，确认 VS Code 扩展服务已启动 */
+function isFormatServiceRunning(): boolean {
   try {
-    const socket = new Socket();
-    socket.setTimeout(100);
-    socket.connect(port, "127.0.0.1");
-    const ok = socket.readable || socket.writable;
-    socket.destroy();
-    return ok || socket.readyState === "open";
+    require("child_process").execSync(
+      `node -e "const h=require('http');h.get('http://127.0.0.1:${VSCODE_EXTENSION_PORT}/health',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"`,
+      { timeout: 500, stdio: "ignore" },
+    );
+    return true;
   } catch {
     return false;
   }
-}
-
-/** 检测 VS Code 扩展格式化服务是否已启动 */
-function isFormatServiceRunning(): boolean {
-  return checkPort(51939);
 }
 
 /**
@@ -455,8 +454,8 @@ function buildProcessEnv(
   }
 
   if (isFormatServiceRunning()) {
-    env.OPENCODE_VSCODE_MODE = "1";
-    env.OPENCODE_VSCODE_PORT = "51939";
+    env[ENV_VSCODE_MODE] = "1";
+    env[ENV_VSCODE_PORT] = String(VSCODE_EXTENSION_PORT);
     log.debug("Set OPENCODE_VSCODE_MODE=1");
   }
 

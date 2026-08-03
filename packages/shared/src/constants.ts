@@ -192,6 +192,24 @@ export const PAGE_CONTEXT_MARKER = "__OPENCODE_CONTEXT__";
 /** 页面上下文文本最大长度 */
 export const PAGE_CONTEXT_MAX_TEXT_LENGTH = 10000;
 
+/** ==================== 诊断 Severity ==================== */
+
+/**
+ * 诊断 severity 常量，使用 LSP DiagnosticSeverity 规范值
+ * Error=1, Warning=2, Information=3, Hint=4
+ */
+export const SEVERITY_ERROR = 1;
+export const SEVERITY_WARN = 2;
+
+/** ==================== VS Code 扩展桥接 ==================== */
+
+/** VS Code 扩展 HTTP 服务端口 */
+export const VSCODE_EXTENSION_PORT = 51939;
+
+/** VS Code 扩展相关环境变量名 */
+export const ENV_VSCODE_MODE = "OPENCODE_VSCODE_MODE";
+export const ENV_VSCODE_PORT = "OPENCODE_VSCODE_PORT";
+
 /** ==================== 默认配置 ==================== */
 
 /** 默认插件配置 */

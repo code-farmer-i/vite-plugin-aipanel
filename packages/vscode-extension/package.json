@@ -1,0 +1,47 @@
+{
+  "name": "vite-plugin-opencode-assistant",
+  "displayName": "OpenCode Assistant",
+  "version": "1.0.0",
+  "description": "为 OpenCode AI 提供 VS Code 原生格式化与诊断能力，通过 HTTP 桥接实现 formatOnSave、codeActionsOnSave 和 LSP 诊断的统一调度",
+  "publisher": "vite-plugin-opencode-assistant",
+  "private": true,
+  "license": "MIT",
+  "icon": "logo.png",
+  "main": "./dist/extension.js",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/vite-plugin-opencode-assistant"
+  },
+  "categories": [
+    "Formatters",
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "opencode",
+    "formatter",
+    "diagnostics",
+    "ai",
+    "bridge"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "package": "pnpm build && vsce package",
+    "install-ext": "code --install-extension *.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "sharp": "^0.34.5",
+    "vite": "^8.1.3"
+  }
+}

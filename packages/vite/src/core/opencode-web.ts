@@ -2,6 +2,7 @@ import { execa } from "execa";
 import type { ResultPromise } from "execa";
 import fs from "fs";
 import { createRequire } from "module";
+import { Socket } from "net";
 import path from "path";
 import { pathToFileURL } from "url";
 import type { WebOptions } from "@vite-plugin-opencode-assistant/shared";
@@ -36,10 +37,13 @@ export function prepareOpenCodeRuntime(
   // 因此禁用它，改用 block-on-error 插件的 Node API 处理 ESLint
   const lspConfig = buildLspConfig(cwd);
 
+  // 构建 formatter 配置（VS Code 扩展优先，CLI 降级）
+  const formatterConfig = buildFormatterConfig(packageDir);
+
   const opencodeConfigPath = path.join(cacheDir, "opencode.json");
   const config: Record<string, unknown> = {
     plugin: plugins,
-    formatter: true,
+    formatter: formatterConfig,
     mcp: {
       "chrome-devtools": {
         type: "remote",
@@ -48,9 +52,15 @@ export function prepareOpenCodeRuntime(
     },
   };
 
-  if (enableLsp) {
+  // 如果 VS Code 格式化服务运行中，禁用 OpenCode 内置 LSP（VS Code 统一提供诊断）
+  const vscodeAvailable = isFormatServiceRunning();
+  const effectiveEnableLsp = enableLsp && !vscodeAvailable;
+
+  if (effectiveEnableLsp) {
     config.lsp = lspConfig;
     log.info("LSP diagnostics enabled (all built-in servers, ESLint excluded)");
+  } else if (vscodeAvailable) {
+    log.info("LSP disabled: VS Code extension provides diagnostics");
   } else {
     log.debug("LSP diagnostics disabled");
   }
@@ -242,6 +252,96 @@ function buildLspConfig(cwd: string): Record<string, unknown> {
 }
 
 /**
+ * 构建 formatter 配置
+ * 始终注册 format_bridge，VS Code 可用时优先，不可用时内置 prettier 兜底
+ */
+function buildFormatterConfig(pkdDir: string): boolean | Record<string, unknown> {
+  const bridgePath = resolveFormatBridgePath(pkdDir);
+  if (!bridgePath) {
+    log.debug("format-bridge.cjs not found, using built-in formatters");
+    return true;
+  }
+
+  log.debug("Format bridge configured");
+
+  if (!isFormatServiceRunning()) {
+    log.debug("VS Code format service not running, using built-in formatters only");
+    return true;
+  }
+
+  log.debug("VS Code format service detected, enabling bridge");
+
+  // 覆盖常见代码文件，桥接脚本内部判断能否格式化，不支持的静默跳过
+  const extensions = [
+    ".ts",
+    ".tsx",
+    ".mts",
+    ".cts",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".vue",
+    ".svelte",
+    ".astro",
+    ".css",
+    ".scss",
+    ".sass",
+    ".less",
+    ".pcss",
+    ".html",
+    ".htm",
+    ".xml",
+    ".svg",
+    ".json",
+    ".jsonc",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".md",
+    ".mdx",
+    ".graphql",
+    ".gql",
+  ];
+
+  return {
+    format_bridge: {
+      command: ["node", bridgePath, "$FILE"],
+      extensions,
+    },
+  };
+}
+
+/** TCP 端口探测 */
+function checkPort(port: number): boolean {
+  try {
+    const socket = new Socket();
+    socket.setTimeout(100);
+    socket.connect(port, "127.0.0.1");
+    const ok = socket.readable || socket.writable;
+    socket.destroy();
+    return ok || socket.readyState === "open";
+  } catch {
+    return false;
+  }
+}
+
+/** 检测 VS Code 扩展格式化服务是否已启动 */
+function isFormatServiceRunning(): boolean {
+  return checkPort(51939);
+}
+
+/**
+ * 解析 VS Code 格式化桥接脚本路径
+ */
+function resolveFormatBridgePath(pkdDir: string): string | undefined {
+  // packages/vscode-extension/scripts/format-bridge.cjs
+  const bridgePath = path.resolve(pkdDir, "..", "vscode-extension", "scripts", "format-bridge.cjs");
+  if (fs.existsSync(bridgePath)) return bridgePath;
+  return undefined;
+}
+
+/**
  * 从插件自身的 node_modules 中解析 @vue/language-server 的 CLI 入口
  */
 function resolveVueServerCli(): string | undefined {
@@ -352,6 +452,12 @@ function buildProcessEnv(
   if (enableLsp) {
     env.OPENCODE_ENABLE_LINT = "1";
     log.debug("Set OPENCODE_ENABLE_LINT=1");
+  }
+
+  if (isFormatServiceRunning()) {
+    env.OPENCODE_VSCODE_MODE = "1";
+    env.OPENCODE_VSCODE_PORT = "51939";
+    log.debug("Set OPENCODE_VSCODE_MODE=1");
   }
 
   return env;

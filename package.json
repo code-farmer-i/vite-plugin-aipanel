@@ -13,7 +13,8 @@
     "onlyBuiltDependencies": [
       "esbuild",
       "msgpackr-extract",
-      "vue-demi"
+      "vue-demi",
+      "@vscode/vsce"
     ],
     "ignoredBuiltDependencies": [
       "sharp"

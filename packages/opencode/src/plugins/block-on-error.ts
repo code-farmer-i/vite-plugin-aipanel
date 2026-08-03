@@ -6,6 +6,7 @@
  */
 
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import { createRequire } from "node:module";
 import type { Hooks } from "@opencode-ai/plugin";
@@ -31,6 +32,10 @@ export default {
   id: "vite-plugin-opencode-assistant/block-on-error",
   async server(): Promise<Hooks> {
     const snapshots = new Map<string, Snapshot>();
+
+    // 通过环境变量判断 VS Code 扩展是否可用（由 vite 插件启动时探测并设置）
+    const vscodeMode = process.env.OPENCODE_VSCODE_MODE === "1";
+    log.info(vscodeMode ? "VS Code diagnostics mode" : "Fallback mode (ESLint + LSP)");
 
     interface LintMessage {
       severity: number;
@@ -70,6 +75,44 @@ export default {
       } catch (e) {
         log.warn("eslint not found", { error: (e as Error).message });
       }
+    }
+
+    const VSCODE_PORT = Number(process.env.OPENCODE_VSCODE_PORT) || 51939;
+
+    /** 通过 HTTP 从 VS Code 扩展获取诊断 */
+    function fetchVSCodeDiagnostics(filePath: string): Promise<DiagnosticItem[]> {
+      return new Promise((resolve) => {
+        const body = JSON.stringify({ filePath });
+        const req = http.request(
+          {
+            hostname: "127.0.0.1",
+            port: VSCODE_PORT,
+            path: "/diagnostics",
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            timeout: 5000,
+          },
+          (res) => {
+            const chunks: Buffer[] = [];
+            res.on("data", (c: Buffer) => chunks.push(c));
+            res.on("end", () => {
+              try {
+                const result = JSON.parse(Buffer.concat(chunks).toString());
+                resolve((result.diagnostics as DiagnosticItem[]) || []);
+              } catch {
+                resolve([]);
+              }
+            });
+          },
+        );
+        req.on("error", () => resolve([]));
+        req.on("timeout", () => {
+          req.destroy();
+          resolve([]);
+        });
+        req.write(body);
+        req.end();
+      });
     }
 
     /** ESLint 检查，返回 { 诊断文本, 结构化数据 } */
@@ -155,54 +198,65 @@ export default {
 
         log.debug("Executing after hook", { tool: input.tool, filePath });
 
-        loadESLint();
+        let diagnostics: DiagnosticItem[];
+        let diagText: string | undefined;
 
-        // 1. ESLint 检查
-        const eslintResult = await lintFile(filePath);
-        log.debug("Lint result", {
+        // 0. 方案选择：VS Code 扩展可用则全走 VS Code，不可用则降级
+        if (vscodeMode) {
+          diagnostics = await fetchVSCodeDiagnostics(filePath);
+          log.debug("Using VS Code diagnostics", { filePath, count: diagnostics.length });
+
+          if (diagnostics.length > 0) {
+            const lines = diagnostics.map((d) => {
+              const level = d.severity === 1 ? "ERROR" : "WARN";
+              return `${level} [${d.range.start.line + 1}:${d.range.start.character + 1}] ${d.message}`;
+            });
+            diagText = `<diagnostics file="${filePath}">\n${lines.join("\n")}\n</diagnostics>`;
+          }
+        } else {
+          // 降级方案：ESLint Node API + OpenCode LSP
+          loadESLint();
+          const eslintResult = await lintFile(filePath);
+          diagnostics = eslintResult.diagnostics;
+          diagText = eslintResult.text;
+        }
+
+        const hasErrors = diagnostics.some((d) => d.severity === 1);
+        // 降级模式下还需要检测 OpenCode LSP 错误
+        const hasLspErrors = !vscodeMode && output.output.includes("LSP errors detected");
+        const anyError = hasErrors || hasLspErrors;
+
+        log.debug("Diagnostics result", {
           filePath,
-          diagCount: eslintResult.diagnostics.length,
-          hasText: !!eslintResult.text,
-          errors: eslintResult.diagnostics.filter((d) => d.severity === 1).length,
-          warnings: eslintResult.diagnostics.filter((d) => d.severity === 2).length,
+          vscodeMode,
+          count: diagnostics.length,
+          errors: diagnostics.filter((d) => d.severity === 1).length,
+          hasLspErrors,
         });
 
-        // 2. 提取 LSP 诊断（OpenCode 内置 TS/Vue 类型检查结果在 output 中）
-        //    OpenCode 输出格式: "LSP errors detected in this file, please fix:\n<diagnostics>..."
-        const hasLspErrors = output.output.includes("LSP errors detected");
-        const lspDiagnosticBlocks = hasLspErrors
-          ? (output.output.match(/<diagnostics[\s\S]*?<\/diagnostics>/g) ?? [])
-          : [];
-
-        const hasEslintErrors = eslintResult.diagnostics.some((d) => d.severity === 1);
-
         // 诊断信息追加到 output（无论是否 blocking）
-        if (eslintResult.text) {
-          output.output += "\n\n" + eslintResult.text;
+        if (diagText) {
+          output.output += "\n\n" + diagText;
         }
 
         // 写入 metadata.diagnostics 供 UI 渲染
-        if (eslintResult.diagnostics.length > 0) {
+        if (diagnostics.length > 0) {
           const meta = (output.metadata ?? (output.metadata = {})) as Record<string, unknown>;
           const existing = (meta.diagnostics ?? (meta.diagnostics = {})) as Record<
             string,
             unknown[]
           >;
-          existing[filePath] = [...(existing[filePath] ?? []), ...eslintResult.diagnostics];
-          log.debug("Metadata updated", {
-            filePath,
-            total: existing[filePath].length,
-          });
+          existing[filePath] = [...(existing[filePath] ?? []), ...diagnostics];
         }
 
-        // 3. 错误回滚（仅 blocking 模式）
+        // 错误回滚（仅 blocking 模式）
         if (!isBlocking()) return;
 
         const snap = snapshots.get(input.callID);
         if (!snap) return;
         snapshots.delete(input.callID);
 
-        if (!hasLspErrors && !hasEslintErrors) return;
+        if (!anyError) return;
 
         // 回滚文件
         try {
@@ -216,25 +270,35 @@ export default {
           log.error("Rollback failed", { filePath: snap.filePath, error: (err as Error).message });
         }
 
-        const sources: string[] = [];
-        if (hasLspErrors) sources.push("TS");
-        if (hasEslintErrors) sources.push("ESLint");
+        if (vscodeMode) {
+          output.output = [
+            "❌ BLOCKED: Changes were reverted due to VS Code diagnostics errors.",
+            "",
+            ...diagnostics.filter((d) => d.severity === 1).map((d) => `${d.message}`),
+          ].join("\n");
+        } else {
+          const sources: string[] = [];
+          if (hasLspErrors) sources.push("TS");
+          if (hasErrors) sources.push("ESLint");
 
-        output.output = [
-          `❌ BLOCKED: Changes were reverted due to ${sources.join(" + ")} errors.`,
-          "",
-          ...(hasEslintErrors
-            ? [
-                `ESLint: ${eslintResult.diagnostics.filter((d) => d.severity === 1).length} error(s)`,
-              ]
-            : []),
-          ...(hasLspErrors ? ["TS: see diagnostics above"] : []),
-          "",
-          ...lspDiagnosticBlocks,
-        ].join("\n");
+          const lspBlocks = hasLspErrors
+            ? (output.output.match(/<diagnostics[\s\S]*?<\/diagnostics>/g) ?? [])
+            : [];
+
+          output.output = [
+            `❌ BLOCKED: Changes were reverted due to ${sources.join(" + ")} errors.`,
+            "",
+            ...(hasErrors
+              ? [`ESLint: ${diagnostics.filter((d) => d.severity === 1).length} error(s)`]
+              : []),
+            ...(hasLspErrors ? ["TS: see diagnostics above"] : []),
+            "",
+            ...lspBlocks,
+          ].join("\n");
+        }
         output.title = `REJECTED: ${path.basename(snap.filePath)}`;
 
-        log.warn("Edit blocked", { tool: input.tool, filePath: snap.filePath, sources });
+        log.warn("Edit blocked", { tool: input.tool, filePath: snap.filePath, vscodeMode });
       },
     };
   },

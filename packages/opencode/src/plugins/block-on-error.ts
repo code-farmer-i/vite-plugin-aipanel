@@ -238,7 +238,7 @@ export default {
       return diags;
     }
 
-    /** 运行 vue-tsc --noEmit，可选按文件过滤 */
+    /** 运行 vue-tsc --build --noEmit，可选按文件过滤 */
     function runVueTsc(filePath?: string, cwd?: string): Promise<DiagnosticItem[]> {
       const dir = cwd ?? process.cwd();
       const bin = resolveVueTscBin(dir);
@@ -249,7 +249,7 @@ export default {
 
       return new Promise((resolve) => {
         exec(
-          `node "${bin}" --noEmit --pretty false`,
+          `node "${bin}" --build --noEmit --pretty false`,
           { cwd: dir, timeout, maxBuffer },
           (error, stdout, stderr) => {
             const output = stdout + stderr;

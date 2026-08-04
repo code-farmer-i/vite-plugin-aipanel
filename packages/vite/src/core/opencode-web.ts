@@ -38,7 +38,7 @@ export function prepareOpenCodeRuntime(
   const plugins = resolvePluginEntries(sourcePluginsDir);
 
   // 构建 formatter 配置（VS Code 扩展优先，CLI 降级）
-  const formatterConfig = buildFormatterConfig(packageDir);
+  const formatterConfig = buildFormatterConfig();
 
   const opencodeConfigPath = path.join(cacheDir, "opencode.json");
   const config: Record<string, unknown> = {
@@ -163,10 +163,10 @@ function resolvePackageDir(): string {
  * 构建 formatter 配置
  * 始终注册 format_bridge，VS Code 可用时优先，不可用时内置 prettier 兜底
  */
-function buildFormatterConfig(pkgDir: string): boolean | Record<string, unknown> {
-  const bridgePath = resolveFormatBridgePath(pkgDir);
+function buildFormatterConfig(): boolean | Record<string, unknown> {
+  const bridgePath = resolveFormatBridgePath();
   if (!bridgePath) {
-    log.debug("format-bridge.cjs not found, using built-in formatters");
+    log.debug("format-bridge not found, using built-in formatters");
     return true;
   }
 
@@ -241,9 +241,10 @@ function isFormatServiceRunning(): boolean {
 /**
  * 解析 VS Code 格式化桥接脚本路径
  */
-function resolveFormatBridgePath(pkgDir: string): string | undefined {
-  // packages/vscode-extension/scripts/format-bridge.cjs
-  const bridgePath = path.resolve(pkgDir, "..", "vscode-extension", "scripts", "format-bridge.cjs");
+function resolveFormatBridgePath(): string | undefined {
+  // 直接通过 vite 包自身解析桥接脚本路径
+  const viteEntry = require.resolve("vite-plugin-opencode-assistant");
+  const bridgePath = path.resolve(path.dirname(viteEntry), "utils", "format-bridge.cjs");
   if (fs.existsSync(bridgePath)) return bridgePath;
   return undefined;
 }

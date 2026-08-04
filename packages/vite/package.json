@@ -1,6 +1,6 @@
 {
   "name": "vite-plugin-opencode-assistant",
-  "version": "1.1.46",
+  "version": "1.1.50",
   "description": "Embed OpenCode Web UI in your Vite dev server for real-time code modification and preview",
   "type": "module",
   "main": "lib/index.cjs",

@@ -206,8 +206,8 @@ export const SEVERITY_WARN = 2;
 /** VS Code 扩展 HTTP 服务端口 */
 export const VSCODE_EXTENSION_PORT = 51939;
 
-/** VS Code 扩展端口文件目录（相对于项目根目录，复用已有 .cache/opencode） */
-export const VSCODE_PORT_DIR = "node_modules/.cache/opencode";
+/** OpenCode 缓存目录（相对于项目根目录，存放 opencode.json 等运行状态） */
+export const OPENCODE_CACHE_DIR = "node_modules/.cache/opencode";
 
 /** VS Code 扩展相关环境变量名 */
 export const ENV_VSCODE_MODE = "OPENCODE_VSCODE_MODE";

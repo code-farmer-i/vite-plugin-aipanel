@@ -18,61 +18,34 @@ if (!filePath) {
 }
 
 const absPath = path.resolve(filePath);
+const PORT = parseInt(process.env.OPENCODE_VSCODE_PORT, 10) || 51939;
 
-/** 从文件路径向上查找项目根目录（含 node_modules/.cache/opencode/port） */
-function findProjectRoot(file) {
-  let dir = path.dirname(path.resolve(file));
-  const root = path.parse(dir).root;
-  while (dir !== root) {
-    const portFile = path.join(dir, "node_modules", ".cache", "opencode", "port");
-    try {
-      if (fs.existsSync(portFile)) return dir;
-    } catch {
-      /* skip */
-    }
-    dir = path.dirname(dir);
-  }
-  return null;
+function touchFile() {
+  const now = new Date();
+  fs.utimesSync(absPath, now, now);
 }
 
-/** 读取端口文件 */
-function readPort(projectRoot) {
-  if (!projectRoot) return null;
-  try {
-    const portFile = path.join(projectRoot, "node_modules", ".cache", "opencode", "port");
-    const port = parseInt(fs.readFileSync(portFile, "utf-8").trim(), 10);
-    return isNaN(port) ? null : port;
-  } catch {
-    return null;
-  }
-}
-
-const projectRoot = findProjectRoot(absPath);
-const PORT = readPort(projectRoot);
-
-/** HTTP 健康检查 */
-function probeHealth(port) {
+function probeHealth() {
   return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/health`, (res) => {
+    const req = http.get(`http://127.0.0.1:${PORT}/health`, (res) => {
       res.resume();
-      resolve(res.statusCode === 200 ? port : null);
+      resolve(res.statusCode === 200);
     });
     req.setTimeout(500, () => {
       req.destroy();
-      resolve(null);
+      resolve(false);
     });
-    req.on("error", () => resolve(null));
+    req.on("error", () => resolve(false));
   });
 }
 
-/** 通过 HTTP API 格式化文件（VS Code 扩展方案） */
-function formatViaExtension(port) {
+function formatViaExtension() {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ filePath: absPath });
     const req = http.request(
       {
         hostname: "127.0.0.1",
-        port,
+        port: PORT,
         path: "/format",
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -106,26 +79,20 @@ function formatViaExtension(port) {
 }
 
 async function main() {
-  if (!PORT) {
-    const now = new Date();
-    fs.utimesSync(absPath, now, now);
+  const healthy = await probeHealth();
+  if (!healthy) {
+    touchFile();
     process.exit(0);
   }
 
-  const port = await probeHealth(PORT);
-
-  if (port) {
-    try {
-      await formatViaExtension(port);
-      process.exit(0);
-    } catch {
-      // 扩展调用失败，由 OpenCode 内置 prettier 兜底
-    }
+  try {
+    await formatViaExtension();
+    process.exit(0);
+  } catch {
+    // 扩展调用失败，由 OpenCode 内置 prettier 兜底
   }
 
-  // 不可用，原样返回
-  const now = new Date();
-  fs.utimesSync(absPath, now, now);
+  touchFile();
   process.exit(0);
 }
 

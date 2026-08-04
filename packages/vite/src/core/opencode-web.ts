@@ -8,8 +8,7 @@ import type { WebOptions } from "@vite-plugin-opencode-assistant/shared";
 import {
   MCP_API_PATH,
   VSCODE_EXTENSION_PORT,
-  VSCODE_PORT_DIR,
-  ENV_VSCODE_MODE,
+  OPENCODE_CACHE_DIR,
   ENV_VSCODE_PORT,
   createLogger,
   getProcessLogBuffer,
@@ -26,7 +25,7 @@ export function prepareOpenCodeRuntime(
   mcpToken: string,
   enableLsp?: boolean,
 ): string {
-  const cacheDir = path.join(cwd, VSCODE_PORT_DIR);
+  const cacheDir = path.join(cwd, OPENCODE_CACHE_DIR);
 
   log.debug("Setting up OpenCode runtime", { cacheDir, enableLsp });
 
@@ -37,11 +36,6 @@ export function prepareOpenCodeRuntime(
   // 通过 opencode.json 的 plugins 字段 + file:// 协议加载插件，无需复制文件
   const sourcePluginsDir = resolveSourcePluginsDir();
   const plugins = resolvePluginEntries(sourcePluginsDir);
-
-  // 构建 LSP 配置
-  // OpenCode 内置 ESLint LSP 有已知 bug (https://github.com/anomalyco/opencode/issues/23911)，
-  // 因此禁用它，改用 block-on-error 插件的 Node API 处理 ESLint
-  const lspConfig = buildLspConfig(cwd);
 
   // 构建 formatter 配置（VS Code 扩展优先，CLI 降级）
   const formatterConfig = buildFormatterConfig(packageDir);
@@ -57,19 +51,6 @@ export function prepareOpenCodeRuntime(
       },
     },
   };
-
-  // 如果 VS Code 格式化服务运行中，禁用 OpenCode 内置 LSP（VS Code 统一提供诊断）
-  const vscodeAvailable = isFormatServiceRunning();
-  const effectiveEnableLsp = enableLsp && !vscodeAvailable;
-
-  if (effectiveEnableLsp) {
-    config.lsp = lspConfig;
-    log.info("LSP diagnostics enabled (all built-in servers, ESLint excluded)");
-  } else if (vscodeAvailable) {
-    log.info("LSP disabled: VS Code extension provides diagnostics");
-  } else {
-    log.debug("LSP diagnostics disabled");
-  }
 
   fs.writeFileSync(opencodeConfigPath, JSON.stringify(config, null, 2));
 
@@ -163,7 +144,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
 }
 
 function createStateDirectory(cwd: string): string {
-  const stateDir = path.join(cwd, VSCODE_PORT_DIR);
+  const stateDir = path.join(cwd, OPENCODE_CACHE_DIR);
 
   if (!fs.existsSync(stateDir)) {
     fs.mkdirSync(stateDir, { recursive: true });
@@ -179,90 +160,11 @@ function resolvePackageDir(): string {
 }
 
 /**
- * 从插件自身的 node_modules 中解析 typescript-language-server 的 CLI 入口
- */
-function resolveTsServerCli(): string | undefined {
-  try {
-    const pluginRequire = createRequire(path.join(packageDir, "package.json"));
-    const pkgDir = path.dirname(pluginRequire.resolve("typescript-language-server/package.json"));
-    // ESM 入口优先
-    const cliMjs = path.join(pkgDir, "lib", "cli.mjs");
-    if (fs.existsSync(cliMjs)) return cliMjs;
-    // CJS fallback
-    const cliJs = path.join(pkgDir, "lib", "cli.js");
-    if (fs.existsSync(cliJs)) return cliJs;
-    return undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * 从用户项目中解析 TypeScript 的 tsserver.js 路径
- */
-function resolveUserTsServer(cwd: string): string | undefined {
-  try {
-    const userRequire = createRequire(path.join(cwd, "package.json"));
-    return userRequire.resolve("typescript/lib/tsserver.js");
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * 构建 OpenCode LSP 配置
- * - 禁用内置 ESLint LSP（有已知 bug，改用 block-on-error 插件 Node API 处理）
- * - TypeScript 使用自定义 tsserver 路径（优先用户项目安装的版本）
- * - Vue 使用项目安装的 @vue/language-server（绕过 OpenCode 内置 Vue LSP 不生效问题）
- */
-function buildLspConfig(cwd: string): Record<string, unknown> {
-  const lspConfig: Record<string, unknown> = {
-    // 禁用 OpenCode 内置 ESLint LSP
-    eslint: { disabled: true },
-  };
-
-  const tsCli = resolveTsServerCli();
-  if (tsCli) {
-    const tsserver = resolveUserTsServer(cwd);
-    lspConfig.typescript = {
-      command: ["node", tsCli, "--stdio"],
-      ...(tsserver ? { initialization: { tsserver: { path: tsserver } } } : {}),
-    };
-    if (!tsserver) {
-      log.warn("TypeScript tsserver.js not found, TS LSP may use built-in version");
-    }
-  } else {
-    log.warn("typescript-language-server not found in plugin bundle, TS LSP uses built-in");
-  }
-
-  const vueCli = resolveVueServerCli();
-  if (vueCli) {
-    lspConfig.vue = {
-      command: ["node", vueCli, "--stdio"],
-    };
-    const tsdk = resolveTsdkPath(cwd);
-    if (tsdk) {
-      (lspConfig.vue as Record<string, unknown>).initialization = {
-        typescript: { tsdk },
-        vue: { hybridMode: false },
-      };
-      log.debug("Vue LSP configured", { cli: vueCli, tsdk });
-    } else {
-      log.debug("Vue LSP configured (without tsdk)", { cli: vueCli });
-    }
-  } else {
-    log.debug("vue-language-server not found in project, Vue LSP uses built-in");
-  }
-
-  return lspConfig;
-}
-
-/**
  * 构建 formatter 配置
  * 始终注册 format_bridge，VS Code 可用时优先，不可用时内置 prettier 兜底
  */
-function buildFormatterConfig(pkdDir: string): boolean | Record<string, unknown> {
-  const bridgePath = resolveFormatBridgePath(pkdDir);
+function buildFormatterConfig(pkgDir: string): boolean | Record<string, unknown> {
+  const bridgePath = resolveFormatBridgePath(pkgDir);
   if (!bridgePath) {
     log.debug("format-bridge.cjs not found, using built-in formatters");
     return true;
@@ -318,95 +220,31 @@ function buildFormatterConfig(pkdDir: string): boolean | Record<string, unknown>
   };
 }
 
-/** 从当前工作目录向上查找项目根目录（含 node_modules/.cache/opencode/port） */
-function findProjectRoot(): string | null {
-  let dir = path.resolve(process.cwd());
-  const root = path.parse(dir).root;
-  while (dir !== root) {
-    const portFile = path.join(dir, VSCODE_PORT_DIR, "port");
-    if (fs.existsSync(portFile)) {
-      log.debug("Found VSCode port file", { dir, portFile });
-      return dir;
-    }
-    dir = path.dirname(dir);
-  }
-  log.debug("VSCode port file not found", { cwd: process.cwd() });
-  return null;
-}
-
-/** 从 node_modules/.cache/opencode/port 读取 VS Code 扩展端口 */
-function readVSCodePort(): number | null {
-  const projectRoot = findProjectRoot();
-  if (!projectRoot) return null;
-  try {
-    const portFile = path.join(projectRoot, VSCODE_PORT_DIR, "port");
-    const port = parseInt(fs.readFileSync(portFile, "utf-8").trim(), 10);
-    log.debug("VSCode port read", { port, file: portFile });
-    return isNaN(port) ? null : port;
-  } catch (e) {
-    log.debug("Failed to read VSCode port", { error: (e as Error).message });
-    return null;
-  }
-}
+let _formatServiceRunning: boolean | undefined;
 
 /** HTTP 健康检查，确认 VS Code 扩展服务已启动 */
 function isFormatServiceRunning(): boolean {
-  const port = readVSCodePort();
-  if (!port) return false;
+  if (_formatServiceRunning !== undefined) return _formatServiceRunning;
   try {
     require("child_process").execSync(
-      `node -e "const h=require('http');h.get('http://127.0.0.1:${port}/health',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"`,
+      `node -e "const h=require('http');h.get('http://127.0.0.1:${VSCODE_EXTENSION_PORT}/health',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"`,
       { timeout: 500, stdio: "ignore" },
     );
-    return true;
+    _formatServiceRunning = true;
   } catch {
-    return false;
+    _formatServiceRunning = false;
   }
+  return _formatServiceRunning;
 }
 
 /**
  * 解析 VS Code 格式化桥接脚本路径
  */
-function resolveFormatBridgePath(pkdDir: string): string | undefined {
+function resolveFormatBridgePath(pkgDir: string): string | undefined {
   // packages/vscode-extension/scripts/format-bridge.cjs
-  const bridgePath = path.resolve(pkdDir, "..", "vscode-extension", "scripts", "format-bridge.cjs");
+  const bridgePath = path.resolve(pkgDir, "..", "vscode-extension", "scripts", "format-bridge.cjs");
   if (fs.existsSync(bridgePath)) return bridgePath;
   return undefined;
-}
-
-/**
- * 从插件自身的 node_modules 中解析 @vue/language-server 的 CLI 入口
- */
-function resolveVueServerCli(): string | undefined {
-  try {
-    const pluginRequire = createRequire(path.join(packageDir, "package.json"));
-    const pkgDir = path.dirname(pluginRequire.resolve("@vue/language-server/package.json"));
-    const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, "package.json"), "utf-8"));
-    const bin =
-      typeof pkg.bin === "string"
-        ? pkg.bin
-        : pkg.bin?.vueLanguageServer || pkg.bin?.["vue-language-server"];
-    if (bin) {
-      const binPath = path.resolve(pkgDir, bin);
-      if (fs.existsSync(binPath)) return binPath;
-    }
-    return undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * 解析用户项目 TypeScript 的 lib 目录路径（tsdk）
- */
-function resolveTsdkPath(cwd: string): string | undefined {
-  try {
-    const userRequire = createRequire(path.join(cwd, "package.json"));
-    const tsserver = userRequire.resolve("typescript/lib/tsserver.js");
-    return path.dirname(tsserver);
-  } catch {
-    return undefined;
-  }
 }
 
 function resolveSourcePluginsDir(): string {
@@ -488,10 +326,8 @@ function buildProcessEnv(
   }
 
   if (isFormatServiceRunning()) {
-    const port = readVSCodePort();
-    env[ENV_VSCODE_MODE] = "1";
-    env[ENV_VSCODE_PORT] = String(port ?? VSCODE_EXTENSION_PORT);
-    log.debug("Set OPENCODE_VSCODE_MODE=1");
+    env[ENV_VSCODE_PORT] = String(VSCODE_EXTENSION_PORT);
+    log.debug("Set OPENCODE_VSCODE_PORT");
   }
 
   return env;

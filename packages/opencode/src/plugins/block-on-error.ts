@@ -1,12 +1,13 @@
 /**
  * @fileoverview 质量门禁插件
  * @description edit/write 工具执行后：
- *   1. ESLint 检查（Node API，绕过 LSP Bug）
- *   2. 错误硬阻止（可选，OPENCODE_BLOCK_ON_ERROR=1 时回滚）
+ *   1. ESLint 检查（Node API）
+ *   2. vue-tsc 类型检查（过滤当前文件诊断）
+ *   3. 错误硬阻止（可选，OPENCODE_BLOCK_ON_ERROR=1 时回滚）
  */
 
 import fs from "node:fs";
-import http from "node:http";
+import { exec } from "node:child_process";
 import path from "node:path";
 import { createRequire } from "node:module";
 import type { Hooks } from "@opencode-ai/plugin";
@@ -15,9 +16,6 @@ import {
   createLogger,
   SEVERITY_ERROR,
   SEVERITY_WARN,
-  VSCODE_EXTENSION_PORT,
-  ENV_VSCODE_MODE,
-  ENV_VSCODE_PORT,
 } from "@vite-plugin-opencode-assistant/shared/node";
 
 // 子进程通过环境变量接收 verbose 配置
@@ -43,10 +41,6 @@ export default {
   id: "vite-plugin-opencode-assistant/block-on-error",
   async server(): Promise<Hooks> {
     const snapshots = new Map<string, Snapshot>();
-
-    // 通过环境变量判断 VS Code 扩展是否可用（由 vite 插件启动时探测并设置）
-    const vscodeMode = process.env[ENV_VSCODE_MODE] === "1";
-    log.info(vscodeMode ? "VS Code diagnostics mode" : "Fallback mode (ESLint + LSP)");
 
     interface LintMessage {
       severity: number;
@@ -88,44 +82,6 @@ export default {
       }
     }
 
-    const VSCODE_PORT = Number(process.env[ENV_VSCODE_PORT]) || VSCODE_EXTENSION_PORT;
-
-    /** 通过 HTTP 从 VS Code 扩展获取诊断 */
-    function fetchVSCodeDiagnostics(filePath: string): Promise<DiagnosticItem[]> {
-      return new Promise((resolve) => {
-        const body = JSON.stringify({ filePath });
-        const req = http.request(
-          {
-            hostname: "127.0.0.1",
-            port: VSCODE_PORT,
-            path: "/diagnostics",
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            timeout: 5000,
-          },
-          (res) => {
-            const chunks: Buffer[] = [];
-            res.on("data", (c: Buffer) => chunks.push(c));
-            res.on("end", () => {
-              try {
-                const result = JSON.parse(Buffer.concat(chunks).toString());
-                resolve((result.diagnostics as DiagnosticItem[]) || []);
-              } catch {
-                resolve([]);
-              }
-            });
-          },
-        );
-        req.on("error", () => resolve([]));
-        req.on("timeout", () => {
-          req.destroy();
-          resolve([]);
-        });
-        req.write(body);
-        req.end();
-      });
-    }
-
     /** ESLint 检查，返回 { 诊断文本, 结构化数据 } */
     async function lintFile(
       filePath: string,
@@ -152,10 +108,6 @@ export default {
         log.debug("ESLint filtered", {
           errors: errors.length,
           warnings: warnings.length,
-          ESLINT_ERROR,
-          ESLINT_WARN,
-          SEVERITY_ERROR,
-          SEVERITY_WARN,
         });
         if (errors.length > 0) {
           lines.push(
@@ -207,6 +159,72 @@ export default {
       return { diagnostics: [] };
     }
 
+    let _vueTscBin: string | null | undefined;
+
+    /** 解析 vue-tsc CLI 路径（从插件自身 node_modules，无需用户安装） */
+    function resolveVueTscBin(): string | null {
+      if (_vueTscBin !== undefined) return _vueTscBin;
+      try {
+        const cwd = process.cwd();
+        const req = createRequire(path.join(cwd, "package.json"));
+        const pkgDir = path.dirname(
+          path.dirname(req.resolve("@vite-plugin-opencode-assistant/opencode")),
+        );
+        const pluginReq = createRequire(path.join(pkgDir, "package.json"));
+        _vueTscBin = pluginReq.resolve("vue-tsc/bin/vue-tsc.js");
+      } catch {
+        _vueTscBin = null;
+      }
+      return _vueTscBin;
+    }
+
+    /** 解析 tsc/vue-tsc 输出，过滤当前文件的诊断 */
+    function parseTscOutput(output: string, filePath: string): DiagnosticItem[] {
+      // 匹配格式: src/file.ts(10,5): error TS2345: message
+      const pattern = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS(\d+):\s+(.+)$/gm;
+      const diags: DiagnosticItem[] = [];
+      const resolved = path.resolve(filePath);
+
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(output)) !== null) {
+        const [, matchedFile, line, col, severity, code, message] = match;
+        if (path.resolve(matchedFile) !== resolved) continue;
+
+        diags.push({
+          severity: severity === "error" ? SEVERITY_ERROR : SEVERITY_WARN,
+          range: {
+            start: { line: Number(line) - 1, character: Number(col) - 1 },
+            end: { line: Number(line) - 1, character: Number(col) - 1 },
+          },
+          message: `[TS${code}] ${message}`,
+          source: "vue-tsc",
+        });
+      }
+      return diags;
+    }
+
+    /** 运行 vue-tsc --noEmit 并过滤当前文件的类型错误 */
+    function runVueTsc(filePath: string): Promise<DiagnosticItem[]> {
+      const bin = resolveVueTscBin();
+      if (!bin) return Promise.resolve([]);
+
+      return new Promise((resolve) => {
+        exec(
+          `node "${bin}" --noEmit --pretty false`,
+          { cwd: process.cwd(), timeout: 60000, maxBuffer: 10 * 1024 * 1024 },
+          (error, stdout, stderr) => {
+            const output = stdout + stderr;
+            log.debug("vue-tsc finished", {
+              filePath,
+              exitCode: error?.code,
+              outputLength: output.length,
+            });
+            resolve(parseTscOutput(output, filePath));
+          },
+        );
+      });
+    }
+
     return {
       "tool.execute.before": async (input, output) => {
         if (!BLOCKED_TOOLS.has(input.tool)) return;
@@ -233,45 +251,40 @@ export default {
 
         log.debug("Executing after hook", { tool: input.tool, filePath });
 
-        let diagnostics: DiagnosticItem[];
-        let diagText: string | undefined;
+        // ESLint 和 vue-tsc 并行检查
+        loadESLint();
+        const [eslintResult, tscDiagnostics] = await Promise.all([
+          lintFile(filePath),
+          runVueTsc(filePath),
+        ]);
 
-        // 0. 方案选择：VS Code 扩展可用则全走 VS Code，不可用则降级
-        if (vscodeMode) {
-          diagnostics = await fetchVSCodeDiagnostics(filePath);
-          log.debug("Using VS Code diagnostics", { filePath, count: diagnostics.length });
+        // 合并诊断
+        const diagnostics = [...eslintResult.diagnostics, ...tscDiagnostics];
+        const eslintErrors = eslintResult.diagnostics.some((d) => d.severity === SEVERITY_ERROR);
+        const tscErrors = tscDiagnostics.some((d) => d.severity === SEVERITY_ERROR);
+        const anyError = eslintErrors || tscErrors;
 
-          if (diagnostics.length > 0) {
-            const lines = diagnostics.map((d) => {
+        // 构建诊断文本
+        const lines: string[] = [];
+        if (tscDiagnostics.length > 0) {
+          lines.push(
+            ...tscDiagnostics.map((d) => {
               const level = d.severity === SEVERITY_ERROR ? "ERROR" : "WARN";
               return `${level} [${d.range.start.line + 1}:${d.range.start.character + 1}] ${d.message}`;
-            });
-            diagText = lines.join("\n");
-          }
-        } else {
-          // 降级方案：ESLint Node API + OpenCode LSP
-          loadESLint();
-          const eslintResult = await lintFile(filePath);
-          diagnostics = eslintResult.diagnostics;
-          diagText = eslintResult.text;
+            }),
+          );
         }
-
-        log.debug("DiagText status", {
-          hasDiagText: !!diagText,
-          diagTextPreview: diagText?.slice(0, 200),
-        });
-
-        const hasErrors = diagnostics.some((d) => d.severity === SEVERITY_ERROR);
-        // 降级模式下还需要检测 OpenCode LSP 错误
-        const hasLspErrors = !vscodeMode && output.output.includes("LSP errors detected");
-        const anyError = hasErrors || hasLspErrors;
+        if (eslintResult.text) {
+          lines.push(eslintResult.text);
+        }
+        const diagText = lines.length > 0 ? lines.join("\n") : undefined;
 
         log.debug("Diagnostics result", {
           filePath,
-          vscodeMode,
-          count: diagnostics.length,
-          errors: diagnostics.filter((d) => d.severity === SEVERITY_ERROR).length,
-          hasLspErrors,
+          totalCount: diagnostics.length,
+          eslintCount: eslintResult.diagnostics.length,
+          tscCount: tscDiagnostics.length,
+          anyError,
         });
 
         // 诊断信息追加到 output（无论是否 blocking）
@@ -310,39 +323,19 @@ export default {
           log.error("Rollback failed", { filePath: snap.filePath, error: (err as Error).message });
         }
 
-        if (vscodeMode) {
-          output.output = [
-            "❌ BLOCKED: Changes were reverted due to VS Code diagnostics errors.",
-            "",
-            ...diagnostics.filter((d) => d.severity === SEVERITY_ERROR).map((d) => `${d.message}`),
-          ].join("\n");
-        } else {
-          const sources: string[] = [];
-          if (hasLspErrors) sources.push("TS");
-          if (hasErrors) sources.push("ESLint");
+        // 构建阻塞输出
+        const sources: string[] = [];
+        if (eslintErrors) sources.push("ESLint");
+        if (tscErrors) sources.push("vue-tsc");
 
-          // LSP 诊断块从 output 提取，ESLint 错误直接内联 diagText
-          const lspBlocks = hasLspErrors
-            ? (output.output.match(/<diagnostics[\s\S]*?<\/diagnostics>/g) ?? [])
-            : [];
-
-          output.output = [
-            `❌ BLOCKED: Changes were reverted due to ${sources.join(" + ")} errors.`,
-            "",
-            ...(hasErrors
-              ? [
-                  `ESLint: ${diagnostics.filter((d) => d.severity === SEVERITY_ERROR).length} error(s)`,
-                ]
-              : []),
-            ...(diagText ? [diagText] : []),
-            ...(hasLspErrors ? ["", "TS errors:"] : []),
-            "",
-            ...lspBlocks,
-          ].join("\n");
-        }
+        output.output = [
+          `❌ BLOCKED: Changes were reverted due to ${sources.join(" + ")} errors.`,
+          "",
+          ...diagnostics.filter((d) => d.severity === SEVERITY_ERROR).map((d) => d.message),
+        ].join("\n");
         output.title = `REJECTED: ${path.basename(snap.filePath)}`;
 
-        log.warn("Edit blocked", { tool: input.tool, filePath: snap.filePath, vscodeMode });
+        log.warn("Edit blocked", { tool: input.tool, filePath: snap.filePath });
       },
     };
   },

@@ -63,6 +63,19 @@ export default {
       source: string;
     }
 
+    interface TscResult {
+      rawOutput: string;
+      exitCode: number;
+      diagnostics?: DiagnosticItem[];
+    }
+
+    interface EslintOutput {
+      text?: string;
+      diagnostics?: DiagnosticItem[];
+    }
+
+    // ---- 格式化辅助 ----
+
     type ESLintConstructor = new (opts: { cwd: string }) => {
       lintFiles: (p: string) => Promise<Array<{ filePath: string; messages: LintMessage[] }>>;
     };
@@ -85,38 +98,17 @@ export default {
 
     // ---- 格式化辅助 ----
 
-    function formatSeverity(d: DiagnosticItem): string {
-      return d.severity === SEVERITY_ERROR ? "ERROR" : "WARN";
-    }
-
-    function formatTscLine(d: DiagnosticItem): string {
-      return `${formatSeverity(d)} [${d.range.start.line + 1}:${d.range.start.character + 1}] ${d.message}`;
-    }
-
     function formatDiagnosticsSections(
       title: string,
-      eslintResult: { text?: string },
-      tscDiagnostics: DiagnosticItem[],
-      tscLimit: number = Infinity,
+      eslintOutput: EslintOutput,
+      tscOutput: TscResult,
     ): string {
       const parts: string[] = [];
 
-      if (eslintResult.text) {
-        parts.push("## ESLint\n\n" + eslintResult.text);
-      } else {
-        parts.push("## ESLint\n\n没有发现问题");
-      }
+      parts.push("## ESLint\n\n" + (eslintOutput.text || "没有发现问题"));
 
-      if (tscDiagnostics.length > 0) {
-        const tscLines = tscDiagnostics.slice(0, tscLimit).map(formatTscLine);
-        const suffix =
-          tscDiagnostics.length > tscLimit
-            ? `\n... 还有 ${tscDiagnostics.length - tscLimit} 条类型诊断`
-            : "";
-        parts.push("## vue-tsc\n\n" + tscLines.join("\n") + suffix);
-      } else {
-        parts.push("## vue-tsc\n\n没有发现类型错误");
-      }
+      const tscLines = tscOutput.rawOutput.trim();
+      parts.push("## vue-tsc\n\n" + (tscLines || "没有发现类型错误"));
 
       return `${title}\n\n` + parts.join("\n\n");
     }
@@ -124,13 +116,9 @@ export default {
     // ---- ESLint ----
 
     /** ESLint 检查，接受文件路径或 glob 模式 */
-    async function lintFiles(
-      pattern: string,
-      cwd: string,
-      warnLimit = 5,
-    ): Promise<{ text?: string; diagnostics: DiagnosticItem[] }> {
+    async function lintFiles(pattern: string, cwd: string, warnLimit = 5): Promise<EslintOutput> {
       loadESLint();
-      if (!ESLintClass) return { diagnostics: [] };
+      if (!ESLintClass) return {};
       try {
         const eslint = new ESLintClass({ cwd });
         const results = await eslint.lintFiles(pattern);
@@ -143,7 +131,7 @@ export default {
           messageCount: messages.length,
         });
 
-        if (messages.length === 0) return { diagnostics: [] };
+        if (messages.length === 0) return {};
 
         const ESLINT_ERROR = 2;
         const ESLINT_WARN = 1;
@@ -168,7 +156,7 @@ export default {
             lines.push(`... and ${warnings.length - warnLimit} more warnings`);
         }
 
-        const diagnostics = messages.map((m) => ({
+        const diagnostics: DiagnosticItem[] = messages.map((m) => ({
           severity:
             m.severity === ESLINT_ERROR
               ? SEVERITY_ERROR
@@ -189,7 +177,7 @@ export default {
         return { text: lines.length > 0 ? lines.join("\n") : undefined, diagnostics };
       } catch (err) {
         log.warn("ESLint failed", { pattern, error: (err as Error).message });
-        return { diagnostics: [] };
+        return {};
       }
     }
 
@@ -214,37 +202,22 @@ export default {
       return _vueTscBin;
     }
 
-    /** 解析 tsc/vue-tsc 输出，可选按文件过滤 */
-    function parseTscOutput(output: string, filePath?: string): DiagnosticItem[] {
-      const pattern = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS(\d+):\s+(.+)$/gm;
-      const diags: DiagnosticItem[] = [];
-      const resolved = filePath ? path.resolve(filePath) : undefined;
-
-      let match: RegExpExecArray | null;
-      while ((match = pattern.exec(output)) !== null) {
-        const [, matchedFile, line, col, severity, code, message] = match;
-        if (resolved && path.resolve(matchedFile) !== resolved) continue;
-
-        diags.push({
-          severity: severity === "error" ? SEVERITY_ERROR : SEVERITY_WARN,
-          range: {
-            start: { line: Number(line) - 1, character: Number(col) - 1 },
-            end: { line: Number(line) - 1, character: Number(col) - 1 },
-          },
-          message: `[TS${code}] [${matchedFile}] ${message}`,
-          source: "vue-tsc",
-        });
-      }
-      return diags;
-    }
-
     /** 从文件路径向上查找最近的 tsconfig.json 所在目录 */
     function findTsconfigDir(filePath: string): string | null {
-      let dir = path.dirname(path.resolve(filePath));
+      const resolved = path.resolve(filePath);
+      let dir = path.dirname(resolved);
+      log.debug("findTsconfigDir start", { filePath: resolved });
       while (true) {
-        if (fs.existsSync(path.join(dir, "tsconfig.json"))) return dir;
+        const tsconfigPath = path.join(dir, "tsconfig.json");
+        if (fs.existsSync(tsconfigPath)) {
+          log.debug("findTsconfigDir found", { dir, tsconfigPath });
+          return dir;
+        }
         const parent = path.dirname(dir);
-        if (parent === dir) return null;
+        if (parent === dir) {
+          log.warn("findTsconfigDir not found", { filePath: resolved });
+          return null;
+        }
         dir = parent;
       }
     }
@@ -270,17 +243,65 @@ export default {
         }
       }
       walk(workspace);
+      log.debug("findAllTsconfigDirs result", {
+        workspace,
+        count: dirs.length,
+        dirs: dirs.map((d) => path.relative(workspace, d)),
+      });
       return dirs;
     }
 
-    /** 运行 vue-tsc --build --noEmit，可选按文件过滤 */
-    function runVueTsc(filePath?: string, cwd?: string): Promise<DiagnosticItem[]> {
+    /** 简单解析 vue-tsc 输出为 DiagnosticItem，可选按文件过滤 */
+    function parseTscDiags(
+      rawOutput: string,
+      filePath?: string,
+      projectDir?: string,
+    ): DiagnosticItem[] {
+      const errorLinePat = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS(\d+):\s+(.+)$/;
+      const diags: DiagnosticItem[] = [];
+      const resolved = filePath ? path.resolve(filePath) : undefined;
+      const lines = rawOutput.split("\n");
+
+      for (const line of lines) {
+        const match = errorLinePat.exec(line);
+        if (match) {
+          const [, file, lineNum, col, severity, code, message] = match;
+          if (resolved) {
+            const resolvedFile = projectDir ? path.resolve(projectDir, file) : path.resolve(file);
+            if (resolvedFile !== resolved) continue;
+          }
+          diags.push({
+            severity: severity === "error" ? SEVERITY_ERROR : SEVERITY_WARN,
+            range: {
+              start: { line: Number(lineNum) - 1, character: Number(col) - 1 },
+              end: { line: Number(lineNum) - 1, character: Number(col) - 1 },
+            },
+            message: `[TS${code}] ${message}`,
+            source: "vue-tsc",
+          });
+        }
+      }
+
+      return diags;
+    }
+
+    /** 运行 vue-tsc --build --noEmit，返回原始输出 */
+    function runVueTsc(filePath?: string, cwd?: string): Promise<TscResult> {
       const dir = cwd ?? process.cwd();
       // 如果有文件路径，从文件向上找最近的 tsconfig.json 所在目录，
       // 确保 --build 使用正确的项目 tsconfig 而非 monorepo 根目录
       const projectDir = filePath ? (findTsconfigDir(filePath) ?? dir) : dir;
+      log.debug("runVueTsc", {
+        filePath: filePath || "(all)",
+        cwd: dir,
+        projectDir,
+        processCwd: process.cwd(),
+      });
       const bin = resolveVueTscBin(projectDir);
-      if (!bin) return Promise.resolve([]);
+      if (!bin) {
+        log.warn("vue-tsc bin not found", { projectDir });
+        return Promise.resolve({ rawOutput: "", exitCode: 0 });
+      }
 
       const timeout = filePath ? 60000 : 120000;
       const maxBuffer = filePath ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
@@ -290,13 +311,38 @@ export default {
           `node "${bin}" --build --noEmit --pretty false`,
           { cwd: projectDir, timeout, maxBuffer },
           (error, stdout, stderr) => {
-            const output = stdout + stderr;
+            let rawOutput = stdout + stderr;
+            const exitCode = typeof error?.code === "number" ? error.code : 0;
+
+            const diagnostics = parseTscDiags(rawOutput, filePath, projectDir);
+
+            // 单文件模式：保留目标文件的错误行及其续行（缩进的多行详情）
+            if (filePath) {
+              const resolved = path.resolve(filePath);
+              const errorLinePat = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS\d+:/;
+              const lines = rawOutput.split("\n");
+              const filtered: string[] = [];
+              let keep = false;
+
+              for (const line of lines) {
+                const m = errorLinePat.exec(line);
+                if (m) {
+                  keep = path.resolve(projectDir, m[1]) === resolved;
+                } else if (!/^\s/.test(line)) {
+                  keep = false;
+                }
+                if (keep) filtered.push(line);
+              }
+
+              rawOutput = filtered.join("\n");
+            }
+
             log.debug("vue-tsc finished", {
               filePath: filePath || "(all)",
-              exitCode: error?.code,
-              outputLength: output.length,
+              exitCode,
+              outputLength: rawOutput.length,
             });
-            resolve(parseTscOutput(output, filePath));
+            resolve({ rawOutput, exitCode, diagnostics });
           },
         );
       });
@@ -304,11 +350,12 @@ export default {
 
     /** 并行运行 ESLint + vue-tsc 检查 */
     async function runAllChecks(pattern: string, cwd: string) {
-      const [eslintResult, tscDiagnostics] = await Promise.all([
+      log.debug("runAllChecks", { pattern, cwd });
+      const [eslintOutput, tscOutput] = await Promise.all([
         lintFiles(pattern, cwd),
         runVueTsc(pattern, cwd),
       ]);
-      return { eslintResult, tscDiagnostics };
+      return { eslintOutput, tscOutput };
     }
 
     // 定义 run_diagnostics 工具，让 agent 可以主动触发诊断
@@ -340,6 +387,7 @@ export default {
 
           log.debug("run_diagnostics called (single file)", {
             filePath: resolved,
+            workspace,
             sessionID: context.sessionID,
           });
 
@@ -347,31 +395,38 @@ export default {
             return `文件不存在: ${resolved}`;
           }
 
-          const { eslintResult, tscDiagnostics } = await runAllChecks(resolved, workspace);
+          const { eslintOutput, tscOutput } = await runAllChecks(resolved, workspace);
 
           return formatDiagnosticsSections(
             `诊断结果: ${path.relative(workspace, resolved)}`,
-            eslintResult,
-            tscDiagnostics,
+            eslintOutput,
+            tscOutput,
           );
         }
 
         // 全量诊断：找到工作区中所有 tsconfig.json，逐个运行 vue-tsc --build
         log.debug("run_diagnostics called (full project)", {
+          workspace,
           sessionID: context.sessionID,
         });
 
         const tsconfigDirs = findAllTsconfigDirs(workspace);
         log.debug("Found tsconfig dirs", { count: tsconfigDirs.length, dirs: tsconfigDirs });
 
-        const [eslintResult, ...tscResults] = await Promise.all([
+        const [eslintOutput, ...tscOutputs] = await Promise.all([
           lintFiles(".", workspace, 10),
           ...tsconfigDirs.map((dir) => runVueTsc(undefined, dir)),
         ]);
 
-        const tscDiagnostics = tscResults.flat();
+        const mergedTsc: TscResult = {
+          rawOutput: tscOutputs
+            .flatMap((o) => o.rawOutput)
+            .filter(Boolean)
+            .join("\n"),
+          exitCode: tscOutputs.reduce((max, o) => Math.max(max, o.exitCode), 0),
+        };
 
-        return formatDiagnosticsSections("全量诊断结果", eslintResult, tscDiagnostics, 30);
+        return formatDiagnosticsSections("全量诊断结果", eslintOutput, mergedTsc);
       },
     });
 
@@ -399,32 +454,36 @@ export default {
         const filePath = (input.args?.filePath as string) || "";
         if (!filePath) return;
 
-        log.debug("Executing after hook", { tool: input.tool, filePath });
+        log.debug("Executing after hook", {
+          tool: input.tool,
+          filePath,
+          processCwd: process.cwd(),
+          lintEnabled: isLintEnabled(),
+          blocking: isBlocking(),
+        });
 
         // ESLint 和 vue-tsc 并行检查
-        const { eslintResult, tscDiagnostics } = await runAllChecks(filePath, process.cwd());
+        const { eslintOutput, tscOutput } = await runAllChecks(filePath, process.cwd());
 
-        // 合并诊断
-        const diagnostics = [...eslintResult.diagnostics, ...tscDiagnostics];
-        const eslintErrors = eslintResult.diagnostics.some((d) => d.severity === SEVERITY_ERROR);
-        const tscErrors = tscDiagnostics.some((d) => d.severity === SEVERITY_ERROR);
-        const anyError = eslintErrors || tscErrors;
+        // 判断是否有错误
+        const eslintError = !!eslintOutput.text;
+        const tscError = tscOutput.exitCode !== 0;
+        const anyError = eslintError || tscError;
 
-        // 构建诊断文本
-        const lines: string[] = [];
-        if (tscDiagnostics.length > 0) {
-          lines.push(...tscDiagnostics.map(formatTscLine));
+        // 构建诊断原文
+        const parts: string[] = [];
+        if (tscOutput.rawOutput.trim()) {
+          parts.push("## vue-tsc\n\n" + tscOutput.rawOutput.trim());
         }
-        if (eslintResult.text) {
-          lines.push(eslintResult.text);
+        if (eslintOutput.text) {
+          parts.push("## ESLint\n\n" + eslintOutput.text);
         }
-        const diagText = lines.length > 0 ? lines.join("\n") : undefined;
+        const diagText = parts.join("\n\n");
 
         log.debug("Diagnostics result", {
           filePath,
-          totalCount: diagnostics.length,
-          eslintCount: eslintResult.diagnostics.length,
-          tscCount: tscDiagnostics.length,
+          eslintError,
+          tscError,
           anyError,
         });
 
@@ -434,13 +493,17 @@ export default {
         }
 
         // 写入 metadata.diagnostics 供 UI 渲染
-        if (diagnostics.length > 0) {
+        if (anyError) {
           const meta = (output.metadata ?? (output.metadata = {})) as Record<string, unknown>;
           const existing = (meta.diagnostics ?? (meta.diagnostics = {})) as Record<
             string,
-            unknown[]
+            DiagnosticItem[]
           >;
-          existing[filePath] = [...(existing[filePath] ?? []), ...diagnostics];
+          const diags: DiagnosticItem[] = [
+            ...(eslintOutput.diagnostics ?? []),
+            ...(tscOutput.diagnostics ?? []),
+          ];
+          existing[filePath] = [...(existing[filePath] ?? []), ...diags];
         }
 
         // 错误回滚（仅 blocking 模式）
@@ -466,13 +529,13 @@ export default {
 
         // 构建阻塞输出
         const sources: string[] = [];
-        if (eslintErrors) sources.push("ESLint");
-        if (tscErrors) sources.push("vue-tsc");
+        if (eslintError) sources.push("ESLint");
+        if (tscError) sources.push("vue-tsc");
 
         output.output = [
           `❌ BLOCKED: Changes were reverted due to ${sources.join(" + ")} errors.`,
           "",
-          ...diagnostics.filter((d) => d.severity === SEVERITY_ERROR).map((d) => d.message),
+          diagText,
         ].join("\n");
         output.title = `REJECTED: ${path.basename(snap.filePath)}`;
 

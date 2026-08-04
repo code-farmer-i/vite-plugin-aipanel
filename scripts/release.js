@@ -217,7 +217,18 @@ async function main() {
     process.exit(1);
   }
 
-  // 5. Publish packages
+  // 5. Package VS Code extension
+  console.log("\n📦 Packaging VS Code extension...");
+  const vsixDir = path.join(packagesDir, "vscode-extension");
+  // 清理旧版本 .vsix
+  const oldVsixFiles = fs.readdirSync(vsixDir).filter((f) => f.endsWith(".vsix"));
+  oldVsixFiles.forEach((f) => {
+    fs.unlinkSync(path.join(vsixDir, f));
+    console.log(`   🗑️  Removed old ${f}`);
+  });
+  execSync("pnpm run package", { stdio: "inherit", cwd: vsixDir });
+
+  // 6. Publish packages
   console.log("\n📤 Publishing packages...");
   try {
     execSync(

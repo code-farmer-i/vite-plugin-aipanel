@@ -162,7 +162,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
     server = srv;
     outputChannel.appendLine(`OpenCode Assistant 已启动，端口: ${VSCODE_EXTENSION_PORT}`);
-    vscode.window.showInformationMessage("OpenCode Assistant 已启动");
   } catch (err) {
     // 端口被占 → 检查是否已有健康服务（其他窗口先启动了）
     if ((err as NodeJS.ErrnoException).code === "EADDRINUSE") {

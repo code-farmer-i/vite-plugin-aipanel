@@ -178,6 +178,7 @@ function buildFormatterConfig(pkgDir: string): boolean | Record<string, unknown>
   }
 
   log.debug("VS Code format service detected, enabling bridge");
+  log.info("已连接 VS Code 格式化服务");
 
   // 覆盖常见代码文件，桥接脚本内部判断能否格式化，不支持的静默跳过
   const extensions = [

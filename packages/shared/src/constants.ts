@@ -250,5 +250,5 @@ export const DEFAULT_CONFIG = {
     | undefined,
   // LSP 诊断配置
   enableLsp: true,
-  enableBlockOnError: true,
+  enableBlockOnError: false,
 };

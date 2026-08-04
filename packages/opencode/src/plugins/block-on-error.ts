@@ -238,10 +238,48 @@ export default {
       return diags;
     }
 
+    /** 从文件路径向上查找最近的 tsconfig.json 所在目录 */
+    function findTsconfigDir(filePath: string): string | null {
+      let dir = path.dirname(path.resolve(filePath));
+      while (true) {
+        if (fs.existsSync(path.join(dir, "tsconfig.json"))) return dir;
+        const parent = path.dirname(dir);
+        if (parent === dir) return null;
+        dir = parent;
+      }
+    }
+
+    /** 在工作区中查找所有 tsconfig.json 所在目录（排除 node_modules） */
+    function findAllTsconfigDirs(workspace: string): string[] {
+      const dirs: string[] = [];
+      function walk(dir: string) {
+        let entries: fs.Dirent[];
+        try {
+          entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+          return;
+        }
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+          const full = path.join(dir, entry.name);
+          if (fs.existsSync(path.join(full, "tsconfig.json"))) {
+            dirs.push(full);
+          }
+          walk(full);
+        }
+      }
+      walk(workspace);
+      return dirs;
+    }
+
     /** 运行 vue-tsc --build --noEmit，可选按文件过滤 */
     function runVueTsc(filePath?: string, cwd?: string): Promise<DiagnosticItem[]> {
       const dir = cwd ?? process.cwd();
-      const bin = resolveVueTscBin(dir);
+      // 如果有文件路径，从文件向上找最近的 tsconfig.json 所在目录，
+      // 确保 --build 使用正确的项目 tsconfig 而非 monorepo 根目录
+      const projectDir = filePath ? (findTsconfigDir(filePath) ?? dir) : dir;
+      const bin = resolveVueTscBin(projectDir);
       if (!bin) return Promise.resolve([]);
 
       const timeout = filePath ? 60000 : 120000;
@@ -250,7 +288,7 @@ export default {
       return new Promise((resolve) => {
         exec(
           `node "${bin}" --build --noEmit --pretty false`,
-          { cwd: dir, timeout, maxBuffer },
+          { cwd: projectDir, timeout, maxBuffer },
           (error, stdout, stderr) => {
             const output = stdout + stderr;
             log.debug("vue-tsc finished", {
@@ -294,11 +332,11 @@ export default {
       },
       async execute(args, context) {
         const { filePath } = args;
-        const cwd = context.directory;
+        const workspace = context.directory;
 
         if (filePath) {
           // 单文件诊断
-          const resolved = path.resolve(cwd, filePath);
+          const resolved = path.resolve(workspace, filePath);
 
           log.debug("run_diagnostics called (single file)", {
             filePath: resolved,
@@ -309,24 +347,29 @@ export default {
             return `文件不存在: ${resolved}`;
           }
 
-          const { eslintResult, tscDiagnostics } = await runAllChecks(resolved, cwd);
+          const { eslintResult, tscDiagnostics } = await runAllChecks(resolved, workspace);
 
           return formatDiagnosticsSections(
-            `诊断结果: ${path.relative(cwd, resolved)}`,
+            `诊断结果: ${path.relative(workspace, resolved)}`,
             eslintResult,
             tscDiagnostics,
           );
         }
 
-        // 全量诊断
+        // 全量诊断：找到工作区中所有 tsconfig.json，逐个运行 vue-tsc --build
         log.debug("run_diagnostics called (full project)", {
           sessionID: context.sessionID,
         });
 
-        const [eslintResult, tscDiagnostics] = await Promise.all([
-          lintFiles(".", cwd, 10),
-          runVueTsc(undefined, cwd),
+        const tsconfigDirs = findAllTsconfigDirs(workspace);
+        log.debug("Found tsconfig dirs", { count: tsconfigDirs.length, dirs: tsconfigDirs });
+
+        const [eslintResult, ...tscResults] = await Promise.all([
+          lintFiles(".", workspace, 10),
+          ...tsconfigDirs.map((dir) => runVueTsc(undefined, dir)),
         ]);
+
+        const tscDiagnostics = tscResults.flat();
 
         return formatDiagnosticsSections("全量诊断结果", eslintResult, tscDiagnostics, 30);
       },

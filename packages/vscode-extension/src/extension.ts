@@ -5,85 +5,14 @@ import { VSCODE_EXTENSION_PORT } from "@vite-plugin-opencode-assistant/shared/no
 let server: http.Server | null = null;
 const outputChannel = vscode.window.createOutputChannel("OpenCode Assistant");
 
-/** 模拟用户在 VS Code 中保存文件的行为：格式化 + codeActionsOnSave */
 async function formatFile(filePath: string): Promise<{ formatted: boolean }> {
   const uri = vscode.Uri.file(filePath);
   const doc = await vscode.workspace.openTextDocument(uri);
-
-  // 1. 格式化（formatOnSave）
-  const formatEdits = await vscode.commands.executeCommand<vscode.TextEdit[]>(
-    "vscode.executeFormatDocumentProvider",
-    uri,
-  );
-  if (formatEdits && formatEdits.length > 0) {
-    const wsEdit = new vscode.WorkspaceEdit();
-    wsEdit.set(uri, formatEdits);
-    await vscode.workspace.applyEdit(wsEdit);
-  }
-
-  // 2. codeActionsOnSave（organizeImports、fixAll 等）
-  const codeActionsOnSave =
-    vscode.workspace
-      .getConfiguration("editor")
-      .get<Record<string, boolean | object>>("codeActionsOnSave") ?? {};
-  const enabledActions = new Set(
-    Object.entries(codeActionsOnSave)
-      .filter(([, v]) => {
-        if (v === true) return true;
-        // 排除 { "explicit": true } 等仅手动触发的配置
-        if (typeof v === "object" && v !== null && !(v as Record<string, unknown>).explicit)
-          return true;
-        return false;
-      })
-      .map(([k]) => k),
-  );
-  if (enabledActions.size > 0) {
-    const lastLine = doc.lineCount - 1;
-    const fullRange = new vscode.Range(0, 0, lastLine, doc.lineAt(lastLine).text.length);
-    const codeActions = await vscode.commands.executeCommand<vscode.CodeAction[]>(
-      "vscode.executeCodeActionProvider",
-      uri,
-      fullRange,
-    );
-    if (codeActions && codeActions.length > 0) {
-      const wsEdit = new vscode.WorkspaceEdit();
-      for (const action of codeActions) {
-        if (action.kind && enabledActions.has(action.kind.value)) {
-          if (action.edit) {
-            for (const [targetUri, edits] of action.edit.entries()) {
-              wsEdit.set(targetUri, edits);
-            }
-          }
-        }
-      }
-      // 有编辑才 apply，避免空操作
-      if (wsEdit.size > 0) {
-        await vscode.workspace.applyEdit(wsEdit);
-      }
-    }
-  }
-
+  await vscode.window.showTextDocument(doc, { preserveFocus: true });
+  await vscode.commands.executeCommand("editor.action.formatDocument");
   await doc.save();
+  await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   return { formatted: true };
-}
-
-/** 扫描 workspace 中所有 package.json，检查是否依赖了 vite-plugin-opencode-assistant */
-async function hasOpenCodePlugin(): Promise<boolean> {
-  const pkgFiles = await vscode.workspace.findFiles("**/package.json", "**/node_modules/**", 100);
-  for (const pkgFile of pkgFiles) {
-    try {
-      const content = JSON.parse((await vscode.workspace.fs.readFile(pkgFile)).toString());
-      const deps = {
-        ...content.dependencies,
-        ...content.devDependencies,
-        ...content.peerDependencies,
-      };
-      if (deps["vite-plugin-opencode-assistant"]) return true;
-    } catch {
-      /* skip */
-    }
-  }
-  return false;
 }
 
 function createRequestHandler(): http.RequestListener {
@@ -148,10 +77,8 @@ function probeRunningService(): Promise<boolean> {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  if (!(await hasOpenCodePlugin())) {
-    outputChannel.appendLine("未找到依赖 vite-plugin-opencode-assistant 的项目，扩展未激活");
-    return;
-  }
+  const version = context.extension.packageJSON.version;
+  outputChannel.appendLine(`OpenCode Assistant v${version} 正在启动...`);
 
   const srv = http.createServer(createRequestHandler());
 
@@ -161,28 +88,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       srv.on("error", reject);
     });
     server = srv;
-    outputChannel.appendLine(`OpenCode Assistant 已启动，端口: ${VSCODE_EXTENSION_PORT}`);
+    outputChannel.appendLine(
+      `OpenCode Assistant v${version} 已启动，端口: ${VSCODE_EXTENSION_PORT}`,
+    );
   } catch (err) {
     // 端口被占 → 检查是否已有健康服务（其他窗口先启动了）
     if ((err as NodeJS.ErrnoException).code === "EADDRINUSE") {
+      outputChannel.appendLine(`端口 ${VSCODE_EXTENSION_PORT} 已被占用，检查已有服务...`);
       if (await probeRunningService()) {
         outputChannel.appendLine(
-          `复用已有 OpenCode Assistant 服务，端口: ${VSCODE_EXTENSION_PORT}`,
+          `检测到已有健康服务，复用已有 OpenCode Assistant，端口: ${VSCODE_EXTENSION_PORT}`,
         );
         return;
       }
+      outputChannel.appendLine(`端口被占用但无健康服务响应，可能是僵尸进程`);
     }
-    outputChannel.appendLine(`[OpenCode] 启动失败: ${String(err)}`);
+    outputChannel.appendLine(`启动失败: ${String(err)}`);
     return;
   }
 
   context.subscriptions.push(outputChannel, {
     dispose: () => {
+      outputChannel.appendLine("OpenCode Assistant 正在关闭...");
       server?.close();
     },
   });
 }
 
 export function deactivate(): void {
+  outputChannel.appendLine("OpenCode Assistant 已停用");
   server?.close();
 }

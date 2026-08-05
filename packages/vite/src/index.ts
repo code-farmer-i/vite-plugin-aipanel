@@ -57,13 +57,12 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
 
   const sseClients: Set<http.ServerResponse> = new Set();
 
-  const mcpProxy = new McpProxy();
+  const mcpProxy = new McpProxy({ idleTimeout: 5 * 60 * 1000 });
 
   const api = new OpenCodeAPI(
     config.hostname,
     () => actualWebPort,
     () => actualProxyPort,
-    config.warmupChromeMcp,
     config.chromeDevtoolsPort,
   );
   const service = new OpenCodeService(
@@ -94,7 +93,6 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
       projectRoot = server.config.root;
 
       let viteOrigin = "";
-      const getViteOrigin = () => viteOrigin;
 
       setupMiddlewares(
         server,
@@ -149,9 +147,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
           deleteSession: (id) => api.deleteSession(id),
           resolveWidgetPath,
           resolveWidgetStylePath,
-          getAvailableModels: () => service.getAvailableModels(),
-          retryWarmupChromeMcp: (selectedModel) =>
-            service.retryWarmupChromeMcp(getViteOrigin(), selectedModel),
+          retryWarmupChromeMcp: () => service.retryWarmupChromeMcp(),
         },
         mcpProxy,
       );

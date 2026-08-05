@@ -179,12 +179,12 @@ export class McpProxy {
   }
 
   /** 验证 MCP 是否可用 + 预热 CDP 连接 */
-  async verify(): Promise<boolean> {
+  async verify(): Promise<{ ok: boolean; error?: string }> {
     try {
       await this.callChromeDevTool("list_pages", {});
-      return true;
-    } catch {
-      return false;
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   }
 

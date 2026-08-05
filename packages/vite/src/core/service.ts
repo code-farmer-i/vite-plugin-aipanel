@@ -1,12 +1,10 @@
 import type { ResultPromise } from "execa";
 import type http from "http";
-import type { ModelInfo } from "@vite-plugin-opencode-assistant/shared";
 import { prepareOpenCodeRuntime, startOpenCodeWeb } from "./opencode-web";
 import type { OpenCodeOptions, ServiceStartupTask } from "@vite-plugin-opencode-assistant/shared";
 import {
   DEFAULT_PROXY_PORT,
   SERVER_START_TIMEOUT,
-  ChromeMcpWarmupError,
   ChromeMcpWarmupErrorType,
 } from "@vite-plugin-opencode-assistant/shared";
 import { createLogger, findAvailablePort } from "@vite-plugin-opencode-assistant/shared/node";
@@ -35,6 +33,7 @@ export class OpenCodeService {
   public chromeMcpWarmupErrorMessage: string | null = null;
   public currentTask: { task: ServiceStartupTask; data?: Record<string, unknown> } | null = null;
   public workspaceRoot: string | null = null;
+  private mcp: McpProxy | null = null;
 
   constructor(
     private config: Required<OpenCodeOptions>,
@@ -75,6 +74,8 @@ export class OpenCodeService {
       log.debug("Waiting for existing start promise");
       return this.startPromise;
     }
+
+    this.mcp = mcp;
 
     this.startPromise = (async () => {
       const timer = log.timer("startServices", {
@@ -243,22 +244,15 @@ Please install OpenCode first:
       this.sendTaskUpdate("warming_up_chrome");
       let warmupFailed = false;
       try {
-        const ok = await mcp.verify();
-        if (!ok) throw new Error("MCP tools list returned empty");
+        const result = await mcp.verify();
+        if (!result.ok) throw new Error(result.error ?? "Chrome MCP not available");
         timer.checkpoint("Chrome MCP warmup complete");
       } catch (e) {
         log.warn("Chrome MCP warmup failed", { error: e });
         this.chromeMcpWarmupFailed = true;
         warmupFailed = true;
-
-        // 保存错误类型和错误信息
-        if (e instanceof ChromeMcpWarmupError) {
-          this.chromeMcpWarmupErrorType = e.type;
-          this.chromeMcpWarmupErrorMessage = e.message;
-        } else {
-          this.chromeMcpWarmupErrorType = ChromeMcpWarmupErrorType.UNKNOWN;
-          this.chromeMcpWarmupErrorMessage = e instanceof Error ? e.message : String(e);
-        }
+        this.chromeMcpWarmupErrorType = ChromeMcpWarmupErrorType.UNKNOWN;
+        this.chromeMcpWarmupErrorMessage = e instanceof Error ? e.message : String(e);
       }
 
       this.sendTaskUpdate("creating_session");
@@ -279,31 +273,34 @@ Please install OpenCode first:
     return this.startPromise;
   }
 
-  async getAvailableModels(): Promise<ModelInfo[]> {
-    return this.api.getAvailableModels();
-  }
-
-  async retryWarmupChromeMcp(
-    viteOrigin?: string,
-    selectedModel?: { providerID: string; modelID: string },
-  ): Promise<{ success: boolean; errorType?: string; errorMessage?: string }> {
-    const result = await this.api.retryWarmupChromeMcp(
-      this.workspaceRoot!,
-      viteOrigin,
-      selectedModel,
-    );
-    if (result.success) {
-      this.chromeMcpWarmupFailed = false;
-      this.sendTaskUpdate("ready");
-      return { success: true };
+  async retryWarmupChromeMcp(): Promise<{
+    success: boolean;
+    errorType?: string;
+    errorMessage?: string;
+  }> {
+    if (!this.mcp) {
+      return { success: false, errorType: "UNKNOWN", errorMessage: "MCP not initialized" };
     }
 
-    const error = result.error;
-    return {
-      success: false,
-      errorType: error?.type,
-      errorMessage: error?.message || "Unknown error",
-    };
+    try {
+      const result = await this.mcp.verify();
+      if (result.ok) {
+        this.chromeMcpWarmupFailed = false;
+        this.sendTaskUpdate("ready");
+        return { success: true };
+      }
+      return {
+        success: false,
+        errorType: "CHROME_NOT_CONNECTED",
+        errorMessage: result.error ?? "Chrome MCP not available",
+      };
+    } catch (e) {
+      return {
+        success: false,
+        errorType: "UNKNOWN",
+        errorMessage: e instanceof Error ? e.message : String(e),
+      };
+    }
   }
 
   async stop(): Promise<void> {

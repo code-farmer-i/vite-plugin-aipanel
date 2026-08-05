@@ -4,7 +4,6 @@ import { OpenCodeWidget } from "@vite-plugin-opencode-assistant/components";
 import type {
   OpenCodeWidgetTheme,
   OpenCodeSelectedElement,
-  ModelInfo,
 } from "@vite-plugin-opencode-assistant/shared";
 import type { WidgetOptions } from "@vite-plugin-opencode-assistant/shared";
 import { WIDGET_MSG, WARMUP_API_PATH, START_API_PATH, createLogger } from "@vite-plugin-opencode-assistant/shared";
@@ -34,7 +33,6 @@ const sessionListCollapsed = ref(true);
 const loading = ref(false);
 const widgetRef = ref<InstanceType<typeof OpenCodeWidget> | null>(null);
 const retryingWarmup = ref(false);
-const availableModels = ref<ModelInfo[]>([]);
 
 const {
   theme: initialTheme = "auto",
@@ -207,14 +205,12 @@ const displayLoadingText = computed(() => {
   return "加载会话...";
 });
 
-const retryWarmup = async (selectedModel?: { providerID: string; modelID: string; }) => {
+const retryWarmup = async () => {
   retryingWarmup.value = true;
 
   try {
     const res = await fetch(apiPath(WARMUP_API_PATH), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: selectedModel ? JSON.stringify(selectedModel) : "",
     });
     const data = await res.json();
     if (data.success) {
@@ -226,34 +222,13 @@ const retryWarmup = async (selectedModel?: { providerID: string; modelID: string
     } else {
       chromeMcpErrorType.value = data.errorType;
       chromeMcpErrorMessage.value = data.error;
-      if (data.errorType === "AI_TIMEOUT") {
-        showNotification("AI 响应超时，请检查 OpenCode AI 模型配置");
-      } else if (data.errorType === "AI_RESPONSE_ERROR") {
-        showNotification("AI 响应错误，请检查 OpenCode AI 模型配置");
-      } else if (data.errorType === "CHROME_NOT_CONNECTED") {
-        showNotification("Chrome 远程调试未开启，请按照提示操作");
-      } else {
-        showNotification(data.error || "重试失败，请确认 Chrome 远程调试已开启");
-      }
+      showNotification(data.error || "重试失败，请确认 Chrome 远程调试已开启");
     }
   } catch (e) {
     opencodeLog.error("Retry warmup failed:", { error: e });
     showNotification("重试失败，请稍后再试");
   } finally {
     retryingWarmup.value = false;
-  }
-};
-
-const fetchAvailableModels = async () => {
-  try {
-    const res = await fetch(apiPath(WARMUP_API_PATH), { method: "GET" });
-    const data = await res.json();
-    if (data.success && data.models) {
-      availableModels.value = data.models;
-    }
-  } catch (e) {
-    opencodeLog.error("Failed to fetch available models:", { error: e });
-    availableModels.value = [];
   }
 };
 
@@ -314,13 +289,6 @@ watch(serviceStatus, (status, oldStatus) => {
   if (status === "ready" && oldStatus !== "ready") {
     log.debug("服务就绪，加载会话列表");
     loadSessions();
-  }
-});
-
-// 当 Chrome MCP 预热失败时，获取可用模型列表
-watch(chromeMcpFailed, (failed) => {
-  if (failed) {
-    fetchAvailableModels();
   }
 });
 
@@ -557,7 +525,6 @@ const handleFrameLoaded = () => {
         :retrying="retryingWarmup"
         :error-type="chromeMcpErrorType"
         :error-message="chromeMcpErrorMessage"
-        :models="availableModels"
         @retry="retryWarmup"
       />
     </template>

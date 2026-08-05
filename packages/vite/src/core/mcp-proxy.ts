@@ -63,15 +63,19 @@ export class McpProxy {
   async #doStart(): Promise<void> {
     log.debug("Starting MCP process", { args: this.#args });
 
-    // 优先用 require.resolve 查找本地安装的 chrome-devtools-mcp，避免 npx 每次都下载
+    // 优先用本地安装的 chrome-devtools-mcp，使用 process.execPath 确保跨平台兼容
     try {
       const binPath = resolveChromeDevToolsMcpBin();
-      this.#proc = spawn(binPath, this.#args, { stdio: ["pipe", "pipe", "pipe"] });
-      log.debug("Using local chrome-devtools-mcp");
-    } catch {
-      this.#proc = spawn("npx", ["-y", "chrome-devtools-mcp@latest", ...this.#args], {
+      this.#proc = spawn(process.execPath, [binPath, ...this.#args], {
         stdio: ["pipe", "pipe", "pipe"],
       });
+      log.debug("Using local chrome-devtools-mcp");
+    } catch {
+      // resolveChromeDevToolsMcpBin 不应失败（chrome-devtools-mcp 是已声明的依赖），
+      // 但极端情况（pnpm isolated mode 等）仍可能找不到，抛出明确错误
+      throw new Error(
+        "Cannot find chrome-devtools-mcp. Please ensure it is installed: npm install chrome-devtools-mcp",
+      );
     }
 
     this.#rl = createInterface({ input: this.#proc.stdout! });

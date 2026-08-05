@@ -12,6 +12,9 @@ export default defineConfig({
       esm: ".mjs",
       cjs: ".cjs",
     },
+    esbuildOptions: {
+      target: "es2020",
+    },
   },
   site: {
     title: "OpenCode Widget Components",

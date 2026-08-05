@@ -11,5 +11,8 @@ export default defineConfig({
     extensions: {
       cjs: ".cjs",
     },
+    esbuildOptions: {
+      target: "es2020",
+    },
   },
 });

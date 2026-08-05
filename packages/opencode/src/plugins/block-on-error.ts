@@ -222,7 +222,7 @@ export default {
       }
     }
 
-    /** 在工作区中查找所有 tsconfig.json 所在目录（排除 node_modules） */
+    /** 在工作区子目录中查找 tsconfig.json（不包括根目录；调用方已处理根目录场景） */
     function findAllTsconfigDirs(workspace: string): string[] {
       const dirs: string[] = [];
       function walk(dir: string) {
@@ -404,18 +404,21 @@ export default {
           );
         }
 
-        // 全量诊断：找到工作区中所有 tsconfig.json，逐个运行 vue-tsc --build
+        // 全量诊断：优先从根 tsconfig 运行一次 vue-tsc --build，
+        // 根无 tsconfig 时回退到逐个子目录 build
         log.debug("run_diagnostics called (full project)", {
           workspace,
           sessionID: context.sessionID,
         });
 
-        const tsconfigDirs = findAllTsconfigDirs(workspace);
-        log.debug("Found tsconfig dirs", { count: tsconfigDirs.length, dirs: tsconfigDirs });
+        const tscDirs = fs.existsSync(path.join(workspace, "tsconfig.json"))
+          ? [workspace]
+          : findAllTsconfigDirs(workspace);
+        log.debug("Tsc dirs to check", { count: tscDirs.length, dirs: tscDirs });
 
         const [eslintOutput, ...tscOutputs] = await Promise.all([
           lintFiles(".", workspace, 10),
-          ...tsconfigDirs.map((dir) => runVueTsc(undefined, dir)),
+          ...tscDirs.map((dir) => runVueTsc(undefined, dir)),
         ]);
 
         const mergedTsc: TscResult = {

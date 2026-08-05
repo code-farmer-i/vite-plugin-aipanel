@@ -27,6 +27,6 @@
   "dependencies": {
     "@opencode-ai/plugin": "^1.18.0",
     "@vite-plugin-opencode-assistant/shared": "workspace:*",
-    "vue-tsc": "^2.2.0"
+    "vue-tsc": "^3.3.9"
   }
 }

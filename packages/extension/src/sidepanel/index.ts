@@ -260,13 +260,8 @@ function handleTabSwitched(info: ServiceInfo | null) {
 
 /** 监听消息 */
 chrome.runtime.onMessage.addListener((msg) => {
-  // 跨窗口过滤（TAB_SWITCHED 不受此限制，因窗口切换时需要更新 myWindowId）
-  if (
-    msg.type !== EXT_MSG.TAB_SWITCHED &&
-    myWindowId !== undefined &&
-    msg.windowId !== undefined &&
-    msg.windowId !== myWindowId
-  ) {
+  // 跨窗口过滤：只处理当前窗口的消息
+  if (myWindowId !== undefined && msg.windowId !== undefined && msg.windowId !== myWindowId) {
     return;
   }
 
@@ -275,7 +270,8 @@ chrome.runtime.onMessage.addListener((msg) => {
       log.info(
         `[SP] 激活: windowId=${msg.windowId} tabId=${msg.tabId} sid=${msg.portInfo?.serviceInstanceId}`,
       );
-      if (msg.windowId !== undefined) {
+      // 仅在 myWindowId 未初始化时从消息中获取窗口 ID
+      if (myWindowId === undefined && msg.windowId !== undefined) {
         myWindowId = msg.windowId;
       }
       handleTabSwitched(msg.portInfo || null);

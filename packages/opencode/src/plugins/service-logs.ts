@@ -88,7 +88,7 @@ ${logFileConfig.description}
           const entries = await readLogFileTail({
             name: logFileConfig.name,
             filePath: logFileConfig.path,
-            projectRoot: process.cwd(),
+            projectRoot: context.directory,
             lines: Math.max(requestedLimit * 3, 500),
             level: level
               ? (level.split(",").map((l) => l.trim()) as ("info" | "warn" | "error")[])

@@ -99,6 +99,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     enableBlockOnError,
     verbose,
     enableLsp,
+    cwd,
   );
   const args = ["serve", "--port", String(port), "--hostname", hostname];
 
@@ -282,6 +283,7 @@ function buildProcessEnv(
   enableBlockOnError?: boolean,
   verbose?: boolean,
   enableLsp?: boolean,
+  workspace?: string,
 ): Record<string, string> {
   const env: Record<string, string> = {
     ...(Object.fromEntries(
@@ -325,6 +327,11 @@ function buildProcessEnv(
   if (enableLsp) {
     env.OPENCODE_ENABLE_LINT = "1";
     log.debug("Set OPENCODE_ENABLE_LINT=1");
+  }
+
+  if (workspace) {
+    env.OPENCODE_WORKSPACE = workspace;
+    log.debug("Set OPENCODE_WORKSPACE", { workspace });
   }
 
   if (isFormatServiceRunning()) {

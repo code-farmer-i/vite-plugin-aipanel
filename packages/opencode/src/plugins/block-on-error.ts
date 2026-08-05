@@ -41,6 +41,7 @@ const isLintEnabled = () => process.env.OPENCODE_ENABLE_LINT === "1";
 export default {
   id: "vite-plugin-opencode-assistant/block-on-error",
   async server(): Promise<Hooks> {
+    const workspace = process.env.OPENCODE_WORKSPACE || process.cwd();
     const snapshots = new Map<string, Snapshot>();
 
     interface LintMessage {
@@ -84,10 +85,9 @@ export default {
 
     function loadESLint() {
       if (ESLintClass) return;
-      const cwd = process.cwd();
-      log.debug("Loading eslint", { cwd });
+      log.debug("Loading eslint", { workspace });
       try {
-        const req = createRequire(path.join(cwd, "package.json"));
+        const req = createRequire(path.join(workspace, "package.json"));
         const eslintModule = req("eslint");
         ESLintClass ??= eslintModule.ESLint ?? eslintModule.FlatESLint;
         log.debug("eslint loaded", { hasClass: !!ESLintClass });
@@ -189,7 +189,7 @@ export default {
     function resolveVueTscBin(projectDir?: string): string | null {
       if (_vueTscBin !== undefined) return _vueTscBin;
       try {
-        const dir = projectDir ?? process.cwd();
+        const dir = projectDir ?? workspace;
         const req = createRequire(path.join(dir, "package.json"));
         const pkgDir = path.dirname(
           path.dirname(req.resolve("@vite-plugin-opencode-assistant/opencode")),
@@ -287,7 +287,7 @@ export default {
 
     /** 运行 vue-tsc --build --noEmit，返回原始输出 */
     function runVueTsc(filePath?: string, cwd?: string): Promise<TscResult> {
-      const dir = cwd ?? process.cwd();
+      const dir = cwd ?? workspace;
       // 如果有文件路径，从文件向上找最近的 tsconfig.json 所在目录，
       // 确保 --build 使用正确的项目 tsconfig 而非 monorepo 根目录
       const projectDir = filePath ? (findTsconfigDir(filePath) ?? dir) : dir;
@@ -295,7 +295,7 @@ export default {
         filePath: filePath || "(all)",
         cwd: dir,
         projectDir,
-        processCwd: process.cwd(),
+        processCwd: workspace,
       });
       const bin = resolveVueTscBin(projectDir);
       if (!bin) {
@@ -312,7 +312,12 @@ export default {
           { cwd: projectDir, timeout, maxBuffer },
           (error, stdout, stderr) => {
             let rawOutput = stdout + stderr;
-            const exitCode = typeof error?.code === "number" ? error.code : 0;
+            const killed = error?.killed;
+            const exitCode = typeof error?.code === "number" ? error.code : killed ? 1 : 0;
+
+            if (killed && !rawOutput) {
+              rawOutput = "vue-tsc 检查超时，请尝试缩小检查范围或优化项目配置。";
+            }
 
             const diagnostics = parseTscDiags(rawOutput, filePath, projectDir);
 
@@ -460,13 +465,13 @@ export default {
         log.debug("Executing after hook", {
           tool: input.tool,
           filePath,
-          processCwd: process.cwd(),
+          processCwd: workspace,
           lintEnabled: isLintEnabled(),
           blocking: isBlocking(),
         });
 
         // ESLint 和 vue-tsc 并行检查
-        const { eslintOutput, tscOutput } = await runAllChecks(filePath, process.cwd());
+        const { eslintOutput, tscOutput } = await runAllChecks(filePath, workspace);
 
         // 判断是否有错误
         const eslintError = !!eslintOutput.text;

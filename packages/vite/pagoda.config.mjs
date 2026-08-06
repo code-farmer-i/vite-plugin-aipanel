@@ -43,6 +43,7 @@ export default defineConfig({
       { title: "常见问题", view: "faq" },
     ],
     build: {
+      publicPath: "",
       vite: {
         configure(config) {
           config.plugins = config.plugins || [];

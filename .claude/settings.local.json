@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(curl -s http://localhost:4097/L1ZvbHVtZXMvZGV2ZWxvcG1lbnQvcHJvamVjdHMvdml0ZS1wbHVnaW4tb3BlbmNvZGUtYXNzaXN0YW50/session)",
+      "Bash(grep -oE '\"/\\\\$bunfs/root/index-[^\"]+\"')",
+      "Bash(grep -oE '\"/\\\\$bunfs/root/index-[^\"]+\\\\.html\"')",
+      "Bash(xxd /Users/chenkang/.nvm/versions/node/v24.13.0/lib/node_modules/opencode-ai/bin/.opencode)",
+      "Bash(pnpm --filter @vite-plugin-opencode-assistant/components build)",
+      "Bash(pnpm --filter @vite-plugin-opencode-assistant/opencode build)",
+      "Bash(pnpm --filter @vite-plugin-opencode-assistant/vite build)",
+      "Bash(pnpm --filter vite-plugin-opencode-assistant build)",
+      "Bash(npm run:*)",
+      "Bash(pnpm build:*)",
+      "Bash(xargs -I {} ls -la {})",
+      "Bash(npm root:*)",
+      "Bash(npx vue-tsc:*)",
+      "Bash(pnpm run:*)",
+      "Bash(pnpm exec:*)",
+      "Bash(pnpm build:shared)",
+      "Bash(pnpm --filter @vite-plugin-opencode-assistant/shared build)",
+      "Bash(gh pr *)",
+      "Bash(pnpm --filter @vite-plugin-opencode-assistant/components exec vue-tsc --noEmit -p /Volumes/development/projects/vite-plugin-opencode-assistant/packages/components/tsconfig.json)",
+      "Bash(pnpm --filter @vite-plugin-opencode-assistant/components exec vue-tsc --noEmit)",
+      "Bash(ls -la /Volumes/development/projects/vite-plugin-opencode-assistant/node_modules/.pnpm/vite-plugin-opencode-assistant*/node_modules/@vite-plugin-opencode-assistant/opencode/es/plugins/)",
+      "Bash(git config *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}

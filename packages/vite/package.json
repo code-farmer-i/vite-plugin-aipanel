@@ -25,6 +25,8 @@
     "prepare-eslint-lsp": "node scripts/prepare-eslint-lsp.mjs",
     "build": "pagoda-cli build && vite build -c vite.client.config.ts",
     "dev": "pagoda-cli dev",
+    "site": "pagoda-cli site",
+    "build:site": "pagoda-cli build-site",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.declaration.json --noEmit"
   },

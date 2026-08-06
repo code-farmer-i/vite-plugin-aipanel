@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && tsx scripts/build-bg-cs.ts",
+    "build": "vite build && tsx scripts/build-bg-cs.ts && cd dist && zip -r ../opencode-assistant.zip . && cd ..",
     "dev": "vite build --watch"
   },
   "dependencies": {

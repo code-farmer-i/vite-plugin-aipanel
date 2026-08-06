@@ -37,6 +37,18 @@ interface Snapshot {
 const BLOCKED_TOOLS = new Set(["edit", "write", "apply_patch"]);
 const isBlocking = () => process.env.OPENCODE_BLOCK_ON_ERROR === "1";
 const isLintEnabled = () => process.env.OPENCODE_ENABLE_LINT === "1";
+const JS_EXTENSIONS = new Set([
+  ".js",
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".mjs",
+  ".cjs",
+  ".mts",
+  ".cts",
+  ".vue",
+]);
+const isJsFile = (filePath: string) => JS_EXTENSIONS.has(path.extname(filePath));
 
 export default {
   id: "vite-plugin-opencode-assistant/block-on-error",
@@ -445,7 +457,7 @@ export default {
 
         const args = output.args as Record<string, unknown>;
         const filePath = args.filePath as string | undefined;
-        if (!filePath) return;
+        if (!filePath || !isJsFile(filePath)) return;
 
         try {
           const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : null;
@@ -460,7 +472,7 @@ export default {
         if (!isLintEnabled()) return;
 
         const filePath = (input.args?.filePath as string) || "";
-        if (!filePath) return;
+        if (!filePath || !isJsFile(filePath)) return;
 
         log.debug("Executing after hook", {
           tool: input.tool,

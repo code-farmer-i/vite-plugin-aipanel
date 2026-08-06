@@ -31,7 +31,8 @@
     "format:check": "prettier --check .",
     "test": "pnpm --filter vite-plugin-opencode-assistant test",
     "typecheck": "pnpm -r --if-present run typecheck",
-    "release": "node scripts/release.js"
+    "release": "node scripts/release.js",
+    "deploy:docs": "node scripts/deploy-docs.js"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

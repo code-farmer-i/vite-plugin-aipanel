@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import enquirer from "enquirer";
 import semver from "semver";
-import ghpages from "gh-pages";
+import { deployDocs } from "./deploy-docs.js";
 
 const { prompt } = enquirer;
 
@@ -229,39 +229,7 @@ async function main() {
   });
   execSync("pnpm run package", { stdio: "inherit", cwd: vsixDir });
 
-  // 6. Build and deploy site to GitHub Pages
-  console.log("\n🌐 Building and deploying site to GitHub Pages...");
-  try {
-    const viteDir = path.join(packagesDir, "vite");
-    execSync("pnpm run build:site", { stdio: "inherit", cwd: viteDir });
-
-    const siteDist = path.join(viteDir, "site-dist");
-    if (!fs.existsSync(siteDist)) {
-      throw new Error(`site-dist not found at ${siteDist}`);
-    }
-
-    await new Promise((resolve, reject) => {
-      ghpages.publish(
-        siteDist,
-        {
-          message: `deploy: v${targetVersion}`,
-        },
-        (err) => {
-          if (err) reject(err);
-          else resolve();
-        },
-      );
-    });
-
-    console.log("   ✅ Site deployed to GitHub Pages!");
-  } catch (err) {
-    console.error("\n❌ Failed to deploy site:", err instanceof Error ? err.message : String(err));
-    rollbackVersion(currentVersion);
-    isCompleted = true; // Prevent double rollback in exit handler
-    process.exit(1);
-  }
-
-  // 7. Publish packages
+  // 6. Publish packages
   console.log("\n📤 Publishing packages...");
   try {
     execSync(
@@ -271,11 +239,16 @@ async function main() {
         cwd: rootDir,
       },
     );
+
+    // 7. Deploy docs
+    console.log("\n🌐 Deploying docs...");
+    await deployDocs();
+
     isCompleted = true; // Mark as successfully completed
     console.log(`\n🎉 Release process for v${targetVersion} completed!\n`);
   } catch (err) {
     console.error(
-      "\n❌ Failed to publish packages:",
+      "\n❌ Failed to publish or deploy:",
       err instanceof Error ? err.message : String(err),
     );
     rollbackVersion(currentVersion);

@@ -20,29 +20,14 @@ defineOptions({
       <div class="hero-inner">
         <div class="hero-logo">
           <div class="hero-logo-icon">
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 1024 1024"
-              xmlns="http://www.w3.org/2000/svg"
-            >
+            <svg width="24" height="24" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
               <g transform="rotate(180 512 512)">
                 <path
                   d="M512 981.33H85.34c-15.85 0-30.38-8.77-37.77-22.81a42.624 42.624 0 0 1 2.6-44.02L135 791.08C75.25 710.5 42.67 612.6 42.67 512 42.67 253.21 253.21 42.67 512 42.67S981.34 253.21 981.34 512 770.8 981.33 512 981.33zM166.44 896H512c211.73 0 384-172.27 384-384S723.73 128 512 128 128 300.27 128 512c0 91.29 32.83 179.9 92.46 249.46 12.58 14.69 13.73 36 2.77 51.94L166.44 896z"
                   fill="#e2e8f0"
                 />
-                <circle
-                  cx="384"
-                  cy="448"
-                  r="64"
-                  fill="#e2e8f0"
-                />
-                <circle
-                  cx="640"
-                  cy="448"
-                  r="64"
-                  fill="#e2e8f0"
-                />
+                <circle cx="384" cy="448" r="64" fill="#e2e8f0" />
+                <circle cx="640" cy="448" r="64" fill="#e2e8f0" />
               </g>
             </svg>
           </div>
@@ -75,19 +60,11 @@ defineOptions({
             >
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
-              <line
-                x1="12"
-                y1="15"
-                x2="12"
-                y2="3"
-              />
+              <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
             立即下载插件
           </a>
-          <a
-            href="/#/guide/quickstart"
-            class="btn-ghost"
-          >
+          <a href="/#/guide/quickstart" class="btn-ghost">
             查看安装文档
             <svg
               width="14"
@@ -105,26 +82,17 @@ defineOptions({
 
         <div class="hero-meta">
           <div class="meta-item">
-            <span
-              class="meta-dot"
-              style="--c: var(--purple)"
-            ></span>
+            <span class="meta-dot" style="--c: var(--purple)"></span>
             Chrome / Edge / Arc
           </div>
           <div class="meta-sep"></div>
           <div class="meta-item">
-            <span
-              class="meta-dot"
-              style="--c: var(--cyan)"
-            ></span>
+            <span class="meta-dot" style="--c: var(--cyan)"></span>
             零配置 · 开箱即用
           </div>
           <div class="meta-sep"></div>
           <div class="meta-item">
-            <span
-              class="meta-dot"
-              style="--c: #10b981"
-            ></span>
+            <span class="meta-dot" style="--c: #10b981"></span>
             完全开源 · MIT
           </div>
         </div>
@@ -141,10 +109,7 @@ defineOptions({
 
       <div class="feature-grid">
         <div class="f-card">
-          <div
-            class="f-icon"
-            style="--c: var(--purple)"
-          >
+          <div class="f-icon" style="--c: var(--purple)">
             <svg
               width="20"
               height="20"
@@ -153,35 +118,16 @@ defineOptions({
               stroke="currentColor"
               stroke-width="1.8"
             >
-              <rect
-                x="3"
-                y="3"
-                width="18"
-                height="18"
-                rx="3"
-              />
-              <line
-                x1="3"
-                y1="9"
-                x2="21"
-                y2="9"
-              />
-              <line
-                x1="9"
-                y1="21"
-                x2="9"
-                y2="9"
-              />
+              <rect x="3" y="3" width="18" height="18" rx="3" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="9" y1="21" x2="9" y2="9" />
             </svg>
           </div>
           <h3>侧边栏对话</h3>
           <p>Chrome 侧边栏直接唤起 OpenCode，对话开发两不误。</p>
         </div>
         <div class="f-card">
-          <div
-            class="f-icon"
-            style="--c: var(--indigo)"
-          >
+          <div class="f-icon" style="--c: var(--indigo)">
             <svg
               width="20"
               height="20"
@@ -198,10 +144,7 @@ defineOptions({
           <p>自动同步当前页面 URL、标题，SPA 路由无感切换。</p>
         </div>
         <div class="f-card">
-          <div
-            class="f-icon"
-            style="--c: var(--cyan)"
-          >
+          <div class="f-icon" style="--c: var(--cyan)">
             <svg
               width="20"
               height="20"
@@ -217,10 +160,7 @@ defineOptions({
           <p>按项目自动隔离会话，新建/切换/删除一键完成。</p>
         </div>
         <div class="f-card">
-          <div
-            class="f-icon"
-            style="--c: #10b981"
-          >
+          <div class="f-icon" style="--c: #10b981">
             <svg
               width="20"
               height="20"
@@ -236,10 +176,7 @@ defineOptions({
           <p>无需修改项目代码，插件自动检测 localhost 服务。</p>
         </div>
         <div class="f-card">
-          <div
-            class="f-icon"
-            style="--c: #f59e0b"
-          >
+          <div class="f-icon" style="--c: #f59e0b">
             <svg
               width="20"
               height="20"
@@ -248,35 +185,16 @@ defineOptions({
               stroke="currentColor"
               stroke-width="1.8"
             >
-              <rect
-                x="2"
-                y="3"
-                width="20"
-                height="14"
-                rx="2"
-              />
-              <line
-                x1="8"
-                y1="21"
-                x2="16"
-                y2="21"
-              />
-              <line
-                x1="12"
-                y1="17"
-                x2="12"
-                y2="21"
-              />
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
             </svg>
           </div>
           <h3>多项目切换</h3>
           <p>同时打开多个项目，标签页切换时自动对应会话。</p>
         </div>
         <div class="f-card">
-          <div
-            class="f-icon"
-            style="--c: #f43f5e"
-          >
+          <div class="f-icon" style="--c: #f43f5e">
             <svg
               width="20"
               height="20"
@@ -285,11 +203,7 @@ defineOptions({
               stroke="currentColor"
               stroke-width="1.8"
             >
-              <circle
-                cx="12"
-                cy="12"
-                r="10"
-              />
+              <circle cx="12" cy="12" r="10" />
               <path d="M12 6v6l4 2" />
             </svg>
           </div>
@@ -309,10 +223,7 @@ defineOptions({
 
       <div class="qs-entry">
         <div class="qs-card">
-          <div
-            class="qs-card-icon"
-            style="--c: var(--purple)"
-          >
+          <div class="qs-card-icon" style="--c: var(--purple)">
             <svg
               width="24"
               height="24"
@@ -327,16 +238,12 @@ defineOptions({
           </div>
           <h3>快速开始</h3>
           <p>安装 CLI → 安装 Vite 插件 → 加载浏览器扩展，三步完成接入。</p>
-          <PagodaDocLinkToView
-            view="guide/quickstart"
-            class="qs-link"
-          >查看完整教程 →</PagodaDocLinkToView>
+          <PagodaDocLinkToView view="guide/quickstart" class="qs-link"
+            >查看完整教程 →</PagodaDocLinkToView
+          >
         </div>
         <div class="qs-card">
-          <div
-            class="qs-card-icon"
-            style="--c: var(--cyan)"
-          >
+          <div class="qs-card-icon" style="--c: var(--cyan)">
             <svg
               width="24"
               height="24"
@@ -345,26 +252,14 @@ defineOptions({
               stroke="currentColor"
               stroke-width="1.8"
             >
-              <circle
-                cx="12"
-                cy="12"
-                r="10"
-              />
+              <circle cx="12" cy="12" r="10" />
               <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" />
-              <line
-                x1="12"
-                y1="17"
-                x2="12.01"
-                y2="17"
-              />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
             </svg>
           </div>
           <h3>常见问题</h3>
           <p>安装不上？端口冲突？侧边栏没反应？来这里找答案。</p>
-          <PagodaDocLinkToView
-            view="faq"
-            class="qs-link"
-          >查看常见问题 →</PagodaDocLinkToView>
+          <PagodaDocLinkToView view="faq" class="qs-link">查看常见问题 →</PagodaDocLinkToView>
         </div>
       </div>
     </section>
@@ -429,6 +324,7 @@ defineOptions({
   text-align: center;
   overflow: hidden;
   isolation: isolate;
+  margin: 0 -32px;
 }
 
 .hero-grid {
@@ -912,6 +808,7 @@ defineOptions({
   font-size: 32px !important;
   font-weight: 700 !important;
   color: var(--text-1) !important;
+  line-height: 1.3 !important;
   margin: 0 0 12px !important;
   letter-spacing: -0.02em;
 }
@@ -930,8 +827,13 @@ defineOptions({
 }
 
 @media (max-width: 768px) {
+  .home {
+    padding: 0 16px;
+  }
+
   .hero {
     padding: 80px 0 60px;
+    margin: 0 -16px;
   }
 
   .hero-title {

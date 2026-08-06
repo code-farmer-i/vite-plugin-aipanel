@@ -18,9 +18,6 @@ export default defineConfig({
     },
   },
   site: {
-    layout: {
-      responsive: true,
-    },
     headerTitle: "OpenCode Assistant",
     title: "OpenCode Assistant",
     description: "浏览器插件 + Vite 开发环境，将 OpenCode AI 助手嵌入你的本地开发页面",
@@ -29,6 +26,7 @@ export default defineConfig({
     logo: "/logo.svg",
     logoLink: "index",
     layout: {
+      responsive: true,
       showAnchor: true,
       showSimulator: false,
     },

@@ -61,6 +61,23 @@ const switchLang = () => {
 </template>
 ```
 
+### setDefaultLang —— 设置默认语言（初始化用）
+
+在应用初始化时调用，按优先级自动确定当前语言：
+
+```typescript
+import { setDefaultLang } from '@pagoda-cli/core/site';
+
+// 传入配置文件中的默认语言
+setDefaultLang('zh-CN');
+```
+
+**语言优先级（从高到低）：**
+1. `localStorage` 中缓存的语言（用户上次的选择）
+2. 浏览器语言（`navigator.language`）
+3. `pagoda.config.mjs` 中配置的 `defaultLang`
+4. 兜底默认值 `'en-US'`
+
 ### 3. 在线演示 (StackBlitz) 生成
 
 如果需要自定义一个 "在 StackBlitz 中打开" 的按钮，可以使用 `getPlaygroundData` 和 `openPlayground`。
@@ -75,12 +92,32 @@ const openDemo = () => {
   const config = getPlaygroundData(demoCode, {
     name: 'my-component-library', // 你的包名
     version: '1.0.0',
-    peerDependencies: { vue: '^3.0.0' }
+    peerDependencies: { vue: '^3.0.0' },
+    dependencies: { 'my-org/utils': '^1.0.0' } // 运行时依赖
   });
 
   // 2. 在新标签页打开
   openPlayground(config);
 };
+```
+
+**`getPlaygroundData` 返回值结构（`PlaygroundConfig`）：**
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `files` | `Record<string, string>` | 文件映射，key 为文件路径，value 为文件内容 |
+| `title` | `string` | 演示标题 |
+| `template` | `string` | StackBlitz 模板类型（如 `'vue-ts'`） |
+| `activeFile` | `string` | 默认打开的文件路径 |
+
+**`packageInfo` 完整参数：**
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `name` | `string` | 包名 |
+| `version` | `string` | 版本号 |
+| `peerDependencies` | `Record<string, string>` | 同级依赖 |
+| `dependencies` | `Record<string, string>` | 运行时依赖 |
 ```
 
 ### 4. 获取站点配置与文档列表
@@ -101,6 +138,10 @@ documents.forEach(doc => {
   console.log('文档名:', doc.name, '路径:', doc.path, '是否为组件:', doc.isComponentDoc);
 });
 
+// 获取组件路由前缀常量
+import { COMPONENTS_ROUTER_PREFIX } from 'site-desktop-shared';
+console.log(COMPONENTS_ROUTER_PREFIX); // 默认值 'components'
+
 // 获取包版本
 console.log('当前库版本:', packageJson.version);
 
@@ -112,6 +153,19 @@ const { publicPath, outputDir } = config.site.build;
 ```
 
 > **Note:** `config.build` 是组件库构建配置（`PagodaCliBuildConfig`），包含 `mode`、`platform`、`srcDir`、`css` 等属性。而 `config.site.build` 是文档站构建配置（`PagodaCliSiteBuildConfig`），包含 `publicPath`、`outputDir` 等属性。
+
+### documents 文档对象属性
+
+每个文档对象包含以下完整属性：
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `name` | `string` | 文档名称 |
+| `path` | `string` | 文档文件路径 |
+| `lang` | `string` | 语言标识（如 `zh-CN`、`en-US`） |
+| `prefix` | `string` | 路由前缀 |
+| `isComponentDoc` | `boolean` | 是否为组件文档 |
+| `component` | `() => Promise<Component>` | 异步加载的组件函数 |
 
 ## 其他实用工具
 

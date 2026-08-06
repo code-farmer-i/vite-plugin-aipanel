@@ -23,6 +23,7 @@ export default defineConfig({
     platform: 'browser',          // 目标平台: 'browser' | 'node' | 'neutral'
     packageManager: 'pnpm',       // 依赖安装和发布使用的包管理器 (npm/yarn/pnpm)
     srcDir: 'src',                // 指定源码目录
+    skipInstall: ['heavy-dependency'], // 构建时跳过安装这些依赖
   },
 });
 ```
@@ -37,11 +38,22 @@ export default defineConfig({
     umd: true,                    // 是否生成 UMD 产物（供浏览器直接 <script> 引入）
     bundle: true,                 // 是否将所有组件打包成单个大文件
     sourcemap: false,             // 是否生成 sourcemap
-    namedExport: false,           // 是否生成具名导出
+    namedExport: true,             // 是否生成具名导出，默认 true
     vueSfc: true,                 // 是否启用 Vue 单文件组件 (SFC) 编译
     tagPrefix: 'my',              // 组件标签前缀（用于自动生成的 Web Types 提示）
   },
 });
+```
+
+`namedExport` 行为对比：
+
+```ts
+// namedExport: true — 生成具名导出
+export { Button, Input, Select };
+export default install;
+
+// namedExport: false — 仅生成默认导出
+export default { Button, Input, Select, install };
 ```
 
 ### 3. 样式处理配置
@@ -61,7 +73,7 @@ export default defineConfig({
 ```
 **场景**：如果项目使用 Sass/SCSS，必须显式将 `preprocessor` 改为 `scss` 或 `sass`。
 
-### 4. 自定义底层构建 (Vite/esbuild)
+### 4. 自定义底层构建 (Vite/esbuild/bundleOptions)
 
 如果你需要对默认的打包器（Vite/esbuild）进行更底层的配置扩展：
 
@@ -83,6 +95,26 @@ export default defineConfig({
       esm: '.mjs',
       cjs: '.cjs'
     },
+    // esbuild 透传配置
+    esbuildOptions: {
+      target: ['es2020', 'chrome58', 'firefox57', 'safari11'],
+      jsx: 'automatic',
+    },
+    // 自定义 bundle 配置
+    bundleOptions: [
+      {
+        minify: false,
+        formats: ['es'],
+        external: ['vue'],
+        globals: { vue: 'Vue' },
+      },
+      {
+        minify: true,
+        formats: ['es'],
+        external: ['vue'],
+        globals: { vue: 'Vue' },
+      },
+    ],
     // 第三方组件库按需引入配置
     thirdPartyComponents: {
       'element-plus': { 
@@ -94,6 +126,30 @@ export default defineConfig({
         }
       }
     }
+  },
+});
+```
+
+### 5. 类库模式完整配置示例
+
+纯 JS/TS 工具库（非组件库）的构建配置：
+
+```js
+export default defineConfig({
+  name: 'my-utils',
+  build: {
+    mode: 'lib',
+    platform: 'neutral',
+    packageManager: 'npm',
+    srcDir: 'src',
+    umd: false,
+    bundle: true,
+    sourcemap: true,
+    vueSfc: false,
+    extensions: {
+      esm: '.mjs',
+      cjs: '.cjs',
+    },
   },
 });
 ```

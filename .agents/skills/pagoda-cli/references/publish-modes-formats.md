@@ -43,6 +43,24 @@ export default {
 ```
 CLI 会自动将此逻辑集成到最终生成的入口文件中。
 
+**工作原理**：CLI 构建时，如果检测到 `setup.ts`，会在自动生成的入口文件 `install` 方法中首先调用 `packageSetup.install(app, options)`，并将其所有导出通过 `export * from './setup'` 重新导出。
+
+**组件识别规则**：CLI 通过以下规则自动扫描 `src/` 目录识别组件：
+1. 目录下存在 `index.js`、`index.ts`、`index.vue` 等入口文件
+2. 入口文件包含 `export default`、`export { default }` 或 `defineOptions`
+
+```ts
+// src/Button/index.ts - 会被识别为组件
+import Button from './index.vue';
+import type { App } from 'vue';
+
+Button.install = (app: App) => {
+  app.component(Button.name, Button);
+};
+
+export default Button;
+```
+
 ### 2. 类库模式 (lib)
 
 **适用场景**：开发纯 JavaScript/TypeScript 工具库、SDK，不需要组件注册和样式处理。
@@ -82,6 +100,46 @@ export default defineConfig({
   build: { umd: false },
 });
 ```
+
+### 自定义文件后缀 (extensions)
+
+可通过 `build.extensions` 自定义产物文件后缀：
+
+```javascript
+export default defineConfig({
+  build: {
+    extensions: {
+      esm: '.mjs',  // ESM 使用 .mjs
+      cjs: '.cjs',  // CJS 使用 .cjs
+    },
+  },
+});
+```
+
+产物结构：
+
+```
+es/
+└── index.mjs
+lib/
+├── index.cjs
+├── my-lib.js
+└── my-lib.min.js
+```
+
+### Source Map
+
+启用 sourcemap 用于调试：
+
+```javascript
+export default defineConfig({
+  build: {
+    sourcemap: true,
+  },
+});
+```
+
+产物中会生成对应的 `.map` 文件（如 `my-lib.js.map`、`my-lib.min.js.map`）。
 
 ## 最佳实践：配置 package.json
 

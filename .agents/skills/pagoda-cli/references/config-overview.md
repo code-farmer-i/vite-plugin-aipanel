@@ -30,6 +30,21 @@ export default defineConfig({
 });
 ```
 
+也可以直接导出普通对象（不使用 `defineConfig`）：
+
+```js
+// pagoda.config.mjs
+export default {
+  name: 'my-component-library',
+  build: {
+    // 组件库构建配置
+  },
+  site: {
+    // 文档站内容和行为配置
+  },
+};
+```
+
 ### 2. 核心配置分类
 
 配置主要分为三大块：
@@ -54,7 +69,31 @@ const config: PagodaCliConfig = {
 export default defineConfig(config);
 ```
 
-### 4. 完整配置结构参考
+### 4. 动态配置生成
+
+配置文件支持使用 Node API 动态生成配置，例如自动扫描源码目录：
+
+```js
+// pagoda.config.mjs
+import { defineConfig } from '@pagoda-cli/core';
+import { readdirSync } from 'fs';
+
+const components = readdirSync('./src', { withFileTypes: true })
+  .filter(dirent => dirent.isDirectory())
+  .map(dirent => dirent.name);
+
+export default defineConfig({
+  name: 'my-component-library',
+  build: {
+    // 基于 components 动态生成配置
+  },
+  site: {
+    title: process.env.SITE_TITLE || 'My Component Library',
+  },
+});
+```
+
+### 5. 完整配置结构参考
 
 当用户询问完整的类型结构时：
 

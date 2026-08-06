@@ -65,7 +65,7 @@ metadata:
 
 | Topic | Description | Reference |
 |---|---|---|
-| 组件开发规范 | 提供 Vue 3 组件目录结构、命名、Props/Events 声明及样式隔离的可执行代码示例。... | [guide-component](references/guide-component.md) |
+| 组件开发规范 | 提供 Vue 3 组件目录结构、入口文件、样式开发、组合式函数以及全局配置（setup.ts）的开发规范和最佳实践。... | [guide-component](references/guide-component.md) |
 | 文档编写指南 | 提供 Pagoda CLI 专属的 Markdown 扩展语法规范和文档结构示例。... | [guide-documentation](references/guide-documentation.md) |
 | 开发 JS 库规范 | 提供纯 JS/TS 库（如工具函数、SDK）的目录结构和构建配置规范。... | [guide-js-library](references/guide-js-library.md) |
 

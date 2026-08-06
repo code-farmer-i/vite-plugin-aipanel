@@ -135,3 +135,87 @@ export default {
 ```
 
 另外还有 `site/desktop/style.js` 和 `site/mobile/style.js` 用于引入相应的全局样式。
+
+### 5. HTML 模板
+
+CLI 内置了默认模板，通常无需自定义。如需覆盖，可在 `site/` 下创建 EJS 模板文件。
+
+**桌面端模板 (`site/index.html`)**：
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link rel="icon" href="<%= icon %>">
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/main.js"></script>
+</body>
+</html>
+```
+
+**移动端模板 (`site/mobile.html`)**：
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+  <title><%= title %></title>
+  <link rel="icon" href="<%= icon %>">
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/mobile.js"></script>
+</body>
+</html>
+```
+
+模板变量 `<%= title %>` 和 `<%= icon %>` 由 `site.title` 和 `site.icon` 配置自动注入。
+
+### 6. 静态资源 (`site/static/`)
+
+```text
+site/static/
+├── logo.png
+├── favicon.ico
+├── icons/
+└── images/
+```
+
+**在配置中引用**（推荐相对路径，CLI 自动解析）：
+```js
+export default defineConfig({
+  site: {
+    logo: './logo.png',  // 相对路径
+    icon: '/favicon.ico', // 也可用绝对路径
+  },
+});
+```
+
+**在 Markdown 中引用**（使用绝对路径）：
+```markdown
+![Logo](/logo.png)
+```
+
+`site/static/` 下的文件会在构建时原样复制到产物根目录，因此 Markdown 中引用时路径从 `/` 开始。
+
+### 7. 组件文档结构
+
+每个组件目录下的文档组织方式：
+
+```
+src/Button/
+├── README.md              # 默认语言文档（中文）
+├── README.en-US.md        # 英文文档（多语言）
+├── index.vue              # 组件实现
+└── demo/                  # Demo 示例
+    ├── basic.vue           # 基础用法
+    ├── disabled.vue        # 禁用状态
+    └── loading.vue         # 加载状态
+```
+
+多语言文档命名规则：`README.{locale}.md`，如 `README.en-US.md`、`README.zh-CN.md`。CLI 会根据当前语言自动加载对应文档。

@@ -84,7 +84,181 @@ export default defineConfig({
 });
 ```
 
-### 4. 高级配置与构建
+### 4. 外观细节配置
+
+```js
+export default defineConfig({
+  site: {
+    headerTitle: 'MyUI',                    // 头部品牌标题（简短版本）
+    subtitle: '轻量级 Vue 3 组件库',         // 站点副标题
+    icon: '/favicon.ico',                   // favicon
+  },
+});
+```
+
+### 5. 外链与版本切换
+
+#### links 外链列表
+
+顶部外链，常用于产品线切换：
+
+```js
+export default defineConfig({
+  site: {
+    links: [
+      { label: 'PC', link: 'https://ui.example.com', active: true },
+      { label: 'Mobile', link: 'https://mobile.example.com' },
+      { label: 'Charts', link: 'https://charts.example.com' },
+    ],
+  },
+});
+```
+
+#### versions 版本切换
+
+```js
+export default defineConfig({
+  site: {
+    versions: [
+      { label: 'v2.x', link: 'https://v2.example.com', active: true },
+      { label: 'v1.x', link: 'https://v1.example.com' },
+    ],
+  },
+});
+```
+
+### 6. Head 配置
+
+#### head.html
+
+注入到 `<head>` 中的原始 HTML：
+
+```js
+export default defineConfig({
+  site: {
+    head: {
+      html: `
+        <meta name="author" content="Your Name">
+        <link rel="icon" href="/favicon.ico">
+      `,
+    },
+  },
+});
+```
+
+#### head.meta
+
+结构化的 meta 标签配置：
+
+```js
+export default defineConfig({
+  site: {
+    head: {
+      meta: [
+        { name: 'keywords', content: 'Vue, Component, UI' },
+        { name: 'description', content: 'A Vue 3 component library' },
+        { property: 'og:title', content: 'My Component Library' },
+        { property: 'og:description', content: 'A Vue 3 component library' },
+      ],
+    },
+  },
+});
+```
+
+**meta 字段说明**：
+
+| 字段 | 说明 | 示例 |
+|------|------|------|
+| `content` | meta 标签内容 | `'Vue 3 组件库'` |
+| `name` | 对应 `<meta name="...">`，适用于 description、keywords 等 | `'description'` |
+| `property` | 对应 `<meta property="...">`，用于 Open Graph、Twitter Card | `'og:title'` |
+
+#### head.analytics
+
+百度统计配置：
+
+```js
+export default defineConfig({
+  site: {
+    head: {
+      analytics: {
+        baidu: {
+          seed: 'your-baidu-analytics-seed',
+        },
+      },
+    },
+  },
+});
+```
+
+### 7. 调试工具
+
+#### enableVConsole
+
+开发模式下注入 vConsole 调试工具（仅在开发环境生效）：
+
+```js
+export default defineConfig({
+  site: {
+    enableVConsole: true,
+  },
+});
+```
+
+### 8. 文档站构建配置
+
+#### site.build 基础配置
+
+```js
+export default defineConfig({
+  site: {
+    build: {
+      publicPath: '',             // 部署路径（留空以支持相对路径）
+      outputDir: 'site-dist',     // 输出目录
+      vueComponentsResolvers: [], // 组件解析器
+      autoImportResolvers: [],    // 自动导入解析器
+    },
+  },
+});
+```
+
+#### vueComponentsResolvers 示例
+
+扩展组件自动导入，例如搭配 Vant：
+
+```js
+import { VantResolver } from 'unplugin-vue-components/resolvers';
+
+export default defineConfig({
+  site: {
+    build: {
+      vueComponentsResolvers: [
+        VantResolver(),
+      ],
+    },
+  },
+});
+```
+
+#### autoImportResolvers 示例
+
+扩展自动导入，例如搭配 Element Plus：
+
+```js
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
+
+export default defineConfig({
+  site: {
+    build: {
+      autoImportResolvers: [
+        ElementPlusResolver(),
+      ],
+    },
+  },
+});
+```
+
+### 9. 高级配置类型
 
 ```ts
 interface PagodaCliSiteConfig {
@@ -93,6 +267,6 @@ interface PagodaCliSiteConfig {
   defaultRoute?: string;         // 404 或首页跳转的默认路由
   head?: PagodaCliSiteHeadConfig; // 注入 <head> 标签内容（如统计脚本）
   build?: PagodaCliSiteBuildConfig; // 静态站打包配置（如 publicPath、outputDir）
+  enableVConsole?: boolean;      // 开发模式注入 vConsole
 }
 ```
-**场景**：如果用户想修改部署的子目录或支持相对路径，需配置 `site.build.publicPath: ''`。

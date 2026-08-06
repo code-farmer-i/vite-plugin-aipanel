@@ -18,26 +18,38 @@ Pagoda CLI 提供了标准的发布命令，遵循语义化版本（SemVer）规
 
 ### 1. 稳定版发布
 
-运行 release 命令，CLI 会提供交互式界面让你选择要升级的版本号（patch/minor/major）。
+运行 release 命令，CLI 会提供交互式界面让你选择要升级的版本号（patch/minor/major），发布成功后自动创建 Git Tag 并推送。
 
 ```bash
-# 自动更新 package.json 版本号并执行发布流程
+# 自动更新 package.json 版本号并执行发布流程（含自动打 Tag）
 pagoda-cli release
-
-# 附带创建 Git Tag（推荐）
-pagoda-cli release --gitTag
 ```
 
+**Git Tag 命名规则**：
+- 单包仓库：`v{version}`（如 `v1.0.0`）
+- Monorepo 子包：`{pkgName}@v{version}`（如 `@pagoda/cli@v1.0.0`）
+
 ### 2. 预发布版本 (Pre-release)
+
+支持三种预发布类型：
+
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| `alpha` | 内部测试版 | `1.0.0-alpha.0` |
+| `beta` | 公开测试版 | `1.0.0-beta.0` |
+| `rc` | 候选发布版 | `1.0.0-rc.0` |
 
 当需要发布测试版时，通过 `--tag` 指定 npm 的发布标签（如 beta/rc），这会防止用户使用 `npm install` 默认下载到测试版。
 
 ```bash
+# 发布 alpha 版本
+pagoda-cli release --tag alpha
+
 # 发布 beta 版本 (例如 1.0.0-beta.0)，并打上 npm beta tag
-pagoda-cli release --tag beta --gitTag
+pagoda-cli release --tag beta
 
 # 发布 rc (Release Candidate) 版本
-pagoda-cli release --tag rc --gitTag
+pagoda-cli release --tag rc
 ```
 
 > **注意**：使用 `--tag beta` 发布后，用户需要明确指定 `npm install my-lib@beta` 才能安装。
@@ -62,7 +74,32 @@ export default defineConfig({
 - `${name}` - 包名
 - `${version}` - 发布版本号
 
-### 4. 配置自动生成 CHANGELOG
+### 4. NPM Tag 与版本安装
+
+| Tag | 说明 |
+|-----|------|
+| `latest` | 最新稳定版（默认） |
+| `beta` | 最新测试版 |
+| `rc` | 最新候选版 |
+| `next` | 下一版本 |
+
+安装不同 Tag 版本：
+
+```bash
+# 安装最新稳定版（默认）
+npm install my-ui
+
+# 安装最新 beta 版本
+npm install my-ui@beta
+
+# 安装指定预发布版本
+npm install my-ui@1.0.0-beta.0
+
+# 安装 rc 版本
+npm install my-ui@rc
+```
+
+### 5. 配置自动生成 CHANGELOG
 
 推荐结合 `conventional-changelog` 自动生成变更日志。在 `package.json` 中配置：
 
@@ -74,8 +111,8 @@ npm install -D conventional-changelog-cli
 {
   "scripts": {
     "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s",
-    "release": "npm run changelog && pagoda-cli release --gitTag",
-    "release:beta": "pagoda-cli release --tag beta --gitTag"
+    "release": "npm run changelog && pagoda-cli release",
+    "release:beta": "pagoda-cli release --tag beta"
   }
 }
 ```
@@ -120,7 +157,13 @@ jobs:
 ## 发布失败与版本回退
 
 如果发布过程中出现网络或权限错误导致失败：
-1. **本地回滚**：CLI 会尝试自动回滚 `package.json` 中的版本号。如果创建了错误的 Git 标签，可使用 `git tag -d v1.0.0` 删除。
+1. **本地回滚**：CLI 会尝试自动回滚 `package.json` 中的版本号。如果创建了错误的 Git 标签，可删除：
+   ```bash
+   # 删除本地标签
+   git tag -d v1.0.0
+   # 删除远程标签
+   git push origin :refs/tags/v1.0.0
+   ```
 2. **NPM 废弃**：如果包已发布到 npm 但发现严重问题，无法删除版本，只能通过标记废弃并发布补丁版本：
    ```bash
    npm deprecate my-lib@1.0.0 "此版本存在严重缺陷，请升级到 1.0.1"

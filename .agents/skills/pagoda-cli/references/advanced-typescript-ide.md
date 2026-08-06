@@ -15,6 +15,40 @@ Pagoda CLI 提供开箱即用的 TypeScript 支持。为了确保组件库的使
 
 ## 核心配置与用法
 
+### 0. 基础 tsconfig.json
+
+项目根目录的 `tsconfig.json` 应包含以下核心配置：
+
+```json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "jsx": "preserve",
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "lib": ["ESNext", "DOM"],
+    "skipLibCheck": true,
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "exclude": ["node_modules", "dist", "es", "lib"]
+}
+```
+
+**关键字段说明：**
+- `target: "ESNext"` 与 `module: "ESNext"` 保证输出最新的 ES 语法
+- `moduleResolution: "bundler"` 适配现代打包器（Vite/esbuild）的模块解析
+- `paths` 别名 `"@/*": ["./src/*"]` 允许在项目中使用 `@/Button` 导入组件
+- `noEmit: true` 表示 tsconfig 仅用于类型检查，不输出编译产物
+
 ### 1. 开启自动生成声明文件
 
 默认情况下，构建过程可能会跳过类型声明的生成。必须在项目根目录创建 `tsconfig.declaration.json`，CLI 会自动检测该文件并生成 `es/*.d.ts`。
@@ -61,6 +95,7 @@ export interface ButtonProps {
 }
 
 export interface ButtonInstance {
+  props: ButtonProps;
   focus: () => void;
   blur: () => void;
 }
@@ -122,6 +157,64 @@ export {};
 ```
 
 使用者可以在其项目的 `tsconfig.json` 中包含此文件，从而获得完整的模板类型支持。
+
+## 类型工具
+
+### ExtractPropTypes —— 从运行时 Props 提取类型
+
+当使用运行时 props 定义（选项式 API）时，用 `ExtractPropTypes` 提取类型供使用者引用：
+
+```typescript
+import { ExtractPropTypes, PropType } from 'vue';
+
+const buttonProps = {
+  type: {
+    type: String as PropType<'default' | 'primary' | 'success'>,
+    default: 'default',
+  },
+  disabled: Boolean,
+} as const;
+
+// 提取出的 ButtonProps 类型为 { type?: 'default' | 'primary' | 'success'; disabled?: boolean }
+export type ButtonProps = ExtractPropTypes<typeof buttonProps>;
+```
+
+### InstanceType —— 获取组件实例类型
+
+从组件本身推导实例类型，包含 expose 的方法和属性：
+
+```typescript
+import Button from './Button.vue';
+
+export type ButtonInstance = InstanceType<typeof Button>;
+```
+
+## 全局类型声明的两种模式
+
+除了 `GlobalComponents` 声明外，还可以通过 `declare module` 为组件库提供全局类型兜底：
+
+**模式 1：主入口声明**
+
+```typescript
+// src/global.d.ts
+declare module 'my-component-library' {
+  import type { DefineComponent } from 'vue';
+  
+  export const Button: DefineComponent;
+  export const Input: DefineComponent;
+}
+```
+
+**模式 2：按路径导入声明（支持 tree-shaking）**
+
+```typescript
+declare module 'my-component-library/es/*' {
+  import type { DefineComponent } from 'vue';
+  export default DefineComponent;
+}
+```
+
+这两种模式配合使用，确保使用者无论是 `import { Button } from 'my-component-library'` 还是 `import Button from 'my-component-library/es/Button'` 都能获得类型支持。
 
 ## 常见排错指南
 

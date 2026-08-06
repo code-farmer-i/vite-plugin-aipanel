@@ -18,6 +18,17 @@ Pagoda CLI 是一个专为 Vue 3 组件库开发设计的现代化构建工具�
 - **一站式文档站**：提供桌面端和内置移动端模拟器的实时预览，支持 Markdown 增强语法（如直接嵌入 Vue 组件 Demo）。
 - **完善的发布管理**：提供交互式发布流程，支持自动生成 Changelog、更新版本号、打 Git Tag 以及多包管理器（npm/yarn/pnpm）发布。
 
+### 技术栈
+
+| 技术 | 用途 |
+|------|------|
+| [Vite](https://vitejs.dev/) | 构建工具核心 |
+| [esbuild](https://esbuild.github.io/) | 快速代码编译 |
+| [Vue 3](https://vuejs.org/) | 文档站框架 |
+| [Vue Router](https://router.vuejs.org/) | 文档站路由 |
+| [Element Plus](https://element-plus.org/) | 文档站 UI 组件 |
+| [unplugin-vue-markdown](https://github.com/unplugin/unplugin-vue-markdown) | Markdown 编译为 Vue 组件 |
+
 ### 2. 适用场景分析
 
 #### 场景 A：开发 Vue 3 UI 组件库

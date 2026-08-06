@@ -108,6 +108,77 @@ import { debounce } from '@my-org/utils';
 
 > **注意：** 在首次启动组件库的开发或构建前，必须先构建其依赖的工具库，或者使用 `pnpm -r run build` 按依赖树自动排序构建。
 
+### 手动构建（按依赖顺序）
+
+如果自动排序不满足需求，可以手动按依赖顺序构建：
+
+```bash
+cd packages/utils && pnpm run build
+cd ../components && pnpm run build
+```
+
+## Changesets 发布工作流
+
+使用 `@changesets/cli` 在根目录统一管理多包的 Changelog 与版本发布。
+
+### 完整流程
+
+1. **安装 Changesets CLI**：
+   ```bash
+   pnpm add -Dw @changesets/cli
+   ```
+
+2. **初始化 Changesets**：
+   ```bash
+   pnpm changeset init
+   ```
+
+3. **配置 `.changeset/config.json`**：
+   ```json
+   {
+     "access": "public",
+     "baseBranch": "main",
+     "updateInternalDependencies": "patch"
+   }
+   ```
+   - `access`: `"public"` 表示公开发布到 npm
+   - `baseBranch`: 基准分支，changeset 将基于此分支计算变更
+   - `updateInternalDependencies`: `"patch"` 表示当依赖包版本更新时，依赖方的版本号自动升级补丁版本
+
+4. **添加变更记录**：
+   ```bash
+   pnpm changeset
+   ```
+   交互式命令会询问哪些包有变更，以及变更类型（major/minor/patch）和变更描述。
+
+5. **更新版本号**：
+   ```bash
+   pnpm changeset version
+   ```
+   根据 changeset 记录自动更新 `package.json` 中的版本号和 `CHANGELOG.md`。
+
+6. **发布到 npm**：
+   ```bash
+   pnpm changeset publish
+   ```
+
+### package.json 发布必需字段
+
+每个可发布的包必须包含以下字段：
+
+```json
+{
+  "name": "@my-org/components",
+  "version": "1.0.0",
+  "main": "lib/index.js",
+  "module": "es/index.js",
+  "types": "es/index.d.ts",
+  "peerDependencies": {
+    "vue": "^3.0.0"
+  }
+}
+```
+
 ## 最佳实践与边界情况
 
 1. **类型提示（TypeScript）**：如果包间依赖在 IDE 中缺少类型提示，确保先对被依赖项（如 `utils`）执行一次构建生成 `es/index.d.ts`，或者在组件库的 `tsconfig.json` 中配置 `paths` 别名指向 `utils/src`。
@@ -122,4 +193,20 @@ import { debounce } from '@my-org/utils';
      }
    }
    ```
-3. **版本发布**：推荐使用 `@changesets/cli` 在根目录统一管理多包的 Changelog 与版本发布。
+
+## 常见问题
+
+### Q: 包间依赖解析错误？
+
+确保：
+1. `pnpm-workspace.yaml` 配置正确
+2. 依赖声明使用 `workspace:*` 协议
+3. 运行 `pnpm install` 安装依赖
+
+### Q: 如何只发布特定包？
+
+使用 pnpm 的 `--filter` 选项：
+
+```bash
+pnpm --filter @my-org/components publish
+```

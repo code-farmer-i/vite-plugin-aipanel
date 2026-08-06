@@ -29,6 +29,11 @@ export default defineConfig({
 });
 ```
 
+访问地址：
+
+- 桌面端文档站：`http://localhost:5173/`
+- 移动端模拟器：`http://localhost:5173/mobile.html`
+
 > **💡 提示**：当启用 `showSimulator: true` 时，桌面端的组件演示区块默认会自动切换为仅展示代码（`codeOnly` 模式），组件的实际渲染将交由右侧的移动端模拟器负责。你也可以通过 `site.layout.demoPreview` 显式配置演示组件的类型为 `'preview'` 或 `'codeOnly'`。
 
 ### 2. 路由同步与映射 (mapRoute)
@@ -54,8 +59,138 @@ export default defineConfig({
 });
 ```
 
-### 3. 工作原理提示
+### 3. 配置项汇总
 
-- 桌面端页面 (`index.html`) 通过 iframe 嵌入 `mobile.html`。
-- 两者通过 `postMessage` 机制传递当前的路由信息，从而实现左侧看文档，右侧看 Demo 的无缝体验。
-- 如果你的组件仅针对桌面端，请将 `showSimulator` 设为 `false`。
+| 配置项 | 说明 | 类型 | 默认值 |
+|--------|------|------|--------|
+| `url` | 模拟器地址 | `string` | `/mobile.html` |
+| `mapRoute` | 路由映射函数 | `(path: string) => string` | `(path) => path` |
+| `syncFromSimulator` | 从模拟器同步路由到桌面端 | `boolean` | `true` |
+| `syncToSimulator` | 将桌面端路由同步到模拟器 | `boolean` | `true` |
+
+### 4. 移动端文档站代码示例
+
+为移动端创建独立的文档入口页面，目录结构：
+
+```
+site/mobile/
+├── components/
+│   ├── DemoHome.vue        # 首页
+│   ├── DemoNav.vue         # 导航
+│   └── DemoPreview.vue     # 预览组件
+├── style/
+│   └── index.scss
+├── App.vue
+├── main.js
+└── router.js
+```
+
+#### main.js
+
+```js
+// site/mobile/main.js
+import { createApp } from 'vue';
+import App from './App.vue';
+import router from './router';
+import './style/index.scss';
+
+const app = createApp(App);
+app.use(router);
+app.mount('#app');
+```
+
+#### router.js
+
+```js
+// site/mobile/router.js
+import { createRouter, createWebHashHistory } from 'vue-router';
+
+const routes = [
+  {
+    path: '/',
+    component: () => import('./components/DemoHome.vue'),
+  },
+  {
+    path: '/:component',
+    component: () => import('./components/DemoPreview.vue'),
+  },
+];
+
+export default createRouter({
+  history: createWebHashHistory(),
+  routes,
+});
+```
+
+#### App.vue
+
+```vue
+<!-- site/mobile/App.vue -->
+<template>
+  <div class="mobile-app">
+    <demo-nav />
+    <router-view />
+  </div>
+</template>
+
+<script setup>
+import DemoNav from './components/DemoNav.vue';
+</script>
+```
+
+### 5. postMessage 通信协议
+
+桌面端与移动端通过 `postMessage` 通信，消息格式如下：
+
+```js
+// 桌面端发送路由到移动端
+iframe.contentWindow.postMessage({
+  type: 'replacePath',
+  value: {
+    path: '/button',
+    hash: ''
+  },
+}, '*');
+
+// 移动端发送路由到桌面端
+window.parent.postMessage({
+  type: 'replacePath',
+  value: {
+    path: '/button',
+    hash: ''
+  },
+}, '*');
+```
+
+监听消息实现路由同步：
+
+```js
+// 监听路由同步消息
+window.addEventListener('message', (event) => {
+  if (event.data?.type === 'replacePath') {
+    const { path, hash } = event.data?.value || {};
+    // 更新路由
+  }
+});
+```
+
+### 6. 常见问题
+
+**Q: 模拟器显示空白？**
+检查：1) `url` 配置是否正确；2) 移动端页面是否正常启动；3) 是否存在跨域问题。
+
+**Q: 路由不同步？**
+检查：1) `syncFromSimulator` 和 `syncToSimulator` 是否启用；2) `mapRoute` 函数是否正确映射路由。
+
+**Q: 如何禁用模拟器？**
+设置 `site.layout.showSimulator: false`：
+
+```js
+export default defineConfig({
+  site: {
+    layout: {
+      showSimulator: false,
+    },
+  },
+});
+```

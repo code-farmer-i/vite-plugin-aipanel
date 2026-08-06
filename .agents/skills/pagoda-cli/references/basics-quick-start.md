@@ -32,6 +32,23 @@ pnpm add vue
 pnpm add -D @pagoda-cli/core
 ```
 
+**全局安装（可选）**：如果需要在任何位置直接使用 `pagoda-cli` 命令：
+
+```bash
+# 使用 pnpm
+pnpm add -g @pagoda-cli/core
+
+# 使用 npm
+npm install -g @pagoda-cli/core
+```
+
+验证安装：
+```bash
+npx pagoda-cli -v
+# 全局安装则直接运行
+pagoda-cli -v
+```
+
 ### 3. 创建核心配置文件
 
 在项目根目录创建 `pagoda.config.mjs`，这是驱动整个工具链的核心。
@@ -43,7 +60,7 @@ import { defineConfig } from '@pagoda-cli/core';
 export default defineConfig({
   name: 'my-ui-lib',
   build: {
-    // 指定包管理器用于依赖安装和发布
+    // 包管理器，默认为 'yarn'，可选 'pnpm' | 'npm' | 'yarn'
     packageManager: 'pnpm',
   },
   site: {
@@ -76,7 +93,19 @@ export default defineConfig({
    <script setup>
    defineProps({ type: { type: String, default: 'default' } });
    </script>
-   <style scoped>.my-button { padding: 8px; }</style>
+   <style scoped>
+   .my-button {
+     padding: 8px 16px;
+     border-radius: 4px;
+     border: 1px solid #ccc;
+     cursor: pointer;
+   }
+   .my-button.primary {
+     background-color: #409eff;
+     color: white;
+     border-color: #409eff;
+   }
+   </style>
    ```
 
 2. **组件入口 (`src/button/index.ts`)**:
@@ -97,6 +126,17 @@ export default defineConfig({
    ::::
    ```
    *注意：`:::demo-preview basic :::` 会自动寻找并渲染同目录 `demo/basic.vue` 文件。*
+
+4. **创建 Demo 文件 (`src/button/demo/basic.vue`)**:
+   ```vue
+   <template>
+     <div style="display: flex; gap: 8px;">
+       <my-button>默认按钮</my-button>
+       <my-button type="primary">主要按钮</my-button>
+     </div>
+   </template>
+   ```
+   *必须放在 `demo/` 目录下，文件名与 Markdown 中 `:::demo-preview` 引用的名称一致（不含 `.vue` 后缀）。*
 
 ### 5. 注册全局组件
 
@@ -138,3 +178,12 @@ export default {
 pnpm run site
 ```
 此命令会启动本地文档站（默认 `localhost:5173`），你可以在此实时预览组件修改并编写文档。
+
+### 7. 开发流程命令详解
+
+| 命令 | 说明 |
+|------|------|
+| `pagoda-cli site` | 启动文档站开发服务器，支持热更新预览组件 |
+| `pagoda-cli build` | 构建组件库产物，生成 ESM (`es/`)、CommonJS (`lib/`) 和 UMD (`lib/*.min.js`) 三种格式 |
+| `pagoda-cli build-site` | 构建文档站静态文件到 `site-dist/`，可直接部署到 GitHub Pages 等静态托管平台 |
+| `pagoda-cli release` | 交互式发布：选择语义化版本 → 自动更新 `package.json` 版本号 → 生成 Changelog → 提交代码并打 Git Tag → 发布到 npm |

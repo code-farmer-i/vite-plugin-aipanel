@@ -31,6 +31,12 @@ description: "当用户在使用 Pagoda CLI 遇到安装失败、构建报错、
   npm install
   ```
 
+**如何升级 CLI？**
+- 重新安装最新版本：
+  ```bash
+  npm install -g @pagoda-cli/core@latest
+  ```
+
 ### 2. 构建与编译问题
 
 **类型声明文件 (`.d.ts`) 没有生成？**
@@ -41,6 +47,16 @@ description: "当用户在使用 Pagoda CLI 遇到安装失败、构建报错、
 **构建报错 "Cannot find module" 或样式编译失败？**
 - 检查相对路径是否正确。
 - 检查是否安装了对应的样式预处理器（`less` 或 `sass`）。
+
+**UMD 构建体积过大？**
+- 配置 `thirdPartyComponents` 排除第三方库（如 Vue、Element Plus），避免重复打包。
+- 如果不需要 UMD 格式，可直接禁用：`build: { umd: false }`。
+- 使用代码分割减少单文件体积。
+
+**如何查看构建产物？**
+- `es/` 目录：ES Module 产物
+- `lib/` 目录：CommonJS 和 UMD 产物
+- `site-dist/` 目录：文档站静态产物
 
 ### 3. 文档站与 Demo 问题
 
@@ -70,7 +86,17 @@ description: "当用户在使用 Pagoda CLI 遇到安装失败、构建报错、
 - 确认 Demo 组件放在组件的 `demo/` 子目录下。
 - 确认 Markdown 中 `:::demo-preview` 语法内引用的 Demo 名称不带 `.vue` 后缀。
 
+**移动端模拟器不工作？**
+- 确认 `simulator.url` 配置正确。
+- 确认文档站 `site` 目录配置正确（默认为项目根目录下的 `site/` 目录）。
+- 检查是否存在跨域问题。
+
 ### 4. 配置文件扩展 (Vite 配置)
+
+**配置文件不生效？**
+- 确认文件名为 `pagoda.config.mjs`（不是 `.js` 或 `.ts`）。
+- 确认文件位于项目根目录。
+- 检查语法是否正确，确保使用 `export default defineConfig({...})` 导出。
 
 **如何扩展 Vite 配置或配置路径别名？**
 在根目录下的 `pagoda.config.mjs` 中进行配置：
@@ -117,3 +143,17 @@ export default defineConfig({
     }
   }
   ```
+
+**如何撤回已发布的版本？**
+- npm 不支持删除已发布版本，只能标记废弃：
+  ```bash
+  npm deprecate my-ui@1.0.0 "此版本存在问题，请升级到 1.0.1"
+  ```
+- 然后发布新版本来修复问题。
+
+### 6. 开发问题
+
+**热更新不工作？**
+- 确认使用的是 `pagoda-cli site`（组件库开发）或 `pagoda-cli dev`（JS 库开发）。
+- 确认修改的文件在监听目录内（默认为 `src/` 和 `site/`）。
+- 检查是否有语法错误导致编译失败，查看终端输出。

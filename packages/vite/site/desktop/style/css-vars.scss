@@ -67,8 +67,9 @@
   --pd-doc-md-border-color: rgba(255, 255, 255, 0.06);
   --pd-doc-md-table-border-color: rgba(255, 255, 255, 0.06);
 
-  --pd-doc-md-code-block-bg-color: #0f0f1a;
-  --pd-doc-md-code-block-text-color: #cbd5e1;
+  --pd-doc-md-code-block-bg-color: #14141f;
+  --pd-doc-md-code-block-text-color: #f1f5f9;
+  --pd-doc-md-code-block-border-color: rgba(255, 255, 255, 0.1);
   --pd-doc-md-code-block-border-radius: 12px;
   --pd-doc-md-code-tag-bg-color: rgba(179, 154, 255, 0.12);
   --pd-doc-md-code-tag-text-color: #d4c5ff;
@@ -196,6 +197,10 @@
 .pagoda-doc-markdown-body {
   background: transparent;
 }
+.pagoda-doc-markdown-code-block-wrapper {
+  background: var(--pd-doc-md-code-block-bg-color) !important;
+  border-color: var(--pd-doc-md-code-block-border-color) !important;
+}
 .pagoda-doc-markdown-body .pagoda-doc-md-h2 {
   border-top-color: rgba(255, 255, 255, 0.06);
 }
@@ -222,12 +227,12 @@
   font-family: var(--pd-doc-font-family-mono);
 }
 .pagoda-doc-markdown-body pre {
-  background: #0f0f1a;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  background: var(--pd-doc-md-code-block-bg-color);
+  border: 1px solid var(--pd-doc-md-code-block-border-color);
+  border-radius: var(--pd-doc-md-code-block-border-radius);
 }
 .pagoda-doc-markdown-body pre .pagoda-doc-md-code {
-  color: #cbd5e1;
+  color: var(--pd-doc-md-code-block-text-color);
   background: transparent;
 }
 .pagoda-doc-markdown-body .pagoda-doc-md-hr {

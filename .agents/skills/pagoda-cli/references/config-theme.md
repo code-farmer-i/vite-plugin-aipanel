@@ -13,15 +13,15 @@ Pagoda CLI 文档站大量使用了 CSS 变量（Custom Properties）来定义�
 
 ### 1. 修改主色调及内置变量
 
-最常见的定制是修改主色调 `--pd-doc-primary-base`。默认情况下，你只需要覆盖这个基础色变量，其余相关的颜色（如各亮/暗阶梯颜色）会自动通过 CSS `color-mix()` 计算。建议在 `site/desktop/style/css-vars.scss` 或自定义样式入口中进行覆盖：
+最常见的定制是修改主色调 `--pd-doc-primary`。默认情况下，你只需要覆盖这个基础色变量，其余相关的颜色（如各亮/暗阶梯颜色）会自动通过 CSS `color-mix()` 计算。建议在 `site/desktop/style/css-vars.scss` 或自定义样式入口中进行覆盖：
 
 ```css
 :root {
   /* 修改主品牌色为蓝色 */
-  --pd-doc-primary-base: #409eff;
+  --pd-doc-primary: #409eff;
   
   /* 只有在必要时才需要手动覆盖以下变量 */
-  /* --pd-doc-primary: var(--pd-doc-primary-base); */
+  /* --pd-doc-primary: #409eff; */
   /* --pd-doc-white: #fff; */
   /* --pd-doc-black: #000; */
   
@@ -156,7 +156,26 @@ export default defineConfig({
 }
 ```
 
-### 6. 引入自定义样式
+> **提示**：CLI 已内置了一套参考 VSCode 的暗黑模式默认变量。如果不满足需求，你可以通过覆盖变量的方式自定义。
+
+### 6. 代码高亮 CDN 引入
+
+通过 `site.head.html` 引入自定义高亮主题 CDN：
+
+```js
+// pagoda.config.mjs
+export default defineConfig({
+  site: {
+    head: {
+      html: `
+        <link rel="stylesheet" href="https://highlightjs.org/static/demo/styles/atom-one-dark.css">
+      `,
+    },
+  },
+});
+```
+
+### 7. 引入自定义样式
 
 确保将覆盖了 CSS 变量的文件引入到文档站的样式中（支持 `.scss`, `.less`, `.css` 等）：
 

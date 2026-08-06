@@ -78,6 +78,94 @@ export default defineConfig({
 }
 ```
 
+### 4. web-types.json 输出格式
+
+构建生成的 `web-types.json` 完整结构如下：
+
+```json
+{
+  "framework": "vue",
+  "name": "my-component-library",
+  "version": "1.0.0",
+  "contributions": {
+    "html": {
+      "js-types-syntax": "typescript",
+      "tags": [
+        {
+          "name": "my-button",
+          "description": "按钮组件",
+          "attributes": [
+            {
+              "name": "type",
+              "description": "按钮类型",
+              "value": {
+                "type": "string",
+                "kind": "enum",
+                "enum": ["default", "primary", "success", "warning", "danger"]
+              },
+              "default": "default"
+            },
+            {
+              "name": "size",
+              "description": "按钮尺寸",
+              "value": {
+                "type": "string",
+                "kind": "enum",
+                "enum": ["small", "medium", "large"]
+              },
+              "default": "medium"
+            },
+            {
+              "name": "disabled",
+              "description": "是否禁用",
+              "value": {
+                "type": "boolean"
+              },
+              "default": "false"
+            }
+          ],
+          "events": [
+            {
+              "name": "click",
+              "description": "点击按钮时触发"
+            }
+          ],
+          "slots": [
+            {
+              "name": "default",
+              "description": "按钮内容"
+            },
+            {
+              "name": "icon",
+              "description": "图标插槽"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+**结构要点：**
+- `attributes[].value.kind` 为 `"enum"` 时，`enum` 数组列出所有可选值，`default` 指定默认值
+- `attributes[].value.kind` 为 `"boolean"` 或 `"string"`（普通类型）时，`default` 为字符串形式
+- 每个标签包含 `attributes`（Props）、`events`（Events）、`slots`（Slots）三个数组
+
+### 5. CDN 字段配置
+
+如果组件库同时发布到 CDN，在 `package.json` 中配置 `jsdelivr` 和 `unpkg` 字段：
+
+```json
+{
+  "name": "my-component-library",
+  "version": "1.0.0",
+  "web-types": "lib/web-types.json",
+  "jsdelivr": "lib/my-lib.min.js",
+  "unpkg": "lib/my-lib.min.js"
+}
+```
+
 ## 注意事项与排错
 
 1. **Web Types 没有生成或内容为空？**
@@ -86,5 +174,5 @@ export default defineConfig({
    - 检查 Markdown 表格格式是否合法。
 2. **IDE 无法提示？**
    - 检查 `package.json` 中是否包含了 `"web-types": "lib/web-types.json"`。
-   - 对于 WebStorm：通常在安装依赖后会自动识别。
+   - 对于 WebStorm：打开 Settings → Languages & Frameworks → JavaScript → Libraries → 添加 `lib/web-types.json` → 重启 IDE。
    - 对于 VS Code：需要安装 Vue 官方扩展（Volar），它会自动读取项目依赖中的 `web-types` 配置。

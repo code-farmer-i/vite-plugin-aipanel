@@ -32,7 +32,9 @@ export default defineConfig({
       'zh-CN': {
         label: '中文', // 语言切换器中显示的名称
         title: '我的组件库',
+        subtitle: '轻量级 Vue 3 组件库', // 副标题
         description: '一个 Vue 3 组件库',
+        headerTitle: 'MyUI', // 头部品牌标题
         logo: '/logo-zh.png',
         nav: [
           {
@@ -50,7 +52,9 @@ export default defineConfig({
       'en-US': {
         label: 'English',
         title: 'My Component Library',
+        subtitle: 'Lightweight Vue 3 Component Library',
         description: 'A Vue 3 component library',
+        headerTitle: 'MyUI',
         logo: '/logo-en.png',
         nav: [
           {
@@ -73,6 +77,8 @@ export default defineConfig({
 **关键点：**
 - `defaultLang` 决定了站点的默认语言（如不带语言前缀的路由对应哪种语言）。
 - `label` 字段用于渲染文档站顶部的语言切换下拉菜单。
+- `subtitle` 副标题，显示在站点标题下方。
+- `headerTitle` 头部品牌标题，显示在页面顶部 logo 区域。
 - 可以在不同语言下提供不同的 `title`、`logo` 和 `nav`（导航菜单）。
 
 ### 2. 多语言文档组织结构
@@ -100,6 +106,50 @@ site/desktop/views/guide/
 1. 记录当前文档路由。
 2. 将路由中的语言前缀替换为目标语言前缀（如 `/components/button` 变为 `/en-US/components/button`）。
 3. 自动跳转到对应语言页面。
+
+### 4. 路由映射规则
+
+多语言文档的实际路由由**语言前缀 + 文件路径**组合而成。默认语言不需要前缀：
+
+| 语言 | 文件路径 | 实际路由 |
+|------|---------|----------|
+| zh-CN (默认) | `src/Button/README.md` | `/components/button` |
+| en-US | `src/Button/README.en-US.md` | `/en-US/components/button` |
+| zh-CN (默认) | `site/desktop/views/guide/intro.md` | `/guide/intro` |
+| en-US | `site/desktop/views/guide/intro.en-US.md` | `/en-US/guide/intro` |
+
+### 5. docsRoot 配置
+
+`docsRoot` 决定文档站首页默认展示的视图路径，通常设置为 `'components'`：
+
+```javascript
+site: {
+  defaultLang: 'zh-CN',
+  docsRoot: 'components',
+  locales: { /* ... */ }
+}
+```
+
+### 6. 外部链接配置 (links)
+
+每个语言可以配置 `links` 数组，用于在导航栏中显示外部链接（如 PC 端/移动端产品线切换）。`active: true` 标记当前选中的链接：
+
+```javascript
+locales: {
+  'zh-CN': {
+    links: [
+      { label: 'PC 端', link: 'https://ui.example.com', active: true },
+      { label: '移动端', link: 'https://mobile.example.com' },
+    ],
+  },
+  'en-US': {
+    links: [
+      { label: 'PC', link: 'https://ui.example.com', active: true },
+      { label: 'Mobile', link: 'https://mobile.example.com' },
+    ],
+  },
+}
+```
 
 ## 最佳实践与注意事项
 

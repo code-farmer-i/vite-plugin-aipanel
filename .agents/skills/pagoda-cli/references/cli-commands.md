@@ -9,6 +9,16 @@ Pagoda CLI 提供了一系列内置命令来覆盖组件库开发的完整生命
 
 ## Usage
 
+### 全局选项
+
+```bash
+# 查看帮助信息
+pagoda-cli --help
+
+# 查看版本号
+pagoda-cli --version
+```
+
 当用户需要执行具体的工程化操作（如打包、启动服务、清理缓存等）时，请参考以下命令及其适用场景：
 
 ### 1. 启动文档站开发服务器 (`site`)
@@ -60,18 +70,23 @@ pagoda-cli build [options]
 
 **用法**：
 ```bash
-pagoda-cli release
+pagoda-cli release [options]
 ```
+**选项**：
+- `--tag <tag>`: 指定发布的 npm 标签（例如 `beta`、`next`）。
+
 **执行流程**：
 1. **显示当前信息**: 显示当前包名和版本号。
 2. **选择版本**: 交互式选择要发布的版本（预设版本如 patch、minor、major 及其 beta 版本，或自定义版本号）。
 3. **检查登录**: 检查 npm 登录状态，未登录则自动触发登录流程。
 4. **更新版本**: 更新 `package.json` 中的版本号。
 5. **运行钩子**: 执行 `beforeRelease` 钩子命令（如果配置）。
-6. **执行构建**: 运行 `pagoda-cli build`。
-7. **生成日志**: 生成变更日志（Changelog）。
-8. **Git 提交**: 提交文件、创建标签（Tag）并推送到远端。
-9. **发布包**: 执行 `npm publish`，并根据配置执行 `afterRelease` 钩子。
+6. **构建**: 执行 `build` 命令（如果 `package.json` 中存在 build 脚本）。
+7. **发布**: 将包发布到 npm 仓库。
+8. **提交**: 提交变更并自动打上 Git Tag。
+   - 单包仓库：tag 格式为 `v{version}`（如 `v1.0.0`）
+   - Monorepo 子包：tag 格式为 `{pkgName}@v{version}`（如 `@pagoda/cli@v1.0.0`），仅提交当前包目录的变更
+9. **推送**: 推送到远程 Git 仓库（含 tag）。
 
 ### 4. 纯 JS 库开发模式 (`dev`)
 
@@ -96,10 +111,24 @@ pagoda-cli dev
 ```bash
 pagoda-cli build-site
 ```
-**场景**：需要将组件库的官方文档部署到 GitHub Pages、Vercel 或 Nginx 等静态托管服务时。默认输出至 `site-dist` 目录。
+**场景**：需要将组件库的官方文档部署到 GitHub Pages、Vercel 或 Nginx 等静态托管服务时。默认输出至 `site-dist` 目录，可通过 `site.build.outputDir` 修改输出路径。
 
 ### 6. 代码质量与清理
 
-- **`pagoda-cli lint`**：运行 ESLint 检查代码规范。
-- **`pagoda-cli commit-lint`**：检查 Git Commit Message 是否符合 Angular 规范扩展（支持 `fix`, `feat`, `docs`, `perf`, `test`, `types`, `style`, `build`, `chore`, `release`, `refactor`, `breaking change`, `Merge` 等类型）。
-- **`pagoda-cli clean`**：清理所有构建产物（`dist`, `es`, `lib`）和临时缓存文件，用于解决奇怪的构建缓存问题。
+- **`pagoda-cli lint`**：运行 ESLint 检查代码规范。默认对 `src` 目录下的源文件执行检查，如果存在可自动修复的问题，ESLint 会自动尝试修复。
+- **`pagoda-cli commit-lint`**：检查 Git Commit Message 是否符合规范（基于 Angular 规范扩展），格式要求为 `<type>(<scope>): <subject>`。
+
+  **支持的提交类型**：`fix`、`feat`、`docs`、`perf`、`test`、`types`、`style`、`build`、`chore`、`release`、`refactor`、`breaking change`、`Merge`。
+
+  **Husky 集成配置**：
+  ```json
+  {
+    "husky": {
+      "hooks": {
+        "commit-msg": "pagoda-cli commit-lint $1"
+      }
+    }
+  }
+  ```
+
+- **`pagoda-cli clean`**：清理所有构建产物（`dist`、`es`、`lib`、`site-dist`）和临时缓存文件，用于解决奇怪的构建缓存问题。

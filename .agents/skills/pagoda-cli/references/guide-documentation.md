@@ -155,5 +155,13 @@ basic
 如果在文档中需要跳转到其他文档，使用 `<PagodaDocLinkToView>` 组件，避免整页刷新。
 
 ```html
-请参考 <PagodaDocLinkToView view="development/guide/component">组件开发规范</PagodaDocLinkToView> 了解更多。
+请参考 <PagodaDocLinkToView view="development/cli/commands">CLI 命令参考</PagodaDocLinkToView> 了解更多。
 ```
+
+**PagodaDocLinkToView 属性说明**：
+
+| 属性 | 说明 | 示例 |
+|------|------|------|
+| `view` | 目标页面路径标识，对应 `pagoda.config.mjs` 中的 nav 配置 | `"development/guide/component"` |
+| `hash` | 可选，跳转后的锚点哈希值 | `"#api"` 跳转到页面内 API 表格位置 |
+| `config` | 可选，额外的路由配置对象（如 query 参数等） | `{ query: { tab: 'props' } }` |

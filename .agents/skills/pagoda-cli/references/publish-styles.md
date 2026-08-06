@@ -79,6 +79,22 @@ module.exports = {
 2. **样式入口**：在 `lib/index.css` 或 `lib/index.less` 生成全量样式入口。
 3. **样式依赖映射**：CLI 会自动分析组件间的引用关系，并生成 `dist/my-lib.style-deps.json`。这确保了在按需加载（如配合 `unplugin-vue-components`）时，样式的加载顺序是正确的。
 
+**样式依赖映射 JSON 结构示例：**
+
+```json
+// dist/my-lib.style-deps.json
+{
+  "map": {
+    "Button": ["base", "icon"],
+    "Input": ["base", "icon"],
+    "Select": ["base", "icon", "Input", "Button"]
+  },
+  "sequence": ["base", "icon", "Button", "Input", "Select"]
+}
+```
+
+`map` 字段记录每个组件的样式依赖，`sequence` 字段则按正确加载顺序列出所有依赖模块。构建工具插件会根据此映射确保样式加载顺序正确。
+
 ### 按需加载与第三方组件库样式
 
 如果你的组件库基于其他 UI 库（如 Element Plus）二次封装，需要配置第三方样式解析器，以便在按需引入时正确加载底层样式：
@@ -101,6 +117,24 @@ export default defineConfig({
 });
 ```
 
+**Vant 组件库配置：**
+
+```javascript
+// pagoda.config.mjs
+export default defineConfig({
+  build: {
+    thirdPartyComponents: {
+      'vant': {
+        styleResolver: {
+          base: () => 'vant/lib/index.css',
+          component: (name) => `vant/lib/${name}/style`,
+        },
+      },
+    },
+  },
+});
+```
+
 ## 最佳实践与注意事项
 
 1. **共享样式变量**：在 Vue SFC 中，如果需要使用 Less/Sass 变量，建议在组件内的 `<style>` 中显式 `@import` 你的变量文件，不要依赖全局注入以保持模块独立性。
@@ -111,4 +145,57 @@ export default defineConfig({
    </style>
    ```
 2. **样式隔离**：强烈建议在组件开发中使用 `<style scoped>` 或 `<style module>` 防止样式污染。
+
+   **CSS Modules 用法**：使用 `<style module>` 后，类名会通过 `$style` 对象访问：
+   ```vue
+   <template>
+     <button :class="$style.button">
+       <slot />
+     </button>
+   </template>
+
+   <style module>
+   .button {
+     color: red;
+   }
+   </style>
+   ```
+
 3. **移除源文件优化**：如果你不希望在最终产物中保留原始的 `.less/.scss` 文件，可配置 `css.removeSourceFile: true`。
+
+## babel-plugin-import 按需加载
+
+配合 `babel-plugin-import` 实现样式按需加载：
+
+```javascript
+// babel.config.js
+module.exports = {
+  plugins: [
+    [
+      'import',
+      {
+        libraryName: 'my-component-library',
+        libraryDirectory: 'es',
+        style: true,  // 自动加载对应组件的样式文件
+      },
+    ],
+  ],
+};
+```
+
+## 常见问题
+
+### Q: 如何处理全局样式？
+
+A: 在 `site/desktop/style.js`（或 `site/mobile/style.js`）中导入全局样式文件：
+
+```js
+// site/desktop/style.js
+import './style/global.scss';
+```
+
+此文件中的样式会应用到整个文档站。
+
+### Q: CSS 加载顺序不正确？
+
+A: 使用 CLI 自动生成的样式依赖映射（`dist/my-lib.style-deps.json`）确保正确的加载顺序。CLI 会自动分析组件间的样式依赖关系，按需加载插件会根据此映射按 `sequence` 顺序加载样式。

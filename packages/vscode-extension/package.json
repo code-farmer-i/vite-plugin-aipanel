@@ -1,7 +1,7 @@
 {
   "name": "vite-plugin-opencode-assistant-vscode",
   "displayName": "OpenCode Assistant",
-  "version": "1.1.56",
+  "version": "1.1.57",
   "description": "为 OpenCode AI 提供 VS Code 原生格式化与诊断能力，通过 HTTP 桥接实现 formatOnSave、codeActionsOnSave 和 LSP 诊断的统一调度",
   "publisher": "vite-plugin-opencode-assistant",
   "private": true,

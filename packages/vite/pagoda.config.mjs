@@ -41,6 +41,7 @@ export default defineConfig({
           { title: "使用指南", view: "usage" },
         ],
       },
+      { title: "更新日志", view: "changelog" },
       { title: "常见问题", view: "faq" },
     ],
     build: {

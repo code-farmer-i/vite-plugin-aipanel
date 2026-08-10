@@ -65,7 +65,7 @@ export async function checkOpenCodeInstalled(): Promise<boolean> {
   return new Promise((resolve) => {
     log.debug("Checking if OpenCode is installed...");
 
-    const proc = spawn("opencode", ["--version"], { stdio: "ignore" });
+    const proc = spawn("opencode", ["--version"], { stdio: "ignore", shell: true });
 
     proc.on("close", (code) => {
       const installed = code === 0;
@@ -83,7 +83,7 @@ export async function checkOpenCodeInstalled(): Promise<boolean> {
 
 export function getOpenCodeVersion(): Promise<string | null> {
   return new Promise((resolve) => {
-    const proc = spawn("opencode", ["--version"], { stdio: "pipe" });
+    const proc = spawn("opencode", ["--version"], { stdio: "pipe", shell: true });
     let output = "";
 
     proc.stdout?.on("data", (data) => {

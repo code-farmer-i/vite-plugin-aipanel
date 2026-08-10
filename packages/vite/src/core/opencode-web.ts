@@ -121,6 +121,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     env,
     reject: false,
     cleanup: true,
+    shell: true,
   });
 
   proc.stdout?.on("data", (data) => {

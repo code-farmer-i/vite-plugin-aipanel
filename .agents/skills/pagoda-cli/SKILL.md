@@ -3,11 +3,11 @@ name: pagoda-cli
 description: "提供 Pagoda CLI 的配置、命令、常见问题排查以及组件/JS库开发指南。Invoke when user works with Pagoda CLI, builds components/libraries, writes docs, or encounters CLI errors."
 metadata:
   author: Agent
-  version: "2026-04-02"
-  source: Generated from packages/pagoda-cli/docs/desktop/views
+  version: "2026-08-07"
+  source: Generated from packages/pagoda-cli/site
 ---
 
-> The skill is based on pagoda-cli, generated at 2026-04-02.
+> The skill is based on pagoda-cli, generated at 2026-08-07.
 
 本 Skill 集合提供了基于 Pagoda CLI 开发 Vue 组件库和纯 JS/TS 库的全面指南。涵盖了项目配置、组件开发规范、Markdown 文档编写以及常见异常排查等内容。
 
@@ -53,7 +53,7 @@ metadata:
 | 模拟器配置 | Pagoda CLI 支持桌面端文档站与移动端模拟器的联动预览。... | [config-simulator](references/config-simulator.md) |
 | 站点结构 | 了解 Pagoda CLI 文档站的目录结构和文件组织方式。... | [config-site-structure](references/config-site-structure.md) |
 | site 文档站配置 | 详细说明 `site` 配置项，控制文档站的内容和行为。... | [config-site](references/config-site.md) |
-| 主题定制 | Pagoda CLI 支持自定义文档站主题样式。... | [config-theme](references/config-theme.md) |
+| 主题定制 | Pagoda CLI 采用三层 CSS 变量架构，提供 100+ 个可定制变量，涵盖排版、间距比例尺、圆角、过渡、z-index、Markdown 专项、移动端专项等。 | [config-theme](references/config-theme.md) |
 
 ## Faq
 

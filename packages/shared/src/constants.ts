@@ -2,7 +2,7 @@
  * @fileoverview OpenCode 插件常量定义
  */
 
-import type { OpenCodeLanguage, OpenCodeSettings } from "./types";
+import type { OpenCodeOptions, OpenCodeLanguage, OpenCodeSettings } from "./types";
 
 /** ==================== 网络相关 ==================== */
 
@@ -230,17 +230,17 @@ export type VueDevtoolsAction = (typeof VUE_DEVTOOLS_ACTIONS)[keyof typeof VUE_D
 /** ==================== 默认配置 ==================== */
 
 /** 默认插件配置 */
-export const DEFAULT_CONFIG = {
+export const DEFAULT_CONFIG: Partial<OpenCodeOptions> = {
   enabled: true,
   webPort: DEFAULT_WEB_PORT,
   hostname: DEFAULT_HOSTNAME,
-  theme: "auto" as const,
+  theme: "dark",
   open: false,
   verbose: false,
   hotkey: "ctrl+k",
   warmupChromeMcp: true,
   chromeDevtoolsPort: CHROME_DEVTOOLS_PORT,
-  displayMode: "bubble" as const,
+  displayMode: "extension",
   splitMode: undefined as
     | {
         width?: number;

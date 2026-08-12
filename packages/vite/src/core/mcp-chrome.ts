@@ -75,6 +75,37 @@ export function extractEvalValue(text: string | undefined): string | undefined {
 type PageIdResult = { ok: true; pageId: number } | { ok: false; error: string };
 
 /**
+ * 校验 pageId 是否属于项目页面
+ *
+ * 调用 list_pages → 过滤项目页面 → 检查 pageId 是否在范围内。
+ * 供 MCP 代理层和 Vue DevTools 端点共用。
+ */
+export async function validatePageId(
+  mcp: McpProxy,
+  pageId: number,
+  projectOrigins: string[],
+): Promise<
+  | { valid: true; projectPages: PageInfo[] }
+  | { valid: false; error: string; projectPages: PageInfo[] }
+> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const listResult: any = await mcp.callChromeDevTool("list_pages", {});
+  const text: string | undefined = listResult?.result?.content?.[0]?.text;
+  const allPages = text ? parseListPages(text) : [];
+  const projectPages = allPages.filter((p) => isProjectPage(p.url, projectOrigins));
+  const isValid = projectPages.some((p) => p.pageId === pageId);
+
+  if (!isValid) {
+    return {
+      valid: false,
+      error: `pageId ${pageId} 无效或非项目页面，请获取有效页面 ID`,
+      projectPages,
+    };
+  }
+  return { valid: true, projectPages };
+}
+
+/**
  * 通过 MCP 解析当前页面对应的 Chrome DevTools pageId
  *
  * 策略：

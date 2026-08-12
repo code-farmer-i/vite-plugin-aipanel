@@ -16,7 +16,7 @@ export interface CustomTool {
 
 /** 所有工具共用的 pageId 参数定义 */
 const PAGE_ID_PROP = {
-  pageId: { type: "number", description: "目标页面 ID（从 devtools_list_pages 获取）" },
+  pageId: { type: "number", description: "目标页面 ID" },
 } as const;
 
 /** 为工具添加 pageId 必填参数 */

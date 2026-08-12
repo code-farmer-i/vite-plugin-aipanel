@@ -25,6 +25,6 @@ export function setupMiddlewares(server: ViteDevServer, ctx: EndpointContext, mc
   setupLogsEndpoint(server);
   if (mcp) {
     setupMcpEndpoint(server, mcp, () => ctx.getPageContext());
-    setupVueDevtoolsEndpoint(server, mcp, () => ctx.getPageContext());
+    setupVueDevtoolsEndpoint(server, mcp);
   }
 }

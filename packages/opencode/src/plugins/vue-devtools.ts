@@ -13,6 +13,11 @@ if (process.env.OPENCODE_VERBOSE === "1") {
 
 const log = createLogger("OpenCodePluginVueDevtools");
 
+/** pageId 参数定义（所有工具共用） */
+const PAGE_ID_ARG = {
+  pageId: tool.schema.number().describe("目标页面 ID"),
+};
+
 /** 通用 HTTP 调用封装 */
 async function callVueDevtoolsApi(
   apiUrl: string,
@@ -50,25 +55,26 @@ export default {
     // ============================================================
 
     const vueDevtoolsGetApps = tool({
-      description: `获取当前页面所有 Vue 应用实例列表。
+      description: `获取指定页面所有 Vue 应用实例列表。
 
 **何时使用**：
 - 排查微前端/多实例场景下操作的是哪个应用
 - 切换活跃应用前查看有哪些可用`,
-      args: {},
-      async execute() {
-        const result = await callVueDevtoolsApi(apiUrl, VUE_DEVTOOLS_ACTIONS.GET_APPS);
+      args: { ...PAGE_ID_ARG },
+      async execute(args) {
+        const result = await callVueDevtoolsApi(apiUrl, VUE_DEVTOOLS_ACTIONS.GET_APPS, args);
         return JSON.stringify(result);
       },
     });
 
     const vueDevtoolsSetActiveApp = tool({
-      description: `切换当前活跃的 Vue 应用实例。后续所有 vue_devtools_* 工具都操作这个应用。`,
+      description: `切换指定页面的活跃 Vue 应用实例。后续所有 vue_devtools_* 工具都操作这个应用。`,
       args: {
+        ...PAGE_ID_ARG,
         appId: tool.schema.string().describe("应用 ID（从 vue_devtools_get_apps 获取）"),
       },
       async execute(args) {
-        await callVueDevtoolsApi(apiUrl, VUE_DEVTOOLS_ACTIONS.TOGGLE_APP, { appId: args.appId });
+        await callVueDevtoolsApi(apiUrl, VUE_DEVTOOLS_ACTIONS.TOGGLE_APP, args);
         return `已切换到应用 ${args.appId}`;
       },
     });
@@ -78,7 +84,7 @@ export default {
     // ============================================================
 
     const vueDevtoolsGetComponentTree = tool({
-      description: `获取当前活跃 Vue 应用的完整组件树。
+      description: `获取指定页面当前活跃 Vue 应用的完整组件树。
 
 **何时使用**：
 - 了解页面组件层级结构
@@ -86,15 +92,19 @@ export default {
 - 排查组件未渲染问题
 
 **返回**：组件树 [{ id, name, children, file, ... }]`,
-      args: {},
-      async execute() {
-        const result = await callVueDevtoolsApi(apiUrl, VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_TREE);
+      args: { ...PAGE_ID_ARG },
+      async execute(args) {
+        const result = await callVueDevtoolsApi(
+          apiUrl,
+          VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_TREE,
+          args,
+        );
         return JSON.stringify(result);
       },
     });
 
     const vueDevtoolsFindComponent = tool({
-      description: `在组件树中按名称搜索组件，返回匹配组件的 nodeId 列表。
+      description: `在指定页面的组件树中按名称搜索组件，返回匹配组件的 nodeId 列表。
 
 **何时使用**：
 - 不知道组件的 nodeId，通过名称快速定位
@@ -102,10 +112,15 @@ export default {
 
 **返回**：[{ nodeId, name }] 匹配列表`,
       args: {
+        ...PAGE_ID_ARG,
         name: tool.schema.string().describe("组件名称（支持部分匹配，不区分大小写）"),
       },
       async execute(args) {
-        const tree = await callVueDevtoolsApi(apiUrl, VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_TREE);
+        const tree = await callVueDevtoolsApi(
+          apiUrl,
+          VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_TREE,
+          args,
+        );
         const text = JSON.stringify(tree);
         const searchName = args.name.toLowerCase();
 
@@ -146,14 +161,17 @@ export default {
 - 检查 computed 计算结果
 - 查看 attrs / events / inject / provide / template refs`,
       args: {
+        ...PAGE_ID_ARG,
         nodeId: tool.schema
           .string()
           .describe("组件节点 ID（从 vue_devtools_get_component_tree 获取）"),
       },
       async execute(args) {
-        const result = await callVueDevtoolsApi(apiUrl, VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_STATE, {
-          nodeId: args.nodeId,
-        });
+        const result = await callVueDevtoolsApi(
+          apiUrl,
+          VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_STATE,
+          args,
+        );
         return result as string;
       },
     });
@@ -161,15 +179,14 @@ export default {
     const vueDevtoolsGetComponentRenderCode = tool({
       description: `获取组件的渲染函数源码。`,
       args: {
+        ...PAGE_ID_ARG,
         nodeId: tool.schema.string().describe("组件节点 ID"),
       },
       async execute(args) {
         const result = await callVueDevtoolsApi(
           apiUrl,
           VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_RENDER_CODE,
-          {
-            nodeId: args.nodeId,
-          },
+          args,
         );
         return result as string;
       },
@@ -186,9 +203,9 @@ export default {
 - 排查路由跳转问题
 - 查看当前路由 path/params/query/hash
 - 确认路由守卫和 matched 记录`,
-      args: {},
-      async execute() {
-        const result = await callVueDevtoolsApi(apiUrl, VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO);
+      args: { ...PAGE_ID_ARG },
+      async execute(args) {
+        const result = await callVueDevtoolsApi(apiUrl, VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO, args);
         const parsed = typeof result === "string" ? JSON.parse(result) : result;
         const data = (parsed ?? {}) as { currentRoute?: unknown; routes?: unknown };
         return JSON.stringify(data.currentRoute ?? null);
@@ -202,9 +219,9 @@ export default {
 - 查看所有已注册路由
 - 确认路由配置是否正确
 - 查看路由嵌套关系`,
-      args: {},
-      async execute() {
-        const result = await callVueDevtoolsApi(apiUrl, VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO);
+      args: { ...PAGE_ID_ARG },
+      async execute(args) {
+        const result = await callVueDevtoolsApi(apiUrl, VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO, args);
         const parsed = typeof result === "string" ? JSON.parse(result) : result;
         const data = (parsed ?? {}) as { currentRoute?: unknown; routes?: unknown };
         return JSON.stringify(data.routes ?? null);

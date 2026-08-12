@@ -10,6 +10,7 @@ import {
   resolveChromePageId,
   getProjectOrigins,
   isProjectPage,
+  validatePageId,
 } from "../core/mcp-chrome";
 import { CUSTOM_TOOLS, TOOL_MAP } from "../core/mcp-tools";
 
@@ -297,35 +298,23 @@ async function handleDevTool(
     // 提取并校验 pageId
     const pageId = args["pageId"];
     if (typeof pageId !== "number") {
-      sendMcpError(
-        res,
-        id,
-        -32000,
-        "缺少 pageId 参数，请先调用 devtools_list_pages 获取可用页面列表",
-        mcp.sessionId,
-      );
+      sendMcpError(res, id, -32000, "缺少 pageId 参数，请先获取页面 ID", mcp.sessionId);
       return;
     }
 
     // 实时验证 pageId 是否为项目页面
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const checkResult: any = await mcp.callChromeDevTool("list_pages", {});
-    const checkText: string | undefined = checkResult?.result?.content?.[0]?.text;
-    const checkPages = checkText ? parseListPages(checkText) : [];
-    const projectPages = checkPages.filter((p) => isProjectPage(p.url, projectOrigins));
-    const isValid = projectPages.some((p) => p.pageId === pageId);
+    const validation = await validatePageId(mcp, pageId, projectOrigins);
 
     log.debug("handleDevTool validation", {
       pageId,
-      totalChromePages: checkPages.length,
-      projectPages: projectPages.length,
-      projectPageIds: projectPages.map((p) => p.pageId),
+      projectPages: validation.projectPages.length,
+      projectPageIds: validation.projectPages.map((p) => p.pageId),
       origins: projectOrigins,
-      isValid,
+      isValid: validation.valid,
     });
 
-    if (!isValid) {
-      sendMcpError(res, id, -32000, "pageId 无效或非项目页面", mcp.sessionId);
+    if (!validation.valid) {
+      sendMcpError(res, id, -32000, validation.error, mcp.sessionId);
       return;
     }
 

@@ -5,24 +5,14 @@
 import type { ViteDevServer } from "vite";
 import { createLogger } from "@vite-plugin-opencode-assistant/shared/node";
 import type { McpProxy } from "../core/mcp-proxy";
-import type { PageContext } from "@vite-plugin-opencode-assistant/shared";
 import { VUE_DEVTOOLS_ACTIONS } from "@vite-plugin-opencode-assistant/shared";
-import {
-  parseListPages,
-  resolveChromePageId,
-  getProjectOrigins,
-  isProjectPage,
-} from "../core/mcp-chrome";
+import { getProjectOrigins, validatePageId } from "../core/mcp-chrome";
 
 const log = createLogger("Endpoints:VueDevtools");
 
 export const VUE_DEVTOOLS_API_PATH = "/__opencode_vue_devtools__";
 
-export function setupVueDevtoolsEndpoint(
-  server: ViteDevServer,
-  mcp: McpProxy,
-  getPageContext: () => PageContext,
-) {
+export function setupVueDevtoolsEndpoint(server: ViteDevServer, mcp: McpProxy) {
   server.middlewares.use(VUE_DEVTOOLS_API_PATH, async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -48,13 +38,7 @@ export function setupVueDevtoolsEndpoint(
         args?: Record<string, unknown>;
       };
 
-      const result = await executeAction(
-        action,
-        args,
-        mcp,
-        getProjectOrigins(server),
-        getPageContext,
-      );
+      const result = await executeAction(action, args, mcp, getProjectOrigins(server));
       res.writeHead(200);
       res.end(JSON.stringify({ success: true, data: result }));
     } catch (e) {
@@ -70,11 +54,21 @@ async function executeAction(
   args: Record<string, unknown> | undefined,
   mcp: McpProxy,
   projectOrigins: string[],
-  getPageContext: () => PageContext,
 ): Promise<unknown> {
-  const pageId = await resolveActivePageId(mcp, projectOrigins, getPageContext);
-  if (pageId == null) {
-    throw new Error("未找到活跃的项目页面，请先在浏览器中打开页面");
+  // 从 args 中提取并校验 pageId
+  const pageId = args?.pageId;
+  if (typeof pageId !== "number") {
+    throw new Error("缺少 pageId 参数，请先获取页面 ID");
+  }
+
+  // 验证 pageId 是否为项目页面
+  const validation = await validatePageId(mcp, pageId, projectOrigins);
+  if (!validation.valid) {
+    log.error("pageId 无效或非项目页面", {
+      pageId,
+      projectPageIds: validation.projectPages.map((p) => p.pageId),
+    });
+    throw new Error(validation.error);
   }
 
   // 选中目标页面
@@ -108,35 +102,6 @@ function buildCallExpr(action: string, args?: Record<string, unknown>): string {
     default:
       throw new Error(`Unknown action: ${action}`);
   }
-}
-
-async function resolveActivePageId(
-  mcp: McpProxy,
-  projectOrigins: string[],
-  getPageContext: () => PageContext,
-): Promise<number | null> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const listResult: any = await mcp.callChromeDevTool("list_pages", {});
-  const text: string | undefined = listResult?.result?.content?.[0]?.text;
-  if (!text) return null;
-
-  const allPages = parseListPages(text);
-  const filtered = allPages.filter((p) => isProjectPage(p.url, projectOrigins));
-  if (filtered.length === 0) return null;
-
-  const pc = getPageContext();
-  const chromeSelectedPageId = allPages.find((p) => p.selected)?.pageId;
-  const resolved = await resolveChromePageId(
-    mcp,
-    pc.url,
-    pc.title,
-    projectOrigins,
-    pc.sessionId,
-    filtered,
-    chromeSelectedPageId,
-  );
-
-  return resolved.ok ? resolved.pageId : null;
 }
 
 function parseEvalResult(result: unknown): unknown {

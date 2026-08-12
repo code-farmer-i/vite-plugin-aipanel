@@ -76,6 +76,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     enableBlockOnError,
     verbose,
     enableLsp,
+    vueDevtoolsApiUrl,
   } = options;
   const stateDir = createStateDirectory(cwd);
 
@@ -99,6 +100,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     enableBlockOnError,
     verbose,
     enableLsp,
+    vueDevtoolsApiUrl,
     cwd,
   );
   const args = ["serve", "--port", String(port), "--hostname", hostname];
@@ -284,6 +286,7 @@ function buildProcessEnv(
   enableBlockOnError?: boolean,
   verbose?: boolean,
   enableLsp?: boolean,
+  vueDevtoolsApiUrl?: string,
   workspace?: string,
 ): Record<string, string> {
   const env: Record<string, string> = {
@@ -328,6 +331,11 @@ function buildProcessEnv(
   if (enableLsp) {
     env.OPENCODE_ENABLE_LINT = "1";
     log.debug("Set OPENCODE_ENABLE_LINT=1");
+  }
+
+  if (vueDevtoolsApiUrl) {
+    env.OPENCODE_VUE_DEVTOOLS_API_URL = vueDevtoolsApiUrl;
+    log.debug("Set OPENCODE_VUE_DEVTOOLS_API_URL", { vueDevtoolsApiUrl });
   }
 
   if (workspace) {

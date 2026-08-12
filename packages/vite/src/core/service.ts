@@ -65,6 +65,7 @@ export class OpenCodeService {
     logsApiUrl: string,
     viteOrigin: string,
     mcp: McpProxy,
+    vueDevtoolsApiUrl?: string,
   ): Promise<void> {
     if (this.isStarted && this.webProcess) {
       log.debug("Services already started, skipping");
@@ -164,6 +165,7 @@ Please install OpenCode first:
         enableBlockOnError: this.config.enableBlockOnError,
         verbose: this.config.verbose,
         enableLsp: this.config.enableLsp,
+        vueDevtoolsApiUrl,
       });
 
       timer.checkpoint("Web process started");

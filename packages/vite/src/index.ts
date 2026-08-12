@@ -1,6 +1,9 @@
 import type { Plugin, ViteDevServer } from "vite";
 import type http from "http";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import Inspector from "unplugin-vue-inspector/vite";
 import type { OpenCodeOptions, PageContext } from "@vite-plugin-opencode-assistant/shared";
 import {
@@ -11,13 +14,24 @@ import {
 } from "@vite-plugin-opencode-assistant/shared";
 import { createLogger, initProcessLogCapture } from "@vite-plugin-opencode-assistant/shared/node";
 
-import { setupMiddlewares, LOGS_API_PATH } from "./endpoints/index";
+import { setupMiddlewares, LOGS_API_PATH, VUE_DEVTOOLS_API_PATH } from "./endpoints/index";
 import { injectWidget } from "./core/injector";
 import { OpenCodeAPI } from "./core/api";
 import { OpenCodeService } from "./core/service";
 import { McpProxy } from "./core/mcp-proxy";
 import { resolveWidgetPath, resolveWidgetStylePath } from "./utils/paths";
 import { findGitRoot } from "./utils/system";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DEVTOOLS_BRIDGE_IMPORTEE = "virtual:opencode-vue-devtools-bridge";
+const DEVTOOLS_BRIDGE_QUERY = "opencode_vue_devtools_bridge";
+const BRIDGE_SOURCE_PATH = (() => {
+  const base = path.resolve(__dirname, "client/vue-devtools-bridge");
+  for (const ext of [".ts", ".mjs", ".cjs", ".js"]) {
+    if (fs.existsSync(base + ext)) return base + ext;
+  }
+  return base + ".ts"; // fallback
+})();
 
 export default function opencodePlugin(options: OpenCodeOptions = {}): Plugin[] {
   const plugins: Plugin[] = [];
@@ -48,6 +62,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
   let actualWebPort = config.webPort;
   let actualProxyPort = config.proxyPort ?? DEFAULT_PROXY_PORT;
   let projectRoot = "";
+  let vueDevtoolsApiUrl = "";
   const pageContext: PageContext = { url: "", title: "" };
   /** 非扩展模式使用 "default" 作为 key */
   const DEFAULT_TAB = "default";
@@ -179,6 +194,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         viteOrigin = `http://${viteHost}:${vitePort}`;
         const contextApiUrl = `http://${viteHost}:${vitePort}${CONTEXT_API_PATH}`;
         const logsApiUrl = `http://${viteHost}:${vitePort}${LOGS_API_PATH}`;
+        vueDevtoolsApiUrl = `http://${viteHost}:${vitePort}${VUE_DEVTOOLS_API_PATH}`;
 
         log.debug("Vite server ready", {
           vitePort,
@@ -186,6 +202,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
           viteOrigin,
           contextApiUrl,
           logsApiUrl,
+          vueDevtoolsApiUrl,
         });
 
         try {
@@ -199,6 +216,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
             logsApiUrl,
             viteOrigin,
             mcpProxy,
+            vueDevtoolsApiUrl,
           );
         } catch (e) {
           log.error("Failed to start services", { error: e });
@@ -224,6 +242,21 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
       timer.end("✓ Server configured");
     },
 
+    resolveId(id) {
+      if (id === DEVTOOLS_BRIDGE_IMPORTEE) {
+        return `${BRIDGE_SOURCE_PATH}?${DEVTOOLS_BRIDGE_QUERY}`;
+      }
+      return undefined;
+    },
+
+    load(id) {
+      const [filePath, query] = id.split("?", 2);
+      if (query === DEVTOOLS_BRIDGE_QUERY) {
+        return fs.readFileSync(filePath, "utf-8");
+      }
+      return undefined;
+    },
+
     transformIndexHtml(html) {
       const timer = log.timer("transformIndexHtml");
 
@@ -241,6 +274,8 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         verbose: config.verbose,
       });
 
+      // Vue DevTools 桥接脚本 — 通过 tags 注入，Vite 会处理 @id/ 前缀内部的 import
+
       // sessionStorage 注入唯一标识（同 Tab 刷新不变，新 Tab 重生成）
       const titleInject = `<script>
         (function () {
@@ -252,7 +287,19 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
       </script>`;
 
       timer.end();
-      return html.replace("</body>", `${titleInject}\n${widget}</body>`);
+      return {
+        html: html.replace("</body>", `${titleInject}\n${widget}</body>`),
+        tags: [
+          {
+            tag: "script",
+            injectTo: "head-prepend",
+            attrs: {
+              type: "module",
+              src: `/@id/${DEVTOOLS_BRIDGE_IMPORTEE}`,
+            },
+          },
+        ],
+      };
     },
   };
 }

@@ -197,6 +197,8 @@ export interface WebOptions {
   verbose?: boolean;
   /** 启用 LSP / 质量门禁（环境变量透传，控制 block-on-error 插件运行） */
   enableLsp?: boolean;
+  /** Vue DevTools API 地址（环境变量透传给 OpenCode 插件） */
+  vueDevtoolsApiUrl?: string;
 }
 
 /**

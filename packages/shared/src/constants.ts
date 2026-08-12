@@ -213,6 +213,20 @@ export const OPENCODE_CACHE_DIR = "node_modules/.cache/opencode";
 export const ENV_VSCODE_MODE = "OPENCODE_VSCODE_MODE";
 export const ENV_VSCODE_PORT = "OPENCODE_VSCODE_PORT";
 
+/** ==================== Vue DevTools API ==================== */
+
+/** Vue DevTools API action 名称 */
+export const VUE_DEVTOOLS_ACTIONS = {
+  GET_COMPONENT_TREE: "getComponentTree",
+  GET_COMPONENT_STATE: "getComponentState",
+  GET_COMPONENT_RENDER_CODE: "getComponentRenderCode",
+  GET_APPS: "getApps",
+  TOGGLE_APP: "toggleApp",
+  GET_ROUTER_INFO: "getRouterInfo",
+} as const;
+
+export type VueDevtoolsAction = (typeof VUE_DEVTOOLS_ACTIONS)[keyof typeof VUE_DEVTOOLS_ACTIONS];
+
 /** ==================== 默认配置 ==================== */
 
 /** 默认插件配置 */

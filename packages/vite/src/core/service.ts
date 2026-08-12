@@ -141,6 +141,7 @@ Please install OpenCode first:
         vitePort,
         mcpToken,
         this.config.enableLsp,
+        this.config.enablePrettier,
       );
 
       timer.checkpoint("Plugin setup complete");
@@ -165,6 +166,7 @@ Please install OpenCode first:
         enableBlockOnError: this.config.enableBlockOnError,
         verbose: this.config.verbose,
         enableLsp: this.config.enableLsp,
+        enablePrettier: this.config.enablePrettier,
         vueDevtoolsApiUrl,
       });
 

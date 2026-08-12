@@ -24,6 +24,7 @@ export function prepareOpenCodeRuntime(
   vitePort: number,
   mcpToken: string,
   enableLsp?: boolean,
+  enablePrettier?: boolean,
 ): string {
   const cacheDir = path.join(cwd, OPENCODE_CACHE_DIR);
 
@@ -38,7 +39,7 @@ export function prepareOpenCodeRuntime(
   const plugins = resolvePluginEntries(sourcePluginsDir);
 
   // 构建 formatter 配置（VS Code 扩展优先，CLI 降级）
-  const formatterConfig = buildFormatterConfig();
+  const formatterConfig = buildFormatterConfig(enablePrettier);
 
   const opencodeConfigPath = path.join(cacheDir, "opencode.json");
   const config: Record<string, unknown> = {
@@ -165,9 +166,15 @@ function resolvePackageDir(): string {
 
 /**
  * 构建 formatter 配置
- * 始终注册 format_bridge，VS Code 可用时优先，不可用时内置 prettier 兜底
+ * enablePrettier 为 false 时禁用所有格式化功能
+ * 否则注册 format_bridge，VS Code 可用时优先，不可用时内置 prettier 兜底
  */
-function buildFormatterConfig(): boolean | Record<string, unknown> {
+function buildFormatterConfig(enablePrettier?: boolean): boolean | Record<string, unknown> {
+  if (enablePrettier === false) {
+    log.debug("enablePrettier is false, formatter disabled");
+    return false;
+  }
+
   const bridgePath = resolveFormatBridgePath();
   if (!bridgePath) {
     log.debug("format-bridge not found, using built-in formatters");

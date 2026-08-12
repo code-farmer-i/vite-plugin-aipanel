@@ -265,4 +265,5 @@ export const DEFAULT_CONFIG: Partial<OpenCodeOptions> = {
   // LSP 诊断配置
   enableLsp: true,
   enableBlockOnError: false,
+  enablePrettier: true,
 };

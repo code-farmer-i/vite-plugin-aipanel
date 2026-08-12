@@ -104,16 +104,36 @@ export function getOpenCodeVersion(): Promise<string | null> {
   });
 }
 
+const KILL_ORPHAN_TIMEOUT = 5000;
+
 export async function killOrphanOpenCodeProcesses(): Promise<number> {
   const timer = log.timer("killOrphanOpenCodeProcesses");
 
   log.debug("Looking for orphan OpenCode processes (PPID=1)");
 
   return new Promise((resolve) => {
+    let settled = false;
+    const done = (count: number) => {
+      if (settled) return;
+      settled = true;
+      resolve(count);
+    };
+
+    const timeout = setTimeout(() => {
+      log.warn("Kill orphan processes timed out, skipping");
+      timer.end("⚠ Timeout, skipped");
+      done(0);
+    }, KILL_ORPHAN_TIMEOUT);
+
+    const wrappedResolve = (count: number) => {
+      clearTimeout(timeout);
+      done(count);
+    };
+
     if (process.platform === "win32") {
-      killOrphanProcessesOnWindows(resolve, timer);
+      killOrphanProcessesOnWindows(wrappedResolve, timer);
     } else {
-      killOrphanProcessesOnUnix(resolve, timer);
+      killOrphanProcessesOnUnix(wrappedResolve, timer);
     }
   });
 }

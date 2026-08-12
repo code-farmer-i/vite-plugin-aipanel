@@ -167,6 +167,8 @@ export interface OpenCodeOptions {
   enableLsp?: boolean;
   /** 启用 LSP 错误硬阻止：编辑后有错误则回滚文件并拒绝修改，默认 false */
   enableBlockOnError?: boolean;
+  /** 启用代码格式化功能（prettier），默认 true */
+  enablePrettier?: boolean;
 }
 
 /**
@@ -197,6 +199,8 @@ export interface WebOptions {
   verbose?: boolean;
   /** 启用 LSP / 质量门禁（环境变量透传，控制 block-on-error 插件运行） */
   enableLsp?: boolean;
+  /** 启用代码格式化功能（prettier） */
+  enablePrettier?: boolean;
   /** Vue DevTools API 地址（环境变量透传给 OpenCode 插件） */
   vueDevtoolsApiUrl?: string;
 }

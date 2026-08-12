@@ -103,51 +103,6 @@ export default {
       },
     });
 
-    const vueDevtoolsFindComponent = tool({
-      description: `在指定页面的组件树中按名称搜索组件，返回匹配组件的 nodeId 列表。
-
-**何时使用**：
-- 不知道组件的 nodeId，通过名称快速定位
-- 查找页面上某个组件的所有实例
-
-**返回**：[{ nodeId, name }] 匹配列表`,
-      args: {
-        ...PAGE_ID_ARG,
-        name: tool.schema.string().describe("组件名称（支持部分匹配，不区分大小写）"),
-      },
-      async execute(args) {
-        const tree = await callVueDevtoolsApi(
-          apiUrl,
-          VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_TREE,
-          args,
-        );
-        const text = JSON.stringify(tree);
-        const searchName = args.name.toLowerCase();
-
-        const results: { nodeId: string; name: string }[] = [];
-        const namePattern = /"name":"([^"]+)"/g;
-        const idPattern = /"id":"([^"]+)"/g;
-
-        let nameMatch: RegExpExecArray | null;
-        while ((nameMatch = namePattern.exec(text)) !== null) {
-          const name = nameMatch[1];
-          if (!name.toLowerCase().includes(searchName)) continue;
-
-          // 向前搜索最近的 "id" 字段
-          const beforeText = text.substring(0, nameMatch.index);
-          const idMatches = [...beforeText.matchAll(idPattern)];
-          if (idMatches.length > 0) {
-            const nodeId = idMatches[idMatches.length - 1][1];
-            if (!results.find((r) => r.nodeId === nodeId)) {
-              results.push({ nodeId, name });
-            }
-          }
-        }
-
-        return JSON.stringify(results);
-      },
-    });
-
     // ============================================================
     // 组件状态
     // ============================================================
@@ -233,7 +188,6 @@ export default {
         vue_devtools_get_apps: vueDevtoolsGetApps,
         vue_devtools_set_active_app: vueDevtoolsSetActiveApp,
         vue_devtools_get_component_tree: vueDevtoolsGetComponentTree,
-        vue_devtools_find_component: vueDevtoolsFindComponent,
         vue_devtools_get_component_state: vueDevtoolsGetComponentState,
         vue_devtools_get_component_render_code: vueDevtoolsGetComponentRenderCode,
         vue_devtools_get_current_route: vueDevtoolsGetCurrentRoute,

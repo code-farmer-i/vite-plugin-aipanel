@@ -1,5 +1,21 @@
 # 更新日志
 
+## v1.1.62
+
+`2026-08-12`
+
+### ✨ 新增
+
+- 新增 `enablePrettier` 配置项，支持控制代码格式化功能的开关，默认开启
+
+### ⚡ 改进
+
+- 重构 `killOrphanOpenCodeProcesses` 孤儿进程清理逻辑，增加超时处理机制
+- 全面优化 `vue-devtools-bridge` 桥接脚本，增加组件数据裁剪与安全处理
+- 删除冗余的 `vue_devtools_find_component` 工具方法，精简 Vue DevTools 插件
+
+---
+
 ## v1.1.61
 
 `2026-08-12`

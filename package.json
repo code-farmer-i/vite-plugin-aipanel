@@ -1,6 +1,6 @@
 {
   "name": "vite-plugin-opencode-assistant-workspace",
-  "version": "1.1.59",
+  "version": "1.1.60",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.32.1",

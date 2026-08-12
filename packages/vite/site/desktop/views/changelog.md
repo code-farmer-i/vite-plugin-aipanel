@@ -1,5 +1,17 @@
 # 更新日志
 
+## v1.1.61
+
+`2026-08-12`
+
+### ⚡ 改进
+
+- 统一页面 ID 校验逻辑，提取 `validatePageId` 公用方法，MCP 代理和 Vue DevTools 端点复用
+- Vue DevTools 工具改为显式传入 `pageId` 参数，支持多页面场景下精确定位目标页面
+- 移除 Vue DevTools 端点的自动页面解析逻辑（`resolveActivePageId`），简化调用链路
+
+---
+
 ## v1.1.60
 
 `2026-08-12`

@@ -104,7 +104,7 @@ function buildCallExpr(action: string, args?: Record<string, unknown>): string {
     case VUE_DEVTOOLS_ACTIONS.TOGGLE_APP:
       return `async () => { return await window.__opencode_vue.api.toggleApp(${JSON.stringify(args?.appId)}) }`;
     case VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO:
-      return `async () => { const r = window.__opencode_vue.router.value; return JSON.stringify({ currentRoute: r?.currentRoute?.value ?? null, routes: r?.getRoutes?.() ?? [] }) }`;
+      return `async () => { const info = window.__VUE_DEVTOOLS_ROUTER_INFO__; return JSON.stringify({ currentRoute: info?.currentRoute ?? null, routes: info?.routes ?? [] }) }`;
     default:
       throw new Error(`Unknown action: ${action}`);
   }

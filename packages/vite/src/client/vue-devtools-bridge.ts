@@ -3,15 +3,13 @@
  * 注入到用户页面，初始化 @vue/devtools-kit 并暴露到 window.__opencode_vue
  * AI 通过 Chrome DevTools evaluate_script 调用此 API
  */
-import { devtools, stringify, devtoolsRouterInfo, devtoolsRouter } from "@vue/devtools-kit";
+import { devtools, stringify } from "@vue/devtools-kit";
 import type { DevToolsApiType } from "@vue/devtools-kit";
 
 declare global {
   interface Window {
     __opencode_vue: typeof devtools & {
       api: DevToolsApiType;
-      routerInfo: typeof devtoolsRouterInfo;
-      router: typeof devtoolsRouter;
     };
   }
 }
@@ -40,10 +38,4 @@ const safeApi = new Proxy(devtools.api, {
 window.__opencode_vue = {
   ...devtools,
   api: safeApi,
-  get routerInfo() {
-    return devtoolsRouterInfo;
-  },
-  get router() {
-    return devtoolsRouter;
-  },
 };

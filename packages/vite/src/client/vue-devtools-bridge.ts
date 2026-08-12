@@ -3,13 +3,15 @@
  * 注入到用户页面，初始化 @vue/devtools-kit 并暴露到 window.__opencode_vue
  * AI 通过 Chrome DevTools evaluate_script 调用此 API
  */
-import { devtools, stringify } from "@vue/devtools-kit";
+import { devtools, stringify, devtoolsRouter } from "@vue/devtools-kit";
 import type { DevToolsApiType } from "@vue/devtools-kit";
 
 declare global {
   interface Window {
     __opencode_vue: typeof devtools & {
       api: DevToolsApiType;
+      router: typeof devtoolsRouter;
+      safeStringify: (obj: unknown) => string;
     };
   }
 }
@@ -33,9 +35,22 @@ const safeApi = new Proxy(devtools.api, {
   },
 });
 
+/** JSON.stringify 的安全版本，处理循环引用 */
+function safeStringify(obj: unknown): string {
+  const seen = new WeakSet();
+  return JSON.stringify(obj, (_key, value) => {
+    if (typeof value === "object" && value !== null) {
+      if (seen.has(value)) return "[Circular]";
+      seen.add(value);
+    }
+    return value;
+  });
+}
+
 // 暴露到 window — 展开 devtools 到普通对象，覆盖 api getter
-// routerInfo/router 使用 getter 确保每次访问获取最新值
 window.__opencode_vue = {
   ...devtools,
   api: safeApi,
+  router: devtoolsRouter,
+  safeStringify,
 };

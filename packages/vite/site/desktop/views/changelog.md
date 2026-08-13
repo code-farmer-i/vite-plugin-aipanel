@@ -1,5 +1,20 @@
 # 更新日志
 
+## v1.1.64
+
+`2026-08-13`
+
+### ⚡ 改进
+
+- 从 shared 包抽离通用的 `createPackageRequire` 与 `resolvePackageDir` 工具函数
+- 移除各模块内重复的包目录解析实现，统一复用公共工具
+- 简化 Vue DevTools 桥接文件路径解析逻辑
+- 清理测试文件中冗余的导入和测试用例
+
+### 📦 下载
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.64/packages/extension/opencode-assistant.zip)
+
 ## v1.1.63
 
 `2026-08-13`

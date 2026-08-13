@@ -1,5 +1,40 @@
 # 更新日志
 
+## v1.1.66
+
+`2026-08-13`
+
+### mcp
+
+#### ⚡ 改进
+
+- 统一 DevTools 工具命名规范，改为 `chrome-devtools_` 前缀，移除工具名映射表
+- 将 Vue DevTools 调试能力迁移至 MCP 工具体系，以 `vue-devtools_` 前缀提供组件树、组件状态、路由等工具
+- 将 Vite 进程日志与服务日志插件迁移为 MCP 工具，以 `logs-devtools_` 前缀提供日志查询能力
+- 移除 MCP 令牌校验逻辑，简化端点认证
+
+### vue-devtools
+
+#### ⚡ 改进
+
+- `executeAction` 调整为导出函数，供 MCP 端点复用
+
+### opencode
+
+#### ⚡ 改进
+
+- 重构插件加载逻辑，过滤已迁移到 MCP 的插件（`vue-devtools.js`、`vite-logs.js`、`service-logs.js`），避免工具重复
+
+### docs
+
+#### ⚡ 改进
+
+- 更新页面上下文提示文本中的工具命名规范
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.66/packages/extension/opencode-assistant.zip)
+
 ## v1.1.65
 
 `2026-08-13`

@@ -47,7 +47,7 @@ export default {
 ### 1. 定位节点位置
 当用户选中了页面节点时，按以下优先级定位：
 1. 使用 \`filePath\` 直接定位（如果存在）
-2. 使用 \`devtools_snapshot\` 获取 DOM 结构、样式等信息
+2. 使用 \`chrome-devtools_snapshot\` 获取 DOM 结构、样式等信息
 3. 根据 \`innerText\` 或 \`description\` 在项目中搜索匹配的组件
 
 ### 2. 执行
@@ -57,8 +57,8 @@ export default {
 排查问题时禁止猜测原因，必须收集运行时证据：复现 → 加日志 → 分析 → 修复 → 验证。
 
 ## 最佳实践
-- \`devtools_snapshot\` 首次使用开启 \`verbose: true\` 获取完整信息
-- \`devtools_evaluate\` 优先级最低，仅在别无选择时使用
+- \`chrome-devtools_snapshot\` 首次使用开启 \`verbose: true\` 获取完整信息
+- \`chrome-devtools_evaluate\` 优先级最低，仅在别无选择时使用
 - HTTP 200 不代表业务成功，必须解析响应体检查业务状态码
 - SPA 单页应用大部分情况不需要刷新页面`.trim();
 

@@ -182,7 +182,7 @@ const safeApi = new Proxy(devtools.api, {
         const nodeId = (args[0] as { nodeId?: unknown } | undefined)?.nodeId;
         if (!(await isNodeIdValid(nodeId))) {
           return safeStringify({
-            error: `组件 ${String(nodeId)} 已失效（页面可能已刷新或组件已卸载），请重新调用 vue_devtools_get_component_tree 获取最新 nodeId 后再试。`,
+            error: `组件 ${String(nodeId)} 已失效（页面可能已刷新或组件已卸载），请重新调用 vue-devtools_get_component_tree 获取最新 nodeId 后再试。`,
           });
         }
       }
@@ -204,7 +204,7 @@ const safeApi = new Proxy(devtools.api, {
         // 页面刷新后 nodeId 可能已失效，devtools-kit 内部会因找不到组件实例而抛错。
         // 捕获并返回明确提示，避免在页面产生未处理的 Promise 拒绝。
         return safeStringify({
-          error: `组件状态获取失败（${(error as Error).message}）。页面可能已刷新，请重新调用 vue_devtools_get_component_tree 获取最新 nodeId 后再试。`,
+          error: `组件状态获取失败（${(error as Error).message}）。页面可能已刷新，请重新调用 vue-devtools_get_component_tree 获取最新 nodeId 后再试。`,
         });
       }
     };

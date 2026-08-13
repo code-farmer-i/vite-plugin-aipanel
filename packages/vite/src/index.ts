@@ -8,6 +8,7 @@ import {
   CONTEXT_API_PATH,
   DEFAULT_CONFIG,
   DEFAULT_PROXY_PORT,
+  MCP_API_PATH,
   setVerbose,
 } from "@vite-plugin-opencode-assistant/shared";
 import { createLogger, initProcessLogCapture } from "@vite-plugin-opencode-assistant/shared/node";
@@ -160,6 +161,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
           retryWarmupChromeMcp: () => service.retryWarmupChromeMcp(),
         },
         mcpProxy,
+        config.logFiles,
       );
 
       server.httpServer?.on("listening", async () => {
@@ -190,6 +192,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
         const contextApiUrl = `http://${viteHost}:${vitePort}${CONTEXT_API_PATH}`;
         const logsApiUrl = `http://${viteHost}:${vitePort}${LOGS_API_PATH}`;
         vueDevtoolsApiUrl = `http://${viteHost}:${vitePort}${VUE_DEVTOOLS_API_PATH}`;
+        const mcpApiUrl = `http://${viteHost}:${vitePort}${MCP_API_PATH}`;
 
         log.debug("Vite server ready", {
           vitePort,
@@ -198,13 +201,15 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
           contextApiUrl,
           logsApiUrl,
           vueDevtoolsApiUrl,
+          mcpApiUrl,
         });
+
+        log.info(`MCP endpoint: ${mcpApiUrl}`);
 
         try {
           // MCP 先就绪（用本地包，秒启动），warmup 依赖它
           await mcpProxy.start();
           await service.start(
-            mcpProxy.accessToken,
             vitePort,
             [viteOrigin],
             contextApiUrl,

@@ -1,6 +1,6 @@
 /**
  * 自定义 DevTools 工具定义
- * 所有工具（除 devtools_list_pages）必须传入 pageId 参数，
+ * 所有工具（除 chrome-devtools_list_pages）必须传入 pageId 参数，
  * 代理层校验 pageId 是否为项目页面后方可调用 chrome-devtools-mcp。
  */
 
@@ -36,7 +36,7 @@ function withPageId(
 export const CUSTOM_TOOLS: CustomTool[] = [
   // ===== 页面管理 =====
   {
-    name: "devtools_list_pages",
+    name: "chrome-devtools_list_pages",
     description:
       "获取当前项目所有打开的页面列表，含 active（用户正在浏览）和 selected（Chrome DevTools 当前操作目标）标记",
     inputSchema: {
@@ -45,8 +45,8 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "get_page_context",
-    description: "获取用户当前正在浏览的页面上下文信息，包含页面 URL、标题、页面 ID",
+    name: "chrome-devtools_current_page",
+    description: "获取用户当前正在浏览器浏览的页面上下文信息，包含页面 URL、标题、页面 ID",
     inputSchema: {
       type: "object",
       properties: {},
@@ -55,7 +55,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
 
   // ===== 截图与快照 =====
   {
-    name: "devtools_snapshot",
+    name: "chrome-devtools_take_snapshot",
     description: "获取指定页面可访问性树快照，返回元素 uid、角色、文本等",
     inputSchema: {
       type: "object",
@@ -66,7 +66,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_screenshot",
+    name: "chrome-devtools_take_screenshot",
     description: "截取指定页面或元素屏幕截图，返回 base64 或保存到文件",
     inputSchema: {
       type: "object",
@@ -82,7 +82,10 @@ export const CUSTOM_TOOLS: CustomTool[] = [
           maximum: 100,
           description: "JPEG/WebP 压缩质量 0-100",
         },
-        uid: { type: "string", description: "元素 uid（从 devtools_snapshot 获取），省略截取整页" },
+        uid: {
+          type: "string",
+          description: "元素 uid（从 chrome-devtools_take_snapshot 获取），省略截取整页",
+        },
         fullPage: { type: "boolean", description: "是否截取完整页面（与 uid 互斥）" },
         filePath: { type: "string", description: "保存截图的文件路径，省略返回 base64" },
       }),
@@ -91,13 +94,13 @@ export const CUSTOM_TOOLS: CustomTool[] = [
 
   // ===== 交互操作 =====
   {
-    name: "devtools_click",
+    name: "chrome-devtools_click",
     description: "点击页面元素",
     inputSchema: {
       type: "object",
       ...withPageId(
         {
-          uid: { type: "string", description: "元素 uid（从 devtools_snapshot 获取）" },
+          uid: { type: "string", description: "元素 uid（从 chrome-devtools_take_snapshot 获取）" },
           dblClick: { type: "boolean", description: "是否双击，默认 false" },
           includeSnapshot: { type: "boolean", description: "是否在响应中包含快照，默认 false" },
         },
@@ -106,7 +109,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_hover",
+    name: "chrome-devtools_hover",
     description: "鼠标悬停在页面元素上",
     inputSchema: {
       type: "object",
@@ -120,7 +123,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_drag",
+    name: "chrome-devtools_drag",
     description: "拖拽页面元素到另一个元素上",
     inputSchema: {
       type: "object",
@@ -135,7 +138,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_type",
+    name: "chrome-devtools_type_text",
     description: "在已聚焦的输入框中使用键盘输入文本",
     inputSchema: {
       type: "object",
@@ -152,7 +155,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_press_key",
+    name: "chrome-devtools_press_key",
     description: "按下键盘按键或组合键（快捷键、导航键等）",
     inputSchema: {
       type: "object",
@@ -169,7 +172,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_fill",
+    name: "chrome-devtools_fill",
     description: "填写输入框值或选择 select 选项，触发 input/change 事件",
     inputSchema: {
       type: "object",
@@ -187,7 +190,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_fill_form",
+    name: "chrome-devtools_fill_form",
     description: "批量填写表单字段，比多次调用 fill/click 更快更可靠",
     inputSchema: {
       type: "object",
@@ -210,7 +213,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
 
   // ===== 页面导航 =====
   {
-    name: "devtools_navigate",
+    name: "chrome-devtools_navigate_page",
     description: "导航页面（url/reload/back/forward）",
     inputSchema: {
       type: "object",
@@ -239,7 +242,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_resize_page",
+    name: "chrome-devtools_resize_page",
     description: "调整页面视口大小",
     inputSchema: {
       type: "object",
@@ -253,7 +256,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_emulate",
+    name: "chrome-devtools_emulate",
     description: "模拟设备特性（网络节流、CPU 降速、地理位置、UA、颜色方案、视口等）",
     inputSchema: {
       type: "object",
@@ -290,7 +293,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
 
   // ===== JS 执行 =====
   {
-    name: "devtools_evaluate",
+    name: "chrome-devtools_evaluate_script",
     description: "在指定页面执行 JavaScript 函数并返回结果（返回值需可 JSON 序列化）",
     inputSchema: {
       type: "object",
@@ -319,7 +322,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
 
   // ===== 网络监控 =====
   {
-    name: "devtools_network",
+    name: "chrome-devtools_list_network_requests",
     description: "获取指定页面网络请求列表（支持分页和过滤）",
     inputSchema: {
       type: "object",
@@ -354,14 +357,15 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_network_request",
+    name: "chrome-devtools_get_network_request",
     description: "获取网络请求的详细信息，可保存请求/响应体到文件",
     inputSchema: {
       type: "object",
       ...withPageId({
         reqid: {
           type: "number",
-          description: "请求 ID（从 devtools_network 获取），省略返回当前选中请求",
+          description:
+            "请求 ID（从 chrome-devtools_list_network_requests 获取），省略返回当前选中请求",
         },
         requestFilePath: {
           type: "string",
@@ -377,7 +381,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
 
   // ===== 控制台 =====
   {
-    name: "devtools_console",
+    name: "chrome-devtools_list_console_messages",
     description: "获取指定页面控制台消息（支持分页和过滤）",
     inputSchema: {
       type: "object",
@@ -401,13 +405,16 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_console_message",
+    name: "chrome-devtools_get_console_message",
     description: "获取某条控制台消息的详细信息",
     inputSchema: {
       type: "object",
       ...withPageId(
         {
-          msgid: { type: "number", description: "消息 ID（从 devtools_console 获取）" },
+          msgid: {
+            type: "number",
+            description: "消息 ID（从 chrome-devtools_list_console_messages 获取）",
+          },
         },
         ["msgid"],
       ),
@@ -416,7 +423,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
 
   // ===== 其他 =====
   {
-    name: "devtools_wait_for",
+    name: "chrome-devtools_wait_for",
     description: "等待指定页面出现指定文本（任一匹配即返回）",
     inputSchema: {
       type: "object",
@@ -435,7 +442,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_handle_dialog",
+    name: "chrome-devtools_handle_dialog",
     description: "处理 JavaScript 对话框（alert/confirm/prompt）",
     inputSchema: {
       type: "object",
@@ -449,7 +456,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_upload_file",
+    name: "chrome-devtools_upload_file",
     description: "上传文件到文件输入框",
     inputSchema: {
       type: "object",
@@ -466,7 +473,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
 
   // ===== 性能分析 =====
   {
-    name: "devtools_performance_start",
+    name: "chrome-devtools_performance_start_trace",
     description: "在指定页面开始记录性能 trace（用于发现 Core Web Vitals 性能问题）",
     inputSchema: {
       type: "object",
@@ -478,7 +485,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_performance_stop",
+    name: "chrome-devtools_performance_stop_trace",
     description: "停止性能 trace 记录并返回结果",
     inputSchema: {
       type: "object",
@@ -488,7 +495,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_performance_insight",
+    name: "chrome-devtools_performance_analyze_insight",
     description: "获取特定性能指标的详细分析",
     inputSchema: {
       type: "object",
@@ -505,7 +512,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_lighthouse",
+    name: "chrome-devtools_lighthouse_audit",
     description: "对指定页面运行 Lighthouse 审计（可访问性/SEO/最佳实践，不含性能）",
     inputSchema: {
       type: "object",
@@ -525,7 +532,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
     },
   },
   {
-    name: "devtools_heapsnapshot",
+    name: "chrome-devtools_take_heapsnapshot",
     description: "捕获指定页面堆内存快照，用于分析 JS 对象内存分布和调试内存泄漏",
     inputSchema: {
       type: "object",
@@ -537,34 +544,148 @@ export const CUSTOM_TOOLS: CustomTool[] = [
       ),
     },
   },
-];
 
-/** 工具名映射（自定义 → chrome-devtools-mcp） */
-export const TOOL_MAP: Record<string, string> = {
-  devtools_list_pages: "list_pages",
-  devtools_snapshot: "take_snapshot",
-  devtools_screenshot: "take_screenshot",
-  devtools_evaluate: "evaluate_script",
-  devtools_click: "click",
-  devtools_hover: "hover",
-  devtools_drag: "drag",
-  devtools_type: "type_text",
-  devtools_press_key: "press_key",
-  devtools_fill: "fill",
-  devtools_fill_form: "fill_form",
-  devtools_navigate: "navigate_page",
-  devtools_resize_page: "resize_page",
-  devtools_emulate: "emulate",
-  devtools_network: "list_network_requests",
-  devtools_network_request: "get_network_request",
-  devtools_console: "list_console_messages",
-  devtools_console_message: "get_console_message",
-  devtools_wait_for: "wait_for",
-  devtools_handle_dialog: "handle_dialog",
-  devtools_upload_file: "upload_file",
-  devtools_performance_start: "performance_start_trace",
-  devtools_performance_stop: "performance_stop_trace",
-  devtools_performance_insight: "performance_analyze_insight",
-  devtools_lighthouse: "lighthouse_audit",
-  devtools_heapsnapshot: "take_heapsnapshot",
-};
+  // ===== Vue DevTools =====
+  {
+    name: "vue-devtools_get_apps",
+    description: `获取指定页面所有 Vue 应用实例列表。
+
+**何时使用**：
+- 排查微前端/多实例场景下操作的是哪个应用
+- 切换活跃应用前查看有哪些可用`,
+    inputSchema: {
+      type: "object",
+      ...withPageId({}),
+    },
+  },
+  {
+    name: "vue-devtools_set_active_app",
+    description: `切换指定页面的活跃 Vue 应用实例。后续所有 vue-devtools_* 工具都操作这个应用。`,
+    inputSchema: {
+      type: "object",
+      ...withPageId(
+        {
+          appId: { type: "string", description: "应用 ID（从 vue-devtools_get_apps 获取）" },
+        },
+        ["appId"],
+      ),
+    },
+  },
+  {
+    name: "vue-devtools_get_component_tree",
+    description: `获取指定页面当前活跃 Vue 应用的组件树。
+
+**何时使用**：
+- 了解页面组件层级结构
+- 找到目标组件的 nodeId（后续查状态用）
+- 排查组件未渲染问题
+- 只关心某类组件时用 filter 缩小范围
+
+**返回**：组件树 [{ id, name, children, file, ... }]`,
+    inputSchema: {
+      type: "object",
+      ...withPageId({
+        filter: { type: "string", description: "按组件名过滤（大小写不敏感的子串匹配），可选" },
+      }),
+    },
+  },
+  {
+    name: "vue-devtools_get_component_state",
+    description: `获取指定组件的完整运行时状态。
+
+**何时使用**：
+- 排查 props 传值是否正确
+- 查看 ref/reactive 响应式数据的当前值
+- 检查 computed 计算结果
+- 查看 attrs / events / inject / provide / template refs`,
+    inputSchema: {
+      type: "object",
+      ...withPageId(
+        {
+          nodeId: {
+            type: "string",
+            description: "组件节点 ID（从 vue-devtools_get_component_tree 获取）",
+          },
+        },
+        ["nodeId"],
+      ),
+    },
+  },
+  {
+    name: "vue-devtools_get_component_render_code",
+    description: `获取组件的渲染函数源码。`,
+    inputSchema: {
+      type: "object",
+      ...withPageId({ nodeId: { type: "string", description: "组件节点 ID" } }, ["nodeId"]),
+    },
+  },
+  {
+    name: "vue-devtools_get_current_route",
+    description: `获取 Vue Router 的当前路由信息。
+
+**何时使用**：
+- 排查路由跳转问题
+- 查看当前路由 path/params/query/hash
+- 确认路由守卫和 matched 记录`,
+    inputSchema: {
+      type: "object",
+      ...withPageId({}),
+    },
+  },
+  {
+    name: "vue-devtools_get_routes",
+    description: `获取 Vue Router 的完整路由表。
+
+**何时使用**：
+- 查看所有已注册路由
+- 确认路由配置是否正确
+- 查看路由嵌套关系`,
+    inputSchema: {
+      type: "object",
+      ...withPageId({}),
+    },
+  },
+
+  // ===== Vite 进程日志 =====
+  {
+    name: "logs-devtools_vite_logs",
+    description: `获取 Vite 开发服务器的运行日志。
+
+**何时使用此工具**：
+- 用户报告"页面没更新"、"热更新不工作"、"HMR 失效"时
+- 构建报错或编译失败，需要查看详细错误信息
+- 页面白屏、样式丢失、模块加载失败等开发问题
+- 用户提到"开发服务器有问题"、"vite 报错"
+- 需要确认最近的文件变更是否被 Vite 正确处理
+
+**日志内容**：
+- Vite HMR 热更新日志（哪些文件被更新、更新状态）
+- 构建编译日志（错误、警告、成功信息）
+- OpenCode Web 进程输出
+- 插件运行日志
+
+日志保存在内存缓冲区（最近 500 条）。`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        level: {
+          type: "string",
+          description:
+            "日志级别过滤：error(错误)、warn(警告)、info(信息)、debug(调试)、log(普通)。多个用逗号分隔，如 'error,warn'",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 200,
+          default: 50,
+          description: "返回条数，默认 50，最大 200",
+        },
+        source: {
+          type: "string",
+          description:
+            "来源过滤：console(控制台)、opencode-stdout(服务输出)、opencode-stderr(服务错误)",
+        },
+      },
+    },
+  },
+];

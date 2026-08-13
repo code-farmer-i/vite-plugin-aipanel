@@ -44,7 +44,6 @@ export class McpProxy {
   #idleTimer: ReturnType<typeof setTimeout> | null = null;
   #idleTimeout: number;
   readonly sessionId: string;
-  readonly accessToken: string;
 
   constructor(options: McpProxyOptions = {}) {
     this.#args = options.args ?? [
@@ -54,7 +53,6 @@ export class McpProxy {
     ];
     this.#idleTimeout = options.idleTimeout ?? 0;
     this.sessionId = crypto.randomUUID();
-    this.accessToken = crypto.randomBytes(32).toString("hex");
   }
 
   get isRunning(): boolean {

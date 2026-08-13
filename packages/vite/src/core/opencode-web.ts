@@ -23,7 +23,6 @@ const log = createLogger("OpenCodeWeb");
 export function prepareOpenCodeRuntime(
   cwd: string,
   vitePort: number,
-  mcpToken: string,
   enableLsp?: boolean,
   enablePrettier?: boolean,
 ): string {
@@ -49,7 +48,7 @@ export function prepareOpenCodeRuntime(
     mcp: {
       "chrome-devtools": {
         type: "remote",
-        url: `http://localhost:${vitePort}${MCP_API_PATH}?token=${mcpToken}`,
+        url: `http://localhost:${vitePort}${MCP_API_PATH}`,
       },
     },
   };
@@ -268,8 +267,13 @@ function resolveSourcePluginsDir(): string {
   return candidatePaths[0];
 }
 
+/** 已迁移到 MCP 的插件（不再通过 OpenCode 插件机制加载，避免与 MCP 工具重复） */
+const MIGRATED_TO_MCP_PLUGINS = new Set(["vue-devtools.js", "vite-logs.js", "service-logs.js"]);
+
 function resolvePluginEntries(sourceDir: string): string[] {
-  const files = fs.readdirSync(sourceDir).filter((f) => f.endsWith(".js"));
+  const files = fs
+    .readdirSync(sourceDir)
+    .filter((f) => f.endsWith(".js") && !MIGRATED_TO_MCP_PLUGINS.has(f));
 
   const entries = files.map((file) => {
     const absolutePath = path.join(sourceDir, file);

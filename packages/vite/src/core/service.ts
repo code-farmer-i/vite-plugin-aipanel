@@ -58,7 +58,6 @@ export class OpenCodeService {
   }
 
   async start(
-    mcpToken: string,
     vitePort: number,
     corsOrigins: string[],
     contextApiUrl: string,
@@ -139,7 +138,6 @@ Please install OpenCode first:
       const configDir = prepareOpenCodeRuntime(
         this.workspaceRoot,
         vitePort,
-        mcpToken,
         this.config.enableLsp,
         this.config.enablePrettier,
       );

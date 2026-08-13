@@ -49,7 +49,7 @@ export function setupVueDevtoolsEndpoint(server: ViteDevServer, mcp: McpProxy) {
   });
 }
 
-async function executeAction(
+export async function executeAction(
   action: string,
   args: Record<string, unknown> | undefined,
   mcp: McpProxy,

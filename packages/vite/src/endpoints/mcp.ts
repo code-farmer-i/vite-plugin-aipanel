@@ -1,9 +1,15 @@
 import type { ViteDevServer } from "vite";
 import type { IncomingMessage } from "node:http";
-import type { PageContext } from "@vite-plugin-opencode-assistant/shared";
-import { MCP_API_PATH } from "@vite-plugin-opencode-assistant/shared";
+import type { LogFileConfig, PageContext } from "@vite-plugin-opencode-assistant/shared";
+import { MCP_API_PATH, VUE_DEVTOOLS_ACTIONS } from "@vite-plugin-opencode-assistant/shared";
 import { McpProxy } from "../core/mcp-proxy";
-import { createLogger } from "@vite-plugin-opencode-assistant/shared/node";
+import {
+  createLogger,
+  getProcessLogBuffer,
+  readLogFileTail,
+  type ProcessLogEntry,
+  type FileLogEntry,
+} from "@vite-plugin-opencode-assistant/shared/node";
 import type { PageInfo } from "../core/mcp-chrome";
 import {
   parseListPages,
@@ -12,7 +18,9 @@ import {
   isProjectPage,
   validatePageId,
 } from "../core/mcp-chrome";
-import { CUSTOM_TOOLS, TOOL_MAP } from "../core/mcp-tools";
+import { CUSTOM_TOOLS, type CustomTool } from "../core/mcp-tools";
+import { executeAction } from "./vue-devtools";
+import { findGitRoot } from "../utils/system";
 
 const log = createLogger("McpEndpoint");
 
@@ -28,18 +36,11 @@ export function setupMcpEndpoint(
   server: ViteDevServer,
   mcp: McpProxy,
   getPageContext: () => PageContext,
+  logFiles: LogFileConfig[] = [],
 ) {
+  const projectRoot = findGitRoot(process.cwd());
   server.middlewares.use(async (req, res, next) => {
     if (!req.url?.startsWith(MCP_API_PATH)) return next();
-    const url = new URL(req.url, `http://localhost`);
-
-    // Token 校验
-    const token =
-      url.searchParams.get("token") ?? req.headers["authorization"]?.replace(/^Bearer /i, "");
-    if (token !== mcp.accessToken) {
-      sendMcpJson(res, 401, { error: "Unauthorized" });
-      return;
-    }
 
     // CORS
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -65,7 +66,15 @@ export function setupMcpEndpoint(
     }
 
     if (req.method === "POST") {
-      await handlePost(req, res, mcp, getProjectOrigins(server), getPageContext);
+      await handlePost(
+        req,
+        res,
+        mcp,
+        getProjectOrigins(server),
+        getPageContext,
+        logFiles,
+        projectRoot,
+      );
       return;
     }
 
@@ -93,6 +102,8 @@ async function handlePost(
   mcp: McpProxy,
   projectOrigins: string[],
   getPageContext: () => PageContext,
+  logFiles: LogFileConfig[],
+  projectRoot: string,
 ) {
   try {
     const body = await readBody(req);
@@ -107,9 +118,18 @@ async function handlePost(
 
     switch (method) {
       case "tools/list":
-        return handleToolsList(res, id, mcp.sessionId);
+        return handleToolsList(res, id, mcp.sessionId, logFiles);
       case "tools/call":
-        return await handleToolsCall(res, id, body, mcp, projectOrigins, getPageContext);
+        return await handleToolsCall(
+          res,
+          id,
+          body,
+          mcp,
+          projectOrigins,
+          getPageContext,
+          logFiles,
+          projectRoot,
+        );
       default:
         // initialize 等 → 直接转发
         return await handleForward(res, body, mcp);
@@ -125,8 +145,14 @@ async function handlePost(
 
 // ========== tools/list ==========
 
-function handleToolsList(res: McpResponse, id: number | null, sessionId: string) {
-  sendMcpJson(res, 200, { jsonrpc: "2.0", id, result: { tools: CUSTOM_TOOLS } }, sessionId);
+function handleToolsList(
+  res: McpResponse,
+  id: number | null,
+  sessionId: string,
+  logFiles: LogFileConfig[],
+) {
+  const tools = [...CUSTOM_TOOLS, ...buildServiceLogTools(logFiles)];
+  sendMcpJson(res, 200, { jsonrpc: "2.0", id, result: { tools } }, sessionId);
 }
 
 // ========== tools/call 路由 ==========
@@ -138,27 +164,41 @@ function handleToolsCall(
   mcp: McpProxy,
   projectOrigins: string[],
   getPageContext: () => PageContext,
+  logFiles: LogFileConfig[],
+  projectRoot: string,
 ) {
   const params = tryParseParams(body);
   const toolName = params?.name;
+  const args = params?.arguments ?? {};
+
   // 自定义工具（不需要转发到 chrome-devtools-mcp）
-  if (toolName === "get_page_context") {
+  if (toolName === "chrome-devtools_current_page") {
     return handleGetPageContext(res, id, mcp, projectOrigins, getPageContext);
   }
 
-  const mapped = toolName != null ? TOOL_MAP[toolName] : undefined;
-
-  if (!mapped) {
-    sendMcpError(res, id, -32601, `Tool not found: ${toolName}`, mcp.sessionId);
-    return;
+  if (toolName?.startsWith("vue-devtools_")) {
+    return handleVueDevtoolsTool(res, id, mcp, projectOrigins, toolName, args);
   }
 
-  switch (toolName) {
-    case "devtools_list_pages":
+  if (toolName === "logs-devtools_vite_logs") {
+    return handleViteLogsTool(res, id, args, mcp.sessionId);
+  }
+
+  if (toolName && isServiceLogTool(toolName, logFiles)) {
+    return handleServiceLogsTool(res, id, toolName, args, logFiles, projectRoot, mcp.sessionId);
+  }
+
+  // chrome-devtools_ 前缀工具：去掉前缀后即为 chrome-devtools-mcp 底层工具名
+  if (toolName?.startsWith("chrome-devtools_")) {
+    const mapped = toolName.slice("chrome-devtools_".length);
+
+    if (toolName === "chrome-devtools_list_pages") {
       return handleListPages(res, id, mcp, projectOrigins, getPageContext);
-    default:
-      return handleDevTool(res, id, mcp, mapped, params?.arguments || {}, projectOrigins, toolName);
+    }
+    return handleDevTool(res, id, mcp, mapped, args, projectOrigins, toolName);
   }
+
+  sendMcpError(res, id, -32601, `Tool not found: ${toolName}`, mcp.sessionId);
 }
 
 // ========== 项目页面解析（共享逻辑） ==========
@@ -202,7 +242,7 @@ async function resolveProjectPages(
   return { filtered, activePageId };
 }
 
-// ========== devtools_list_pages ==========
+// ========== chrome-devtools_list_pages ==========
 
 async function handleListPages(
   res: McpResponse,
@@ -238,7 +278,7 @@ async function handleListPages(
   }
 }
 
-// ========== get_page_context ==========
+// ========== chrome-devtools_current_page ==========
 
 async function handleGetPageContext(
   res: McpResponse,
@@ -283,7 +323,7 @@ async function handleGetPageContext(
   }
 }
 
-// ========== 其他 devtools_* 工具 ==========
+// ========== 其他 chrome-devtools_* 工具 ==========
 
 async function handleDevTool(
   res: McpResponse,
@@ -318,8 +358,8 @@ async function handleDevTool(
       return;
     }
 
-    // devtools_navigate: 校验跳转目标 URL 是否属于本项目
-    if (toolName === "devtools_navigate" && args["type"] === "url") {
+    // chrome-devtools_navigate_page: 校验跳转目标 URL 是否属于本项目
+    if (toolName === "chrome-devtools_navigate_page" && args["type"] === "url") {
       const targetUrl = args["url"];
       if (typeof targetUrl === "string" && targetUrl.length > 0) {
         if (!isProjectPage(targetUrl, projectOrigins)) {
@@ -355,6 +395,251 @@ async function handleDevTool(
     log.debug("handleDevTool error", { error: (e as Error).message, mapped });
     sendMcpError(res, id, -32603, `MCP 调用失败: ${(e as Error).message}`, mcp.sessionId);
   }
+}
+
+// ========== Vue DevTools 工具 ==========
+
+/** vue-devtools_* 工具名到后端 action 的映射 */
+const VUE_DEVTOOLS_TOOL_ACTIONS: Record<string, string> = {
+  "vue-devtools_get_apps": VUE_DEVTOOLS_ACTIONS.GET_APPS,
+  "vue-devtools_set_active_app": VUE_DEVTOOLS_ACTIONS.TOGGLE_APP,
+  "vue-devtools_get_component_tree": VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_TREE,
+  "vue-devtools_get_component_state": VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_STATE,
+  "vue-devtools_get_component_render_code": VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_RENDER_CODE,
+  "vue-devtools_get_current_route": VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO,
+  "vue-devtools_get_routes": VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO,
+};
+
+async function handleVueDevtoolsTool(
+  res: McpResponse,
+  id: number | null,
+  mcp: McpProxy,
+  projectOrigins: string[],
+  toolName: string,
+  args: Record<string, unknown>,
+) {
+  try {
+    const action = VUE_DEVTOOLS_TOOL_ACTIONS[toolName];
+    if (!action) {
+      sendMcpError(res, id, -32601, `Tool not found: ${toolName}`, mcp.sessionId);
+      return;
+    }
+
+    const result = await executeAction(action, args, mcp, projectOrigins);
+
+    switch (toolName) {
+      case "vue-devtools_set_active_app":
+        sendMcpResult(res, id, `已切换到应用 ${args["appId"]}`, mcp.sessionId);
+        return;
+      case "vue-devtools_get_current_route":
+      case "vue-devtools_get_routes": {
+        const parsed = typeof result === "string" ? parseJsonSafe(result) : result;
+        const data = (parsed ?? {}) as { currentRoute?: unknown; routes?: unknown };
+        const value =
+          toolName === "vue-devtools_get_current_route"
+            ? (data.currentRoute ?? null)
+            : (data.routes ?? null);
+        sendMcpResult(res, id, JSON.stringify(value), mcp.sessionId);
+        return;
+      }
+      case "vue-devtools_get_component_render_code":
+        sendMcpResult(
+          res,
+          id,
+          typeof result === "string" ? result : JSON.stringify(result),
+          mcp.sessionId,
+        );
+        return;
+      default:
+        sendMcpResult(res, id, JSON.stringify(result), mcp.sessionId);
+        return;
+    }
+  } catch (e) {
+    log.debug("handleVueDevtoolsTool error", { error: (e as Error).message });
+    sendMcpError(res, id, -32603, `Vue DevTools 调用失败: ${(e as Error).message}`, mcp.sessionId);
+  }
+}
+
+function parseJsonSafe(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+// ========== Vite 进程日志工具 ==========
+
+function handleViteLogsTool(
+  res: McpResponse,
+  id: number | null,
+  args: Record<string, unknown>,
+  sessionId: string,
+) {
+  const { level, limit, source } = args;
+  const buffer = getProcessLogBuffer();
+  const logs = buffer.getLogs({
+    level: parseProcessLevelFilter(level),
+    limit: typeof limit === "number" && limit >= 1 ? limit : 50,
+    source:
+      typeof source === "string" && source ? (source as ProcessLogEntry["source"]) : undefined,
+  });
+
+  if (logs.length === 0) {
+    sendMcpResult(
+      res,
+      id,
+      `当前没有符合条件的日志（缓冲区共 ${buffer.size()} 条）。
+
+建议：
+- 不指定参数获取所有日志
+- 使用 level=error,warn 获取错误和警告`,
+      sessionId,
+    );
+    return;
+  }
+
+  const formattedLogs = logs
+    .map((entry) => {
+      const time = new Date(entry.timestamp).toLocaleTimeString();
+      const levelIcon =
+        entry.level === "error"
+          ? "❌"
+          : entry.level === "warn"
+            ? "⚠️"
+            : entry.level === "info"
+              ? "ℹ️"
+              : "";
+      return `${time} ${levelIcon} ${entry.message}`;
+    })
+    .join("\n");
+
+  sendMcpResult(
+    res,
+    id,
+    `Vite 开发服务器日志（${logs.length}/${buffer.size()} 条）：
+
+${formattedLogs}`,
+    sessionId,
+  );
+}
+
+function parseProcessLevelFilter(level: unknown): ProcessLogEntry["level"][] | undefined {
+  if (typeof level !== "string" || !level.trim()) return undefined;
+  const levels = level
+    .split(",")
+    .map((l) => l.trim())
+    .filter(Boolean) as ProcessLogEntry["level"][];
+  return levels.length ? levels : undefined;
+}
+
+// ========== 服务日志文件工具 ==========
+
+function buildServiceLogTools(logFiles: LogFileConfig[]): CustomTool[] {
+  return logFiles.map((cfg) => ({
+    name: `logs-devtools_${cfg.name}_logs`,
+    description: `获取 ${cfg.name} 的日志。
+
+**何时使用此工具**：
+${cfg.description}
+
+**日志内容**：
+- 来自日志文件 ${cfg.path} 的实时日志
+- 默认返回最近 200 行日志`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        level: {
+          type: "string",
+          description:
+            "日志级别过滤：error(错误)、warn(警告)、info(信息)。多个用逗号分隔，如 'error,warn'",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 200,
+          default: 50,
+          description: "返回条数，默认 50，最大 200",
+        },
+      },
+    },
+  }));
+}
+
+function isServiceLogTool(toolName: string, logFiles: LogFileConfig[]): boolean {
+  return logFiles.some((cfg) => `logs-devtools_${cfg.name}_logs` === toolName);
+}
+
+async function handleServiceLogsTool(
+  res: McpResponse,
+  id: number | null,
+  toolName: string,
+  args: Record<string, unknown>,
+  logFiles: LogFileConfig[],
+  projectRoot: string,
+  sessionId: string,
+) {
+  try {
+    const cfg = logFiles.find((c) => `logs-devtools_${c.name}_logs` === toolName);
+    if (!cfg) {
+      sendMcpError(res, id, -32601, `Tool not found: ${toolName}`, sessionId);
+      return;
+    }
+
+    const { level, limit } = args;
+    const requestedLimit = typeof limit === "number" ? limit : 50;
+
+    const entries = await readLogFileTail({
+      name: cfg.name,
+      filePath: cfg.path,
+      projectRoot,
+      lines: Math.max(requestedLimit * 3, 500),
+      level: parseFileLevelFilter(level),
+      limit: requestedLimit,
+    });
+
+    if (entries.length === 0) {
+      sendMcpResult(
+        res,
+        id,
+        `当前没有符合条件的日志。
+
+建议：
+- 不指定参数获取所有日志
+- 使用 level=error,warn 获取错误和警告`,
+        sessionId,
+      );
+      return;
+    }
+
+    const formattedLogs = entries
+      .map((entry: FileLogEntry) => {
+        const levelIcon = entry.level === "error" ? "❌" : entry.level === "warn" ? "⚠️" : "ℹ️";
+        return `${levelIcon} ${entry.message}`;
+      })
+      .join("\n");
+
+    sendMcpResult(
+      res,
+      id,
+      `${cfg.name} 日志（${entries.length} 条）：
+
+${formattedLogs}`,
+      sessionId,
+    );
+  } catch (e) {
+    log.debug("handleServiceLogsTool error", { error: (e as Error).message });
+    sendMcpError(res, id, -32603, `读取日志失败: ${(e as Error).message}`, sessionId);
+  }
+}
+
+function parseFileLevelFilter(level: unknown): ("info" | "warn" | "error")[] | undefined {
+  if (typeof level !== "string" || !level.trim()) return undefined;
+  const levels = level
+    .split(",")
+    .map((l) => l.trim())
+    .filter(Boolean) as ("info" | "warn" | "error")[];
+  return levels.length ? levels : undefined;
 }
 
 // ========== 其他方法（initialize 等） ==========

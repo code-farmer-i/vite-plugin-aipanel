@@ -84,15 +84,19 @@ export default {
     // ============================================================
 
     const vueDevtoolsGetComponentTree = tool({
-      description: `获取指定页面当前活跃 Vue 应用的完整组件树。
+      description: `获取指定页面当前活跃 Vue 应用的组件树。
 
 **何时使用**：
 - 了解页面组件层级结构
 - 找到目标组件的 nodeId（后续查状态用）
 - 排查组件未渲染问题
+- 只关心某类组件时用 filter 缩小范围
 
 **返回**：组件树 [{ id, name, children, file, ... }]`,
-      args: { ...PAGE_ID_ARG },
+      args: {
+        ...PAGE_ID_ARG,
+        filter: tool.schema.string().describe("按组件名过滤（大小写不敏感的子串匹配），可选"),
+      },
       async execute(args) {
         const result = await callVueDevtoolsApi(
           apiUrl,
@@ -127,7 +131,7 @@ export default {
           VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_STATE,
           args,
         );
-        return result as string;
+        return JSON.stringify(result);
       },
     });
 

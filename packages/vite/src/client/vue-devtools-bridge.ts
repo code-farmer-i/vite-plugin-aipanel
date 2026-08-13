@@ -49,6 +49,8 @@ const SKIP_STATE_TYPES: Set<string> = new Set([
 
 function isVueInternalObject(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
+  // Vue 组件公共实例代理：枚举其 key 会在 dev 下触发警告，直接视为内部对象
+  if ((value as { __isVue?: unknown }).__isVue === true) return true;
   const keys = Object.keys(value as object);
   const internalCount = keys.filter((k) => VUE_INTERNAL_KEYS.has(k)).length;
   return internalCount > 0 && internalCount >= keys.length * 0.5;
@@ -146,6 +148,29 @@ interface InspectorStateResponse {
   state?: InspectorState[];
 }
 
+interface TreeNodeLike {
+  id?: string;
+  children?: TreeNodeLike[];
+}
+
+/** 从最新组件树判断 nodeId 是否存在（避免 instanceMap 因异步组件未挂载而滞后） */
+async function isNodeIdValid(nodeId: unknown): Promise<boolean> {
+  const targetId = String(nodeId);
+  try {
+    const tree = (await devtools.api.getInspectorTree({
+      inspectorId: "components",
+      filter: "",
+    })) as unknown as TreeNodeLike[];
+
+    const find = (nodes: TreeNodeLike[]): boolean =>
+      nodes.some((n) => n.id === targetId || find(n.children ?? []));
+
+    return find(tree);
+  } catch {
+    return false;
+  }
+}
+
 const safeApi = new Proxy(devtools.api, {
   get(target, prop, receiver) {
     const original = Reflect.get(target, prop, receiver);
@@ -153,16 +178,35 @@ const safeApi = new Proxy(devtools.api, {
       return original;
 
     return async (...args: unknown[]) => {
-      const raw = await (original as (...a: unknown[]) => unknown).apply(target, args);
-
       if (prop === "getInspectorState") {
-        // 裁剪掉 Vue 内部对象 + 大幅缩小体积
-        return safeStringify({
-          state: sanitizeState((raw as InspectorStateResponse)?.state ?? (raw as InspectorState[])),
-        });
+        const nodeId = (args[0] as { nodeId?: unknown } | undefined)?.nodeId;
+        if (!(await isNodeIdValid(nodeId))) {
+          return safeStringify({
+            error: `组件 ${String(nodeId)} 已失效（页面可能已刷新或组件已卸载），请重新调用 vue_devtools_get_component_tree 获取最新 nodeId 后再试。`,
+          });
+        }
       }
 
-      return safeStringify(raw);
+      try {
+        const raw = await (original as (...a: unknown[]) => unknown).apply(target, args);
+
+        if (prop === "getInspectorState") {
+          // 裁剪掉 Vue 内部对象 + 大幅缩小体积
+          return safeStringify({
+            state: sanitizeState(
+              (raw as InspectorStateResponse)?.state ?? (raw as InspectorState[]),
+            ),
+          });
+        }
+
+        return safeStringify(raw);
+      } catch (error) {
+        // 页面刷新后 nodeId 可能已失效，devtools-kit 内部会因找不到组件实例而抛错。
+        // 捕获并返回明确提示，避免在页面产生未处理的 Promise 拒绝。
+        return safeStringify({
+          error: `组件状态获取失败（${(error as Error).message}）。页面可能已刷新，请重新调用 vue_devtools_get_component_tree 获取最新 nodeId 后再试。`,
+        });
+      }
     };
   },
 });

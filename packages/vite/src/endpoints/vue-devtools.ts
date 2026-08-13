@@ -88,7 +88,7 @@ async function executeAction(
 function buildCallExpr(action: string, args?: Record<string, unknown>): string {
   switch (action) {
     case VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_TREE:
-      return `async () => { return await window.__opencode_vue.api.getInspectorTree({ inspectorId: "components" }) }`;
+      return `async () => { return await window.__opencode_vue.api.getInspectorTree({ inspectorId: "components", filter: ${JSON.stringify(args?.filter ?? "")} }) }`;
     case VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_STATE:
       return `async () => { return await window.__opencode_vue.api.getInspectorState({ inspectorId: "components", nodeId: ${JSON.stringify(args?.nodeId)} }) }`;
     case VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_RENDER_CODE:

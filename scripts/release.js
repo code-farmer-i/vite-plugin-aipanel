@@ -244,7 +244,29 @@ async function main() {
     console.log("\n🌐 Deploying docs...");
     await deployDocs();
 
-    isCompleted = true; // Mark as successfully completed
+    // 发布已成功，标记完成，避免后续 git 操作失败时触发版本回滚
+    isCompleted = true;
+
+    // 8. 提交、推送代码并打 tag
+    console.log("\n📝 Committing, pushing and tagging...");
+    try {
+      const commitMessage = `chore: 发布版本 v${targetVersion}`;
+      const tagName = `v${targetVersion}`;
+      execSync("git add -A", { stdio: "inherit", cwd: rootDir });
+      execSync(`git commit -m "${commitMessage}"`, { stdio: "inherit", cwd: rootDir });
+      execSync(`git tag ${tagName}`, { stdio: "inherit", cwd: rootDir });
+      execSync("git push", { stdio: "inherit", cwd: rootDir });
+      execSync(`git push origin ${tagName}`, { stdio: "inherit", cwd: rootDir });
+      console.log(`   ✅ Committed, pushed and tagged ${tagName}`);
+    } catch (err) {
+      console.error(
+        "\n❌ Failed to commit, push or tag:",
+        err instanceof Error ? err.message : String(err),
+      );
+      console.error("   发布已成功，请手动执行 git 提交、推送和打 tag。");
+      process.exit(1);
+    }
+
     console.log(`\n🎉 Release process for v${targetVersion} completed!\n`);
   } catch (err) {
     console.error(

@@ -9,6 +9,10 @@
 - 升级 `chrome-devtools-mcp` 依赖从 1.6.0 到 1.7.0
 - chrome-devtools-mcp 默认启动参数新增 `--no-performance-crux`，禁用向 Google CrUX API 上报性能 trace 数据
 
+### 📦 下载
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.63/packages/extension/opencode-assistant.zip)
+
 ## v1.1.62
 
 `2026-08-12`

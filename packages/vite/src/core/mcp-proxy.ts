@@ -43,7 +43,7 @@ export class McpProxy {
   readonly accessToken: string;
 
   constructor(options: McpProxyOptions = {}) {
-    this.#args = options.args ?? ["--auto-connect", "--no-usage-statistics"];
+    this.#args = options.args ?? ["--auto-connect", "--no-usage-statistics", "--no-performance-crux"];
     this.#idleTimeout = options.idleTimeout ?? 0;
     this.sessionId = crypto.randomUUID();
     this.accessToken = crypto.randomBytes(32).toString("hex");

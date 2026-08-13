@@ -1,24 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import path from "path";
 import fs from "fs";
-import {
-  resolvePackageDir,
-  resolveWidgetPath,
-  resolveWidgetStylePath,
-} from "../../src/utils/paths.js";
+import { resolveWidgetPath, resolveWidgetStylePath } from "../../src/utils/paths.js";
 
 vi.mock("fs");
 
 describe("paths utility", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-  });
-
-  describe("resolvePackageDir", () => {
-    it("should resolve the package directory", () => {
-      const dir = resolvePackageDir();
-      expect(dir).toContain("vite-plugin-opencode-assistant");
-    });
   });
 
   describe("resolveWidgetPath", () => {

@@ -2,8 +2,6 @@ import type { Plugin, ViteDevServer } from "vite";
 import type http from "http";
 import crypto from "crypto";
 import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import Inspector from "unplugin-vue-inspector/vite";
 import type { OpenCodeOptions, PageContext } from "@vite-plugin-opencode-assistant/shared";
 import {
@@ -19,19 +17,16 @@ import { injectWidget } from "./core/injector";
 import { OpenCodeAPI } from "./core/api";
 import { OpenCodeService } from "./core/service";
 import { McpProxy } from "./core/mcp-proxy";
-import { resolveWidgetPath, resolveWidgetStylePath } from "./utils/paths";
+import {
+  resolveWidgetPath,
+  resolveWidgetStylePath,
+  resolveVueDevtoolsBridgePath,
+} from "./utils/paths";
 import { findGitRoot } from "./utils/system";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEVTOOLS_BRIDGE_IMPORTEE = "virtual:opencode-vue-devtools-bridge";
 const DEVTOOLS_BRIDGE_QUERY = "opencode_vue_devtools_bridge";
-const BRIDGE_SOURCE_PATH = (() => {
-  const base = path.resolve(__dirname, "client/vue-devtools-bridge");
-  for (const ext of [".ts", ".mjs", ".cjs", ".js"]) {
-    if (fs.existsSync(base + ext)) return base + ext;
-  }
-  return base + ".ts"; // fallback
-})();
+const BRIDGE_SOURCE_PATH = resolveVueDevtoolsBridgePath();
 
 export default function opencodePlugin(options: OpenCodeOptions = {}): Plugin[] {
   const plugins: Plugin[] = [];

@@ -1,7 +1,6 @@
 import { execa } from "execa";
 import type { ResultPromise } from "execa";
 import fs from "fs";
-import { createRequire } from "module";
 import path from "path";
 import { pathToFileURL } from "url";
 import type { WebOptions } from "@vite-plugin-opencode-assistant/shared";
@@ -12,10 +11,12 @@ import {
   ENV_VSCODE_PORT,
   createLogger,
   getProcessLogBuffer,
+  createPackageRequire,
+  resolvePackageDir,
 } from "@vite-plugin-opencode-assistant/shared/node";
 
-const require = createRequire(path.join(process.cwd(), "package.json"));
-const packageDir = resolvePackageDir();
+const require = createPackageRequire();
+const packageDir = resolvePackageDir("@vite-plugin-opencode-assistant/opencode");
 
 const log = createLogger("OpenCodeWeb");
 
@@ -157,11 +158,6 @@ function createStateDirectory(cwd: string): string {
   }
 
   return stateDir;
-}
-
-function resolvePackageDir(): string {
-  const entryPath = require.resolve("@vite-plugin-opencode-assistant/opencode");
-  return path.dirname(path.dirname(entryPath));
 }
 
 /**

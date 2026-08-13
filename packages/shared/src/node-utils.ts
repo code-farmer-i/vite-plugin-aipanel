@@ -2,7 +2,28 @@
  * @fileoverview Node.js 专用工具函数（仅服务端可用）
  */
 
+import { createRequire } from "node:module";
+import path from "node:path";
 import { CHROME_DEVTOOLS_PORT, CHROME_DEVTOOLS_CHECK_TIMEOUT } from "./constants";
+
+/**
+ * 创建一个锚定到指定目录（默认 process.cwd()）的 require。
+ * 跨 ESM/CJS 安全，避免依赖 __dirname / import.meta.url（CJS 打包时会与 Node 内置变量冲突或被置空）。
+ */
+export function createPackageRequire(baseDir: string = process.cwd()) {
+  return createRequire(path.join(baseDir, "package.json"));
+}
+
+/**
+ * 解析 npm 包根目录（跨 ESM/CJS 安全）。
+ * @param packageName - 包名，例如 "vite-plugin-opencode-assistant"
+ * @param baseDir - 解析基准目录，默认当前工作目录
+ */
+export function resolvePackageDir(packageName: string, baseDir: string = process.cwd()): string {
+  const require = createPackageRequire(baseDir);
+  const entryPath = require.resolve(packageName);
+  return path.dirname(path.dirname(entryPath));
+}
 
 /**
  * 检查 Chrome DevTools 是否可用

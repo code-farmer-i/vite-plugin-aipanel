@@ -5,16 +5,20 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
 import crypto from "node:crypto";
-import { createRequire } from "node:module";
 import path from "node:path";
-import { createLogger } from "@vite-plugin-opencode-assistant/shared/node";
+import {
+  createLogger,
+  createPackageRequire,
+  resolvePackageDir,
+} from "@vite-plugin-opencode-assistant/shared/node";
 
 const log = createLogger("McpProxy");
 
 /** 通过 require.resolve 解析 chrome-devtools-mcp 的实际可执行文件路径 */
 function resolveChromeDevToolsMcpBin(): string {
   // 从插件自身位置解析，确保 npm/yarn/pnpm（strict mode）都能正确找到传递依赖
-  const require = createRequire(import.meta.url);
+  const pluginDir = resolvePackageDir("vite-plugin-opencode-assistant");
+  const require = createPackageRequire(pluginDir);
   const pkgJsonPath = require.resolve("chrome-devtools-mcp/package.json");
   const pkgDir = path.dirname(pkgJsonPath);
 
@@ -43,7 +47,11 @@ export class McpProxy {
   readonly accessToken: string;
 
   constructor(options: McpProxyOptions = {}) {
-    this.#args = options.args ?? ["--auto-connect", "--no-usage-statistics", "--no-performance-crux"];
+    this.#args = options.args ?? [
+      "--auto-connect",
+      "--no-usage-statistics",
+      "--no-performance-crux",
+    ];
     this.#idleTimeout = options.idleTimeout ?? 0;
     this.sessionId = crypto.randomUUID();
     this.accessToken = crypto.randomBytes(32).toString("hex");

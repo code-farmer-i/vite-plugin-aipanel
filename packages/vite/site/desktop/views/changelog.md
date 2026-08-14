@@ -1,5 +1,19 @@
 # 更新日志
 
+## v1.1.67
+
+`2026-08-14`
+
+### mcp
+
+#### ✨ 新增
+
+- 新增 `chrome-devtools_new_page` 工具，支持打开新标签页加载页面；仅允许访问当前项目的页面，若项目已有打开的页面则自动复用并返回已有页面信息，避免重复打开
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.67/packages/extension/opencode-assistant.zip)
+
 ## v1.1.66
 
 `2026-08-13`

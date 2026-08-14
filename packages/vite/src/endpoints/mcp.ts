@@ -195,6 +195,9 @@ function handleToolsCall(
     if (toolName === "chrome-devtools_list_pages") {
       return handleListPages(res, id, mcp, projectOrigins, getPageContext);
     }
+    if (toolName === "chrome-devtools_new_page") {
+      return handleNewPage(res, id, mcp, args, projectOrigins, getPageContext);
+    }
     return handleDevTool(res, id, mcp, mapped, args, projectOrigins, toolName);
   }
 
@@ -319,6 +322,77 @@ async function handleGetPageContext(
     );
   } catch (e) {
     log.debug("handleGetPageContext error", { error: (e as Error).message });
+    sendMcpError(res, id, -32603, `MCP 调用失败: ${(e as Error).message}`, mcp.sessionId);
+  }
+}
+
+// ========== chrome-devtools_new_page ==========
+
+async function handleNewPage(
+  res: McpResponse,
+  id: number | null,
+  mcp: McpProxy,
+  args: Record<string, unknown>,
+  projectOrigins: string[],
+  getPageContext: () => PageContext,
+) {
+  try {
+    const url = args["url"];
+    if (typeof url !== "string" || url.trim().length === 0) {
+      sendMcpError(res, id, -32000, "缺少 url 参数，请提供要打开的页面 URL", mcp.sessionId);
+      return;
+    }
+
+    // 只允许打开当前项目的页面
+    if (!isProjectPage(url, projectOrigins)) {
+      sendMcpError(
+        res,
+        id,
+        -32000,
+        `不允许打开非本项目页面: ${url}。仅允许打开项目页面 (${projectOrigins.join(", ")})`,
+        mcp.sessionId,
+      );
+      return;
+    }
+
+    // 若当前项目已存在打开的页面，则不重复打开并返回提示
+    const { filtered: projectPages } = await resolveProjectPages(
+      mcp,
+      projectOrigins,
+      getPageContext,
+    );
+
+    if (projectPages.length > 0) {
+      const existing = projectPages
+        .map((p) => `- ${p.title} (${p.url}) [pageId: ${p.pageId}]`)
+        .join("\n");
+      sendMcpResult(
+        res,
+        id,
+        `当前项目已有打开的页面，无需重复打开。
+
+已打开的页面：
+${existing}
+
+如需操作现有页面，请使用 chrome-devtools_list_pages 获取页面 ID，再配合其他 chrome-devtools_* 工具使用。`,
+        mcp.sessionId,
+      );
+      return;
+    }
+
+    // 转发到 chrome-devtools-mcp new_page（固定后台打开，不抢焦点）
+    const forwardBody = JSON.stringify({
+      jsonrpc: "2.0",
+      id,
+      method: "tools/call",
+      params: { name: "new_page", arguments: { ...args, background: true } },
+    });
+
+    const responseText = await mcp.forward(forwardBody);
+    log.debug("MCP response", { tool: "new_page", response: responseText.substring(0, 100) });
+    sendMcpJson(res, 200, responseText, mcp.sessionId);
+  } catch (e) {
+    log.debug("handleNewPage error", { error: (e as Error).message });
     sendMcpError(res, id, -32603, `MCP 调用失败: ${(e as Error).message}`, mcp.sessionId);
   }
 }

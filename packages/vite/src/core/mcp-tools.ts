@@ -52,6 +52,25 @@ export const CUSTOM_TOOLS: CustomTool[] = [
       properties: {},
     },
   },
+  {
+    name: "chrome-devtools_new_page",
+    description:
+      "打开一个新标签页并加载 URL（仅允许打开当前项目的页面）。若当前项目已有打开的页面，则不会重复打开，而是返回已有页面信息",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "要打开的页面 URL（必须是当前项目的页面）",
+        },
+        timeout: {
+          type: "integer",
+          description: "最大等待时间（毫秒），0 使用默认超时",
+        },
+      },
+      required: ["url"],
+    },
+  },
 
   // ===== 截图与快照 =====
   {

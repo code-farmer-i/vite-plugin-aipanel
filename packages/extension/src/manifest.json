@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OpenCode Assistant",
-  "version": "1.1.67",
+  "version": "1.1.68",
   "description": "在 localhost 页面中嵌入 OpenCode AI 助手，实现边聊天边改代码的开发体验",
   "permissions": [
     "sidePanel",

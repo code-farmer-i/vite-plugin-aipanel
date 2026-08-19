@@ -1,5 +1,25 @@
 # 更新日志
 
+## v1.1.68
+
+`2026-08-17`
+
+### deps
+
+#### ⚡ 改进
+
+- 升级 `@pagoda-cli/core` 依赖从 1.0.17 到 1.0.18
+
+### docs
+
+#### ⚡ 改进
+
+- 重构 vite 包 README 文档，精简为快速开始流程，补充浏览器扩展安装步骤与工作原理说明
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.68/packages/extension/opencode-assistant.zip)
+
 ## v1.1.67
 
 `2026-08-14`

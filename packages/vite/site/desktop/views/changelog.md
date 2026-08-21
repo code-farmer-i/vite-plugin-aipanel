@@ -1,5 +1,34 @@
 # 更新日志
 
+## v1.1.69
+
+`2026-08-21`
+
+### deps
+
+#### ⚡ 改进
+
+- 升级 `@pagoda-cli/core` 依赖从 1.0.18 到 1.0.20
+
+### mcp
+
+#### ⚡ 改进
+
+- 优化页面会话标识长度，使用 8 位随机字符，避免多 Tab 场景下标识碰撞
+- 简化 Chrome 页面匹配策略，仅使用 `sessionId` 匹配并移除 URL 降级逻辑
+- 添加页面查询重试机制，规避 Chrome 连接/标签页枚举未完成时的竞态问题
+- 完善错误处理，明确返回调用失败原因，透出页面定位失败的具体原因
+
+### docs
+
+#### ⚡ 改进
+
+- 完善主题定制文档，补充三层变量体系架构说明、组件精细定制示例与暗黑模式角色分工细节
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.69/packages/extension/opencode-assistant.zip)
+
 ## v1.1.68
 
 `2026-08-17`

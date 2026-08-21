@@ -1,7 +1,7 @@
 import type { ViteDevServer } from "vite";
 import type { IncomingMessage } from "node:http";
 import type { LogFileConfig, PageContext } from "@vite-plugin-opencode-assistant/shared";
-import { MCP_API_PATH, VUE_DEVTOOLS_ACTIONS } from "@vite-plugin-opencode-assistant/shared";
+import { MCP_API_PATH, VUE_DEVTOOLS_ACTIONS, sleep } from "@vite-plugin-opencode-assistant/shared";
 import { McpProxy } from "../core/mcp-proxy";
 import {
   createLogger,
@@ -209,6 +209,8 @@ function handleToolsCall(
 interface ProjectPagesResult {
   filtered: PageInfo[];
   activePageId: number | null;
+  /** 定位当前页面失败的原因（activePageId 为 null 时） */
+  activePageError?: string;
 }
 
 async function resolveProjectPages(
@@ -218,6 +220,10 @@ async function resolveProjectPages(
 ): Promise<ProjectPagesResult> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const listResult: any = await mcp.callChromeDevTool("list_pages", {});
+  // list_pages 返回 JSON-RPC 错误（Chrome 未连接等）时抛错，与"确实没有页面"区分开
+  if (listResult?.error || !listResult?.result) {
+    throw new Error(listResult?.error?.message ?? "无法获取 Chrome 页面列表");
+  }
   const text: string | undefined = listResult?.result?.content?.[0]?.text;
   const allPages = text ? parseListPages(text) : [];
   const filtered = allPages.filter((p) => isProjectPage(p.url, projectOrigins));
@@ -227,6 +233,7 @@ async function resolveProjectPages(
   log.debug("filtered pages", { count: filtered.length, pageIds: filtered.map((p) => p.pageId) });
 
   let activePageId: number | null = null;
+  let activePageError: string | undefined;
   if (filtered.length > 0) {
     const pc = getPageContext();
     const chromeSelectedPageId = allPages.find((p) => p.selected)?.pageId;
@@ -240,9 +247,48 @@ async function resolveProjectPages(
       chromeSelectedPageId,
     );
     activePageId = resolved.ok ? resolved.pageId : null;
+    if (!resolved.ok) activePageError = resolved.error;
   }
 
-  return { filtered, activePageId };
+  return { filtered, activePageId, activePageError };
+}
+
+/**
+ * 确认项目当前已打开的页面列表（带重试），供 new_page 去重使用。
+ *
+ * 返回 null 表示查询失败（Chrome 未连接等，无法确认状态）；
+ * 返回空数组表示确认当前无项目页面。
+ */
+async function confirmOpenProjectPages(
+  mcp: McpProxy,
+  projectOrigins: string[],
+  getPageContext: () => PageContext,
+): Promise<PageInfo[] | null> {
+  let pages: PageInfo[] = [];
+
+  // 查询失败时重试（MCP/Chrome 刚启动、标签页枚举未完成时 list_pages 可能报错）
+  let ok = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      ({ filtered: pages } = await resolveProjectPages(mcp, projectOrigins, getPageContext));
+      ok = true;
+      break;
+    } catch {
+      if (attempt < 2) await sleep(500);
+    }
+  }
+  if (!ok) return null;
+
+  // 查询成功但为空时复查一次，规避标签页枚举未完成的竞态
+  if (pages.length === 0) {
+    await sleep(500);
+    try {
+      ({ filtered: pages } = await resolveProjectPages(mcp, projectOrigins, getPageContext));
+    } catch {
+      // 复查失败时保持首次结果（0 个页面）
+    }
+  }
+  return pages;
 }
 
 // ========== chrome-devtools_list_pages ==========
@@ -291,7 +337,7 @@ async function handleGetPageContext(
   getPageContext: () => PageContext,
 ) {
   try {
-    const { filtered, activePageId } = await resolveProjectPages(
+    const { filtered, activePageId, activePageError } = await resolveProjectPages(
       mcp,
       projectOrigins,
       getPageContext,
@@ -302,9 +348,24 @@ async function handleGetPageContext(
       return;
     }
 
-    const activePage =
-      activePageId != null ? filtered.find((p) => p.pageId === activePageId) : null;
     const pc = getPageContext();
+
+    // 无法定位 pageId 时透出原因，避免 Agent 拿到 pageId: null 无从下手
+    if (activePageId == null) {
+      sendMcpResult(
+        res,
+        id,
+        `无法定位当前页面对应的 pageId：${activePageError ?? "未匹配到已打开的页面"}
+
+当前页面上下文：${pc.title} (${pc.url})
+
+请刷新目标页面后重试；或使用 chrome-devtools_list_pages 获取页面 ID 后直接操作。`,
+        mcp.sessionId,
+      );
+      return;
+    }
+
+    const activePage = filtered.find((p) => p.pageId === activePageId);
 
     sendMcpResult(
       res,
@@ -355,12 +416,18 @@ async function handleNewPage(
       return;
     }
 
-    // 若当前项目已存在打开的页面，则不重复打开并返回提示
-    const { filtered: projectPages } = await resolveProjectPages(
-      mcp,
-      projectOrigins,
-      getPageContext,
-    );
+    // 确认项目是否已有打开的页面（带重试，避免连接/枚举未完成时误判为 0 而重复打开）
+    const projectPages = await confirmOpenProjectPages(mcp, projectOrigins, getPageContext);
+    if (projectPages === null) {
+      sendMcpError(
+        res,
+        id,
+        -32000,
+        `无法确认当前项目页面状态，为避免重复打开，请确认 Chrome DevTools 已连接后重试`,
+        mcp.sessionId,
+      );
+      return;
+    }
 
     if (projectPages.length > 0) {
       const existing = projectPages

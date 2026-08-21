@@ -277,11 +277,12 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
       // Vue DevTools 桥接脚本 — 通过 tags 注入，Vite 会处理 @id/ 前缀内部的 import
 
       // sessionStorage 注入唯一标识（同 Tab 刷新不变，新 Tab 重生成）
+      // 用 8 位随机字符，避免多 Tab 场景下标识碰撞
       const titleInject = `<script>
         (function () {
           var KEY = "_opencode_pk";
           if (!sessionStorage.getItem(KEY)) {
-            sessionStorage.setItem(KEY, "[" + Math.random().toString(36).slice(2, 5) + "]");
+            sessionStorage.setItem(KEY, "[" + Math.random().toString(36).slice(2, 10) + "]");
           }
         })();
       </script>`;

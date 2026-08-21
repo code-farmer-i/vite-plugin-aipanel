@@ -90,6 +90,15 @@ export async function validatePageId(
 > {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const listResult: any = await mcp.callChromeDevTool("list_pages", {});
+  // list_pages 报错（Chrome 未连接等）时明确失败原因，避免误报"pageId 无效"
+  if (listResult?.error || !listResult?.result) {
+    return {
+      valid: false,
+      error:
+        listResult?.error?.message ?? "无法获取 Chrome 页面列表，请确认 Chrome DevTools 已连接",
+      projectPages: [],
+    };
+  }
   const text: string | undefined = listResult?.result?.content?.[0]?.text;
   const allPages = text ? parseListPages(text) : [];
   const projectPages = allPages.filter((p) => isProjectPage(p.url, projectOrigins));
@@ -110,8 +119,7 @@ export async function validatePageId(
  *
  * 策略：
  * 1. list_pages → 解析每行的 "pageId: title (URL)" 格式
- * 2. 优先用 sessionId 匹配（跨导航可靠，遍历所有页面 evaluate_script）
- * 3. 无 sessionId 时降级为 URL 精确匹配
+ * 2. 仅用 sessionId（_opencode_pk）匹配，跨导航可靠；不做 URL 降级匹配
  *
  * 失败时返回具体原因，由调用方透传给 Agent。
  */
@@ -156,10 +164,7 @@ export async function resolveChromePageId(
       target: { url, title },
     });
 
-    const normalizeUrl = (u: string) => u.replace(/\/$/, "");
-    const targetUrl = normalizeUrl(url);
-
-    // 优先用 sessionId 匹配（跨导航可靠）
+    // 仅用 sessionId 匹配（跨导航可靠，遍历所有页面 evaluate_script）
     if (sessionId) {
       /* eslint-disable @typescript-eslint/no-explicit-any */
       let matchedPageId: number | null = null;
@@ -195,23 +200,10 @@ export async function resolveChromePageId(
       };
     }
 
-    // 无 sessionId：降级为 URL 匹配
-    const matches = pages.filter((p) => normalizeUrl(p.url) === targetUrl);
-
-    if (matches.length === 0) {
-      return {
-        ok: false,
-        error: `Chrome 中未找到匹配的页面 (${targetUrl})，请确认本地开发页面已在 Chrome DevTools 中打开`,
-      };
-    }
-    if (matches.length === 1) {
-      log.debug("resolveChromePageId: URL matched", { pageId: matches[0].pageId });
-      return { ok: true, pageId: matches[0].pageId };
-    }
-
+    // 无 sessionId：不做 URL 兜底，明确报错
     return {
       ok: false,
-      error: `存在 ${matches.length} 个同 URL 的页面，缺少页面标识无法区分，请刷新页面后重试`,
+      error: `上下文缺少会话标识（_opencode_pk），无法定位页面，请刷新目标页面后重试`,
     };
   } catch (err) {
     const msg = `MCP 调用失败: ${(err as Error).message}`;

@@ -24,6 +24,7 @@
     "build": "pnpm --filter @vite-plugin-opencode-assistant/shared build && pnpm --filter @vite-plugin-opencode-assistant/opencode build && pnpm --filter @vite-plugin-opencode-assistant/components build && pnpm --filter vite-plugin-opencode-assistant build && pnpm --filter @vite-plugin-opencode-assistant/extension build",
     "dev:components": "pnpm --filter @vite-plugin-opencode-assistant/components dev:site",
     "dev:playground": "pnpm --filter @vite-plugin-opencode-assistant/docs dev",
+    "dev:docs": "pnpm --filter vite-plugin-opencode-assistant site",
     "build:docs": "pnpm --filter @vite-plugin-opencode-assistant/docs build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -36,7 +37,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@pagoda-cli/core": "^1.0.20",
+    "@pagoda-cli/core": "^1.0.23",
     "@pnpm/logger": "1100.0.0",
     "@types/chrome": "^0.2.2",
     "@types/node": "^26.1.1",

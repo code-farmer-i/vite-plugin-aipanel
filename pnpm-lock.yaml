@@ -17,8 +17,8 @@ importers:
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.6.0)
       '@pagoda-cli/core':
-        specifier: ^1.0.20
-        version: 1.0.20(@types/markdown-it@14.1.2)(@types/node@26.1.1)(@vue/compiler-sfc@3.5.39)(@vueuse/core@14.3.0(vue@3.5.39(typescript@6.0.3)))(markdown-it@14.1.1)(rolldown@1.2.3)(tsx@4.23.0)(vue@3.5.39(typescript@6.0.3))(yaml@2.9.0)
+        specifier: ^1.0.23
+        version: 1.0.23(@types/markdown-it@14.1.2)(@types/node@26.1.1)(@vue/compiler-sfc@3.5.39)(@vueuse/core@14.3.0(vue@3.5.39(typescript@6.0.3)))(markdown-it@14.1.1)(rolldown@1.2.3)(tsx@4.23.0)(vue@3.5.39(typescript@6.0.3))(yaml@2.9.0)
       '@pnpm/logger':
         specifier: 1100.0.0
         version: 1100.0.0
@@ -1397,8 +1397,8 @@ packages:
   '@oxc-project/types@0.143.0':
     resolution: {integrity: sha512-u6JZdLBTLotrNC9Vd6vPssINdzcCzleKAH6EJKImQb7GtYvX5keN2dxkoK44stCc4tffE6QQRtZTXVSzsLUlWA==}
 
-  '@pagoda-cli/core@1.0.20':
-    resolution: {integrity: sha512-Qz8KerD9t7cB4tW1BpO4CZDHb+3Wp5boE1AakJZxws1KDoUUjPM40J/6bRx615cu6C8UOEeaPFJFBrDyNtRwPg==}
+  '@pagoda-cli/core@1.0.23':
+    resolution: {integrity: sha512-vCYqHhhSrIEaIpcPFR3r1ccghu+Ixgvi4eXakKLy4lRCjYzbbOHuUjzcnHHoEKqs4U2d0vdrsYEvHuJtScVw5Q==}
     engines: {node: ^14.16.0 || >=16.0.0}
     hasBin: true
 
@@ -7555,7 +7555,7 @@ snapshots:
 
   '@oxc-project/types@0.143.0': {}
 
-  '@pagoda-cli/core@1.0.20(@types/markdown-it@14.1.2)(@types/node@26.1.1)(@vue/compiler-sfc@3.5.39)(@vueuse/core@14.3.0(vue@3.5.39(typescript@6.0.3)))(markdown-it@14.1.1)(rolldown@1.2.3)(tsx@4.23.0)(vue@3.5.39(typescript@6.0.3))(yaml@2.9.0)':
+  '@pagoda-cli/core@1.0.23(@types/markdown-it@14.1.2)(@types/node@26.1.1)(@vue/compiler-sfc@3.5.39)(@vueuse/core@14.3.0(vue@3.5.39(typescript@6.0.3)))(markdown-it@14.1.1)(rolldown@1.2.3)(tsx@4.23.0)(vue@3.5.39(typescript@6.0.3))(yaml@2.9.0)':
     dependencies:
       '@babel/core': 8.0.1
       '@babel/preset-typescript': 8.0.1(@babel/core@8.0.1)

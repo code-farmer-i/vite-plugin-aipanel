@@ -1,5 +1,5 @@
 import { defineConfig } from "@pagoda-cli/core";
-// import opencode from "@vite-plugin-opencode-assistant/opencode";
+import opencode from "vite-plugin-opencode-assistant";
 
 export default defineConfig({
   name: "vite-plugin-opencode-assistant",
@@ -49,11 +49,7 @@ export default defineConfig({
       vite: {
         configure(config) {
           config.plugins = config.plugins || [];
-          // config.plugins.push(
-          //   ...opencode({
-          //     displayMode: "extension",
-          //   }),
-          // );
+          config.plugins.push(opencode());
           return config;
         },
       },

@@ -5,17 +5,38 @@ description: "提供文档站 CSS 变量和主题定制指南。当用户需要�
 
 # 主题定制 (Theme)
 
-Pagoda CLI 文档站采用三层 CSS 变量架构，提供 100+ 个可定制变量。你可以通过覆盖这些变量来深度定制文档站的视觉效果。
+Pagoda CLI 文档站采用**三层 CSS 变量架构**，提供 100+ 个可定制变量。你可以通过覆盖这些变量来深度定制文档站的视觉效果。
 
 ## 变量体系架构
 
 ```
-common/style/css-vars.scss    ← 基础设计令牌（颜色、字号、间距、圆角、过渡、z-index）
+第 1 层 用户入口（唯一必改）
+  --pd-doc-primary-base        品牌主色
+
+第 2 层 基础色板（可覆盖，默认推导）
+  --pd-doc-primary             文字/链接/边框角色（暗黑下自动混白）
+  --pd-doc-primary-action      按钮/填充背景（保持品牌原色，暗黑不混白）
+  --pd-doc-primary-action-hover / -active   按钮 hover/active 背景
+  --pd-doc-on-primary          填充背景上的文字色（默认纯白）
+  --pd-doc-primary-light-1~10 / dark-1~9    阶梯色
+  --pd-doc-text-1/2/3          文字色
+  --pd-doc-bg / bg-alt / bg-soft            背景色
+  --pd-doc-border / divider    边框色
+
+第 3 层 组件语义变量（组件消费层，可独立覆盖）
+  --pd-doc-button-*            主按钮（bg/text/border/hover/active）
+  --pd-doc-button-outline-*    次级 outline 按钮
+  --pd-doc-link-*              链接（color/hover/active）
+  --pd-doc-tag-*               标签
+```
+
+```
+common/style/css-vars.scss    ← 第 1、2、3 层基础定义（字体、间距、主色、语义变量）
         ↓ 引用
-desktop/style/css-vars.scss   ← 桌面端专属变量（Markdown 排版、布局尺寸）
+desktop/style/css-vars.scss   ← 桌面端专属变量（Markdown 排版、布局尺寸、导航色）
 mobile/style/css-vars.scss    ← 移动端专属变量（移动排版、图标尺寸）
         ↓ 引用
-markdow.scss / Vue 组件       ← 实际样式消费
+markdow.scss / Vue 组件       ← 实际样式消费（组件只消费第 3 层语义变量）
 ```
 
 ## Usage
@@ -24,7 +45,7 @@ markdow.scss / Vue 组件       ← 实际样式消费
 
 ### 1. 修改主色调
 
-最常见的定制是修改主色调 `--pd-doc-primary`。覆盖这个基础色变量后，亮/暗阶梯颜色会通过 CSS `color-mix()` 自动计算。
+最常见的定制是修改主色调。**只需覆盖 `--pd-doc-primary-base` 一个变量**，按钮、链接、导航、标签等所有主题色场景都会自动适配，亮/暗模式无需额外配置：
 
 ```css
 :root {
@@ -33,7 +54,57 @@ markdow.scss / Vue 组件       ← 实际样式消费
 }
 ```
 
-> **注意**：暗黑模式下 CLI 会自动降低主色饱和度：`color-mix(in srgb, var(--pd-doc-primary-base) 50%, white)`。如需在暗黑模式下使用不同主色，在 `:root.dark` 中覆盖 `--pd-doc-primary`。
+> **注意**：暗黑模式下 CLI 会自动降低主色饱和度：`color-mix(in srgb, var(--pd-doc-primary-base) 50%, white)`，用于文字/链接/边框。按钮背景（`--pd-doc-primary-action`）保持品牌原色不混白。如需在暗黑模式下使用不同主色，在 `:root.dark` 中覆盖 `--pd-doc-primary`。
+
+### 1.1 精细定制组件
+
+通过覆盖第 3 层组件语义变量，可以独立调整单个组件状态而不影响其他组件：
+
+```css
+:root {
+  /* 只调按钮 hover 背景，不影响链接/导航 */
+  --pd-doc-button-hover-bg: color-mix(
+    in srgb,
+    var(--pd-doc-primary-action) 80%,
+    var(--pd-doc-white)
+  );
+
+  /* 只调链接颜色 */
+  --pd-doc-link-color: #409eff;
+
+  /* 只调标签背景 */
+  --pd-doc-tag-bg: var(--pd-doc-primary-light-9);
+}
+```
+
+第 3 层完整变量列表：
+
+```css
+:root {
+  /* 主按钮 */
+  --pd-doc-button-bg: var(--pd-doc-primary-action);
+  --pd-doc-button-text: var(--pd-doc-on-primary);
+  --pd-doc-button-border: var(--pd-doc-primary-action);
+  --pd-doc-button-hover-bg: var(--pd-doc-primary-action-hover);
+  --pd-doc-button-hover-border: var(--pd-doc-primary-action-hover);
+  --pd-doc-button-active-bg: var(--pd-doc-primary-action-active);
+  --pd-doc-button-active-border: var(--pd-doc-primary-action-active);
+
+  /* outline 次级按钮 */
+  --pd-doc-button-outline-text: var(--pd-doc-primary);
+  --pd-doc-button-outline-border: var(--pd-doc-primary);
+  --pd-doc-button-outline-hover-bg: var(--pd-doc-primary-outline-bg-hover);
+
+  /* 链接 */
+  --pd-doc-link-color: var(--pd-doc-primary);
+  --pd-doc-link-hover-color: var(--pd-doc-primary-dark-1);
+  --pd-doc-link-active-color: var(--pd-doc-primary-dark-2);
+
+  /* 标签 */
+  --pd-doc-tag-color: var(--pd-doc-primary);
+  --pd-doc-tag-bg: var(--pd-doc-primary-light-9);
+}
+```
 
 ---
 
@@ -367,7 +438,12 @@ markdow.scss / Vue 组件       ← 实际样式消费
 
 ### 11. 暗黑模式
 
-开启暗黑模式后，CLI 已内置完整的暗色变量覆盖。如需自定义：
+开启暗黑模式后，CLI 已内置完整的暗色变量覆盖。暗黑模式下的角色分工：
+
+- **文字/链接/边框**：`--pd-doc-primary` 自动混白变浅（深色背景上更清晰）
+- **按钮/填充背景**：`--pd-doc-primary-action` 保持品牌原色（不混白），按钮文字 `--pd-doc-on-primary` 固定纯白，保证对比度
+
+如需自定义：
 
 ```scss
 :root.dark {

@@ -552,7 +552,7 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
   function insertFilePart(element) {
     const promptInput = document.querySelector('[data-component="prompt-input"]');
     if (!promptInput) {
-      log.warn('Prompt input not found');
+      console.warn('Prompt input not found');
       return;
     }
 

@@ -119,6 +119,7 @@ export class AIPanelService {
       log.debug(`Using workspace root: ${this.workspaceRoot}`);
 
       this.sendTaskUpdate("preparing_runtime");
+      this.sendTaskUpdate("starting_web");
       const startResult = await provider.start({
         port: this.actualWebPort,
         hostname: this.config.hostname,
@@ -150,6 +151,9 @@ export class AIPanelService {
       } catch (e) {
         log.error("Web UI failed to start", { error: e });
         this.sendTaskUpdate("web_start_timeout");
+        // 清理已启动的 Web 进程，避免残留占用端口（killOrphans 只清理 PPID=1 的孤儿）
+        await provider.stop();
+        this.webProcess = null;
         this.startPromise = null;
         timer.end("❌ Web start timeout");
         return;
@@ -199,7 +203,12 @@ export class AIPanelService {
           this.onProxyPortAllocated(this.actualProxyPort);
           log.debug(`Proxy server started on fallback port ${this.actualProxyPort}`);
         } else {
-          throw err;
+          log.error("Proxy server failed to start", { error: nodeErr });
+          // 清理已启动的 Web 进程，并重置 startPromise 以便后续可重试
+          await provider.stop();
+          this.webProcess = null;
+          this.startPromise = null;
+          return;
         }
       }
       timer.checkpoint("Proxy server started");

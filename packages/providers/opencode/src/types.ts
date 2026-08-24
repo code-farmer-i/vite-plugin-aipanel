@@ -92,8 +92,9 @@ export interface OpenCodeSettings {
 
 /**
  * OpenCode Provider 专属配置（对应插件配置的 providerOptions 段）
+ * 保留字符串索引签名，以赋给 PluginOptions 的 Record<string, unknown> 泛型约束。
  */
-export interface OpenCodeProviderOptions {
+export type OpenCodeProviderOptions = {
   /** OpenCode 界面语言，默认跟随浏览器语言 */
   language?: OpenCodeLanguage;
   /** OpenCode 内部设置，直接映射到 localStorage settings.v3 */
@@ -110,7 +111,10 @@ export interface OpenCodeProviderOptions {
   enableBlockOnError?: boolean;
   /** 启用代码格式化功能（prettier），默认 true */
   enablePrettier?: boolean;
-}
+
+  /** 允许 Provider 自定义扩展字段（schema 由具体 Provider 定义） */
+  [key: string]: unknown;
+};
 
 /**
  * OpenCode Web 服务启动选项（进程管理内部类型）

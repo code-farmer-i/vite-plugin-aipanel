@@ -54,7 +54,7 @@ ${logFileConfig.description}
 
 **日志内容**：
 - 来自日志文件 ${logFileConfig.path} 的实时日志
-- 默认返回最近 200 行日志`;
+- 默认返回最近 50 条（最多 200 条）日志`;
 
       const getLogsTool = tool({
         description,

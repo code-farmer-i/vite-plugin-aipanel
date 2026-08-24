@@ -15,7 +15,8 @@ import { createLogger, initProcessLogCapture } from "@aipanel/core/node";
 
 import { setupMiddlewares, LOGS_API_PATH, VUE_DEVTOOLS_API_PATH } from "./endpoints/index";
 import { injectWidget } from "./core/injector";
-import { loadProvider } from "./core/provider-loader";
+import { loadProvider, type ProviderId } from "./core/provider-loader";
+import type { OpenCodeProviderOptions } from "@aipanel/provider-opencode";
 import { AIPanelService } from "./core/service";
 import { McpProxy } from "./core/mcp-proxy";
 import {
@@ -26,12 +27,29 @@ import {
 import { findGitRoot } from "./utils/system";
 
 export type { PluginOptions } from "@aipanel/core";
+export type { OpenCodeProviderOptions } from "@aipanel/provider-opencode";
+export type { ProviderId };
+
+/**
+ * 编译期映射：provider id → providerOptions schema
+ * 与 provider-loader 的运行时包名映射对应；未知 provider 回退为宽松对象。
+ */
+type ProviderOptionsSchema<ID extends ProviderId> = ID extends "default" | "opencode"
+  ? OpenCodeProviderOptions
+  : Record<string, unknown>;
 
 const DEVTOOLS_BRIDGE_IMPORTEE = "virtual:aipanel-vue-devtools-bridge";
 const DEVTOOLS_BRIDGE_QUERY = "aipanel_vue_devtools_bridge";
 const BRIDGE_SOURCE_PATH = resolveVueDevtoolsBridgePath();
 
-export default function aipanelPlugin(options: PluginOptions = {}): Plugin[] {
+/**
+ * AIPanel Vite 插件
+ * provider 字段收窄为已登记的 ProviderId 联合类型（拼写错误在编译期报错）；
+ * providerOptions 的类型根据 options.provider 自动推断（未配置时默认 "default" → opencode）。
+ */
+export default function aipanelPlugin<const P extends ProviderId = "default">(
+  options: Omit<PluginOptions<ProviderOptionsSchema<P>>, "provider"> & { provider?: P } = {},
+): Plugin[] {
   const plugins: Plugin[] = [];
 
   plugins.push(
@@ -102,13 +120,26 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
       let viteOrigin = "";
 
       // 动态加载 Provider（用户指定哪个就加载哪个），初始化动作由 Provider 包自身定义
-      provider = await loadProvider(config.provider, {
-        hostname: config.hostname,
-        chromeDevtoolsPort: config.chromeDevtoolsPort,
-        getWebPort: () => actualWebPort,
-        getProxyPort: () => actualProxyPort,
-        options: config as unknown as Record<string, unknown>,
-      });
+      try {
+        provider = await loadProvider(config.provider, {
+          hostname: config.hostname,
+          chromeDevtoolsPort: config.chromeDevtoolsPort,
+          getWebPort: () => actualWebPort,
+          getProxyPort: () => actualProxyPort,
+          options: config as unknown as Record<string, unknown>,
+        });
+      } catch (e) {
+        // Provider 加载失败不拖垮 Vite dev server：记录失败状态，由客户端展示错误
+        log.error("加载 Web Provider 失败", {
+          provider: config.provider,
+          error: e instanceof Error ? e.message : String(e),
+        });
+        service.currentTask = {
+          task: "provider_not_installed",
+          data: { error: e instanceof Error ? e.message : String(e) },
+        };
+        return;
+      }
       provider.applyConfig?.({ theme: config.theme });
       service.setProvider(provider);
 

@@ -19,7 +19,10 @@ export interface ChatSession {
   archived?: boolean;
   /** 父会话 ID（subagent 会话才有） */
   parentId?: string;
-  /** 会话打开 URL（由 buildSessionUrl 填充） */
+  /**
+   * 会话打开 URL（由 buildSessionUrl 填充）。
+   * 无 deepLink 能力时所有会话共用应用壳 URL（同一值），切换会话靠 FOCUS_SESSION 消息。
+   */
   url?: string;
 }
 
@@ -104,6 +107,17 @@ export interface ProviderConfig {
   [key: string]: unknown;
 }
 
+/** Provider 能力描述（客户端据此自适应行为） */
+export interface ProviderCapabilities {
+  /**
+   * 会话是否支持 URL 深链。
+   * true（默认）：iframe 每次切换会话重载，src 直达该会话；
+   * false（SPA 型无深链 Provider）：iframe 保持应用壳 URL 不重载，
+   * 切换会话通过 FOCUS_SESSION 消息完成。
+   */
+  deepLink?: boolean;
+}
+
 /**
  * Web Provider 适配器接口
  */
@@ -131,8 +145,11 @@ export interface WebProvider {
   /** 可选：部分 Provider 无删除语义；core 不支持时隐藏删除入口 */
   deleteSession?(sessionId: string): Promise<void>;
 
-  /** 会话打开 URL（iframe src） */
+  /** 会话打开 URL（iframe src）；无 deepLink 能力时返回应用壳 URL（所有会话相同） */
   buildSessionUrl(projectDir: string, sessionId: string): string;
+
+  /** Provider 能力描述（客户端自适应行为；缺省按 deepLink=true 处理） */
+  readonly capabilities?: ProviderCapabilities;
 
   /** 事件订阅：把 Provider 私有事件归一化为 ProviderEvent；返回取消订阅函数 */
   subscribeEvents(handler: (e: ProviderEvent) => void): () => void;

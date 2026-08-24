@@ -102,13 +102,39 @@ export type ProviderEvent =
   | { type: "thinking"; sessionId: string; thinking: boolean }; // 由 adapter 自己推导
 ```
 
-### 4.3 Provider 注册表
+### 4.3 Provider 登记制（id → provider 包）
+
+核心层以 **登记制** 加载 Provider：维护一张 `id → provider npm 包名` 的映射（当前为内置 provider 白名单），运行时按 id 动态 `import` 包，再调用包导出的 `createProvider(ctx)` 工厂完成初始化。
 
 ```ts
-type ProviderFactory = (ctx: ProviderContext) => WebProvider;
-registerProvider("default", (ctx) => new DefaultWebProvider(ctx));
-// 使用: { provider: "default" } 或用户自定义 provider id
+// core/provider-loader.ts
+const PROVIDER_PACKAGES = {
+  default: "@aipanel/provider-opencode",
+  opencode: "@aipanel/provider-opencode",
+} as const;
+
+export async function loadProvider(id: string, ctx: ProviderInitContext): Promise<WebProvider> {
+  const pkg = PROVIDER_PACKAGES[id as ProviderId];
+  if (!pkg) throw new Error(`未知的 Web Provider: "${id}"`);
+  const mod = await import(pkg);
+  return mod.createProvider(ctx);
+}
 ```
+
+Provider 包侧约定（内置 provider 均遵守）：
+
+```ts
+// packages/providers/opencode/src/index.ts
+export function createProvider(ctx: ProviderInitContext): WebProvider {
+  return new DefaultWebProvider({ ... }, ctx.options);
+}
+```
+
+- **仅静态登记，无静态依赖**：core 不 import 任何 provider 包，加载与初始化完全由 Provider 包自身完成。
+- **新增内置 provider**：新增包 + 在 `PROVIDER_PACKAGES` 登记一行即可；"default" 是未配置 `provider` 时的默认别名。
+- **扩展边界**：当前为内置登记制，第三方 Provider 需进入登记表（改 core 或配置注入）方可用，尚不是开放插件注册表——如需支持开放扩展，可在登记表增加配置注入点，契约不变。
+
+> 配置使用：`{ provider: "default" }` 或用户自定义 (已登记的) provider id。
 
 ## 5. 关键设计决策
 

@@ -51,6 +51,9 @@ export class DefaultWebProvider implements WebProvider {
   readonly id = "opencode";
   readonly displayName = "OpenCode Web";
 
+  /** 支持会话 URL 深链：iframe 每次切换会话重载并直达 */
+  readonly capabilities = { deepLink: true } as const;
+
   /** REST 会话 API（Provider 内部使用） */
   private readonly api: OpenCodeAPI;
 

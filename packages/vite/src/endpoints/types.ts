@@ -1,6 +1,7 @@
 import type {
   ChatSession,
   PageContext,
+  ProviderCapabilities,
   ServiceStartupTask,
 } from "@aipanel/core";
 import type http from "http";
@@ -24,6 +25,8 @@ export interface EndpointContext {
   getSessions: () => Promise<ChatSession[]>;
   createSession: () => Promise<ChatSession>;
   deleteSession: (id: string) => Promise<void>;
+  /** 获取当前 Provider 能力描述（客户端自适应行为依据） */
+  getCapabilities: () => ProviderCapabilities;
   resolveWidgetPath: () => string;
   resolveWidgetStylePath: () => string;
   retryWarmupChromeMcp: () => Promise<{

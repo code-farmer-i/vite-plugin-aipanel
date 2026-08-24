@@ -106,7 +106,13 @@ const {
   deleteSession,
   selectSession,
   updateSessionInfo,
-} = useSessions({ showNotification, viteBaseUrl: viteBaseUrl.value });
+} = useSessions({
+  showNotification,
+  viteBaseUrl: viteBaseUrl.value,
+  onFocusSession: (sessionId) => {
+    widgetRef.value?.sendMessageToIframe(WIDGET_MSG.FOCUS_SESSION, { sessionId });
+  },
+});
 
 const { updateContext } = isExtensionMode
   ? useExtensionContext(serviceStatus, selectedElements, viteBaseUrl.value, serviceInstanceId)

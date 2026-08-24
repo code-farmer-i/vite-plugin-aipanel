@@ -183,6 +183,7 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
               ? provider.deleteSession(id)
               : Promise.reject(new Error("当前 Provider 不支持删除会话"));
           },
+          getCapabilities: () => provider?.capabilities ?? {},
           resolveWidgetPath,
           resolveWidgetStylePath,
           retryWarmupChromeMcp: () => service.retryWarmupChromeMcp(),

@@ -130,6 +130,8 @@ export const WIDGET_MSG = {
   MINIMIZE_STATE: "MINIMIZE_STATE_CHANGE",
   PROMPT_DOCK_VISIBILITY: "PROMPT_DOCK_VISIBILITY_CHANGE",
   REVIEW_PANEL_TOGGLE: "REVIEW_PANEL_TOGGLE",
+  /** 无 deepLink 能力的 Provider：通知 iframe 聚焦指定会话 */
+  FOCUS_SESSION: "AIPANEL_FOCUS_SESSION",
 } as const;
 
 /** ==================== API 路径补充 ==================== */

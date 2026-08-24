@@ -8,6 +8,8 @@ export interface UseSessionsOptions {
   showNotification: (msg: string) => void;
   /** Vite 服务 base URL (如 http://127.0.0.1:5099) */
   viteBaseUrl?: string;
+  /** 无深链能力时切换/创建/删除会话后的聚焦回调（App 层向 iframe 发送 FOCUS_SESSION 消息） */
+  onFocusSession?: (sessionId: string) => void;
   /** Session 更新回调 (从 SSE 事件接收) */
   onSessionUpdate?: Ref<
     ((session: { id: string; title?: string; time?: { updated?: number } }) => void) | undefined
@@ -25,26 +27,53 @@ function toWidgetSession(s: ChatSession): AIPanelWidgetSession {
 }
 
 export function useSessions(options: UseSessionsOptions) {
-  const { showNotification, viteBaseUrl = "" } = options;
+  const { showNotification, viteBaseUrl = "", onFocusSession } = options;
   const basePath = (path: string) => (viteBaseUrl ? `${viteBaseUrl}${path}` : path);
   const sessions = ref<AIPanelWidgetSession[]>([]);
   const loadingSessionList = ref<boolean | undefined>(undefined);
   const currentSessionId = ref<string | null>(null);
   const iframeLoading = ref(true);
 
+  /** Provider 是否支持会话 URL 深链（默认 true，随会话列表响应校正；会话展示能力由本会话自身数据源驱动） */
+  const deepLink = ref(true);
+
+  /** 是否支持会话 URL 深链（默认 true） */
+  const isDeepLink = () => deepLink.value;
+
   const iframeSrc = computed(() => {
+    if (!isDeepLink()) {
+      // 无深链能力：保持应用壳 URL（所有会话共用），切换会话不重载 iframe
+      return sessions.value[0]?.url || "";
+    }
     return currentSessionId.value
       ? sessions.value.find((s) => s.id === currentSessionId.value)?.url || ""
       : "";
   });
 
+  /** 无深链能力时切换会话：通过消息聚焦，而非重载 iframe */
+  const focusSession = (sessionId: string) => {
+    if (isDeepLink()) {
+      iframeLoading.value = true;
+    } else {
+      onFocusSession?.(sessionId);
+    }
+  };
+
   const loadSessions = async () => {
     loadingSessionList.value = true;
-    iframeLoading.value = true;
+    // 深链模式每次重载；无深链模式仅首次加载应用壳时需要重载
+    if (isDeepLink() || sessions.value.length === 0) {
+      iframeLoading.value = true;
+    }
     try {
       const response = await fetch(basePath(SESSIONS_API_PATH));
-      const data: ChatSession[] = await response.json();
-      sessions.value = data.map(toWidgetSession);
+      const data = (await response.json()) as {
+        sessions: ChatSession[];
+        capabilities?: { deepLink?: boolean };
+      };
+      // 先校正能力再赋值会话，保证 iframeSrc 计算时 deepLink 已就绪（能力随会话响应下发，无需独立 /capabilities 往返）
+      deepLink.value = data.capabilities?.deepLink !== false;
+      sessions.value = data.sessions.map(toWidgetSession);
 
       if (!sessions.value.length) {
         createSession();
@@ -85,7 +114,7 @@ export function useSessions(options: UseSessionsOptions) {
       const newSession: ChatSession = await response.json();
       sessions.value.unshift(toWidgetSession(newSession));
       currentSessionId.value = newSession.id;
-      iframeLoading.value = true;
+      focusSession(newSession.id);
     } catch {
       showNotification("创建会话失败");
     }
@@ -100,7 +129,7 @@ export function useSessions(options: UseSessionsOptions) {
         if (sessions.value.length > 0) {
           const nextSession = sessions.value[0];
           currentSessionId.value = nextSession.id;
-          iframeLoading.value = true;
+          focusSession(nextSession.id);
         } else {
           currentSessionId.value = null;
         }
@@ -113,13 +142,14 @@ export function useSessions(options: UseSessionsOptions) {
   const selectSession = (session: AIPanelWidgetSession) => {
     if (currentSessionId.value === session.id) return;
     currentSessionId.value = session.id;
-    iframeLoading.value = true;
+    focusSession(session.id);
   };
 
   return {
     sessions,
     loadingSessionList,
     currentSessionId,
+    deepLink,
     iframeSrc,
     iframeLoading,
     loadSessions,

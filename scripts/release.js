@@ -99,6 +99,34 @@ async function main() {
   console.log(`\n🚀 Starting release process for version v${targetVersion}...\n`);
 
   // Define rollback function
+  /**
+   * 收集所有 workspace 包的 package.json 路径（packages/* 与 packages/providers/*）
+   */
+  const collectPackageJsonPaths = () => {
+    const packagesDir = path.join(rootDir, "packages");
+    if (!fs.existsSync(packagesDir)) return [];
+    const result = [];
+    fs.readdirSync(packagesDir)
+      .filter((pkg) => fs.statSync(path.join(packagesDir, pkg)).isDirectory())
+      .forEach((pkg) => {
+        const pkgDir = path.join(packagesDir, pkg);
+        const pkgJsonPath = path.join(pkgDir, "package.json");
+        if (fs.existsSync(pkgJsonPath)) {
+          result.push(pkgJsonPath);
+        }
+        // 二级目录（如 packages/providers/opencode）
+        fs.readdirSync(pkgDir)
+          .filter((sub) => fs.statSync(path.join(pkgDir, sub)).isDirectory())
+          .forEach((sub) => {
+            const subPkgJsonPath = path.join(pkgDir, sub, "package.json");
+            if (fs.existsSync(subPkgJsonPath)) {
+              result.push(subPkgJsonPath);
+            }
+          });
+      });
+    return result;
+  };
+
   const rollbackVersion = (version) => {
     console.log(`\n⏪ Rolling back versions to v${version}...`);
 
@@ -109,27 +137,16 @@ async function main() {
     console.log(`   ✅ Rolled back root package.json to v${version}`);
 
     // Rollback all packages
-    const packagesDir = path.join(rootDir, "packages");
-    if (fs.existsSync(packagesDir)) {
-      const packages = fs.readdirSync(packagesDir).filter((pkg) => {
-        return fs.statSync(path.join(packagesDir, pkg)).isDirectory();
-      });
-
-      packages.forEach((pkg) => {
-        const pkgDir = path.join(packagesDir, pkg);
-        const pkgJsonPath = path.join(pkgDir, "package.json");
-        if (fs.existsSync(pkgJsonPath)) {
-          const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-          if (pkgJson.version !== version) {
-            pkgJson.version = version;
-            fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n");
-            console.log(`   ✅ Rolled back ${pkgJson.name} to v${version}`);
-          }
-        }
-      });
-    }
+    collectPackageJsonPaths().forEach((pkgJsonPath) => {
+      const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+      if (pkgJson.version !== version) {
+        pkgJson.version = version;
+        fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n");
+        console.log(`   ✅ Rolled back ${pkgJson.name} to v${version}`);
+      }
+    });
     // Rollback manifest.json
-    const manifestPath = path.join(packagesDir, "extension", "src", "manifest.json");
+    const manifestPath = path.join(rootDir, "packages", "extension", "src", "manifest.json");
     if (fs.existsSync(manifestPath)) {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
       if (manifest.version !== version) {
@@ -170,28 +187,19 @@ async function main() {
     process.exit(1);
   }
 
-  const packages = fs.readdirSync(packagesDir).filter((pkg) => {
-    return fs.statSync(path.join(packagesDir, pkg)).isDirectory();
-  });
-
-  // 3. Sync version to all packages
+  // 3. Sync version to all packages（覆盖 packages/* 与 packages/providers/*）
   console.log("\n📦 Syncing versions to packages...");
 
-  packages.forEach((pkg) => {
-    const pkgDir = path.join(packagesDir, pkg);
-    const pkgJsonPath = path.join(pkgDir, "package.json");
+  collectPackageJsonPaths().forEach((pkgJsonPath) => {
+    const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
 
-    if (fs.existsSync(pkgJsonPath)) {
-      const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-
-      // 同步所有包版本（包括私有包），发布时 private 包会自动跳过
-      if (pkgJson.version !== targetVersion) {
-        pkgJson.version = targetVersion;
-        fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n");
-        console.log(`   ✅ Updated ${pkgJson.name} to v${targetVersion}`);
-      } else {
-        console.log(`   ℹ️  ${pkgJson.name} is already at v${targetVersion}`);
-      }
+    // 同步所有包版本（包括私有包），发布时 private 包会自动跳过
+    if (pkgJson.version !== targetVersion) {
+      pkgJson.version = targetVersion;
+      fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n");
+      console.log(`   ✅ Updated ${pkgJson.name} to v${targetVersion}`);
+    } else {
+      console.log(`   ℹ️  ${pkgJson.name} is already at v${targetVersion}`);
     }
   });
 
@@ -220,7 +228,7 @@ async function main() {
 
   // 5. Package VS Code extension
   console.log("\n📦 Packaging VS Code extension...");
-  const vsixDir = path.join(packagesDir, "vscode-extension");
+  const vsixDir = path.join(rootDir, "packages", "vscode");
   // 清理旧版本 .vsix
   const oldVsixFiles = fs.readdirSync(vsixDir).filter((f) => f.endsWith(".vsix"));
   oldVsixFiles.forEach((f) => {

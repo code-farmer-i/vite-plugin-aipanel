@@ -24,9 +24,13 @@ export function setupSessionsEndpoint(server: ViteDevServer, ctx: EndpointContex
     try {
       if (req.method === "GET") {
         reqCtx.checkpoint("Fetching sessions");
-        const sessions = await ctx.getSessions();
+        const [sessions, capabilities] = await Promise.all([
+          ctx.getSessions(),
+          ctx.getCapabilities(),
+        ]);
         res.writeHead(200);
-        res.end(JSON.stringify(sessions));
+        // 会话 + Provider 能力一并返回，客户端一次往返即可完成深链自适应，避免独立能力端点引入竞态
+        res.end(JSON.stringify({ sessions, capabilities }));
         reqCtx.end(200);
       } else if (req.method === "POST") {
         reqCtx.checkpoint("Creating session");

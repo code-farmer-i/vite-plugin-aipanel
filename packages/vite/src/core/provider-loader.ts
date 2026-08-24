@@ -8,6 +8,7 @@ import type { ProviderInitContext, WebProvider } from "@aipanel/core";
 const PROVIDER_PACKAGES = {
   default: "@aipanel/provider-opencode",
   opencode: "@aipanel/provider-opencode",
+  deepseek: "@aipanel/provider-deepseek",
 } as const satisfies Record<string, string>;
 
 /** 已登记的 Provider id 联合类型（与运行时映射保持单一事实来源） */

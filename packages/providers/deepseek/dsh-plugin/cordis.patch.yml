@@ -1,0 +1,10 @@
+# aipanel dsh-plugin 的 cordis patch 层。
+# 若试图以 npm bundle 方式让 dsh 直接加载本插件（dsh plugin --profile web add /plugin），
+# 用此文件把插件挂进 profile。provider.start() 走的 --patch overlay 已等价注入，通常无需此文件。
+- insert:
+    - id: aipanel
+      name: '@aipanel/dsh-plugin'
+      inject: [tools, subprocess, agents]
+      config:
+        cwd: {}
+        autoDiagnose: true

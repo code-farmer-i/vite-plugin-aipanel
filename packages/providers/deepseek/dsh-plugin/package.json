@@ -1,0 +1,19 @@
+{
+  "name": "@aipanel/dsh-plugin",
+  "version": "1.1.69",
+  "type": "module",
+  "private": true,
+  "description": "AIPanel for DeepSeek Harness (dsh)：注入审查工具 run_diagnostics、编辑后自动诊断、元素选择上下文。",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --target=node18 --external:@deepseek-ai/* --external:node:*",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-agent": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-llm": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-subprocess": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-tools": "^0.1.1-rc.2",
+    "esbuild": "^0.25.0"
+  }
+}

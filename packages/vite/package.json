@@ -53,7 +53,13 @@
     "unplugin-vue-inspector": "^3.0.0"
   },
   "peerDependencies": {
+    "@aipanel/provider-deepseek": "workspace:*",
     "vite": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@aipanel/provider-deepseek": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@aipanel/client": "workspace:*",

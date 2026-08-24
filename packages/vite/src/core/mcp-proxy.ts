@@ -104,7 +104,9 @@ export class McpProxy {
 
     this.#proc.stderr?.on("data", (d: Buffer) => {
       const text = d.toString().trim();
-      if (text) log.debug("[MCP stderr]", { text: text.substring(0, 200) });
+      // 过滤 chrome-devtools-mcp 的良性噪音（未注册 issue code 处理器的提示，无排查价值）
+      if (!text || /No handler registered for issue code \w+/i.test(text)) return;
+      log.debug("[MCP stderr]", { text: text.substring(0, 200) });
     });
 
     this.#proc.on("close", (code) => {

@@ -11,6 +11,7 @@
     "element-plus": "^2.14.2"
   },
   "devDependencies": {
-    "vite-plugin-aipanel": "workspace:*"
+    "vite-plugin-aipanel": "workspace:*",
+    "@aipanel/provider-deepseek": "workspace:*"
   }
 }

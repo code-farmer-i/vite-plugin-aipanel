@@ -18,7 +18,7 @@ if (!filePath) {
 }
 
 const absPath = path.resolve(filePath)
-const PORT = parseInt(process.env.OPENCODE_VSCODE_PORT || '', 10) || 51939
+const PORT = parseInt(process.env.AIPANEL_VSCODE_PORT || '', 10) || 51939
 
 function touchFile(): void {
   const now = new Date()

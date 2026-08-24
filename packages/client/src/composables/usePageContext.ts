@@ -1,16 +1,13 @@
 import { onMounted, onUnmounted } from "vue";
-import type {
-  OpenCodeSelectedElement,
-  ServiceStatus,
-} from "@vite-plugin-opencode-assistant/shared";
-import { CONTEXT_API_PATH } from "@vite-plugin-opencode-assistant/shared";
+import type { AIPanelSelectedElement, ServiceStatus } from "@aipanel/core";
+import { CONTEXT_API_PATH } from "@aipanel/core";
 
 /**
  * 非扩展模式：监听当前页面的 URL/标题变化，发送上下文到服务端
  */
 export function usePageContext(
   serviceStatus: { value: ServiceStatus },
-  selectedElements: { value: OpenCodeSelectedElement[] },
+  selectedElements: { value: AIPanelSelectedElement[] },
   viteBaseUrl = "",
 ) {
   let currentPageUrl = "";

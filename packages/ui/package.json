@@ -1,0 +1,42 @@
+{
+  "name": "@aipanel/ui",
+  "version": "1.1.69",
+  "description": "Reusable AIPanel widget components built with Pagoda CLI",
+  "type": "module",
+  "main": "lib/index.cjs",
+  "module": "es/index.mjs",
+  "types": "es/index.d.ts",
+  "files": [
+    "es",
+    "lib"
+  ],
+  "exports": {
+    ".": {
+      "types": "./es/index.d.ts",
+      "import": "./es/index.mjs",
+      "require": "./lib/index.cjs"
+    },
+    "./style.css": "./lib/index.css"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "sideEffects": [
+    "**/*.css",
+    "**/*.vue"
+  ],
+  "scripts": {
+    "build": "pagoda-cli build",
+    "dev:site": "pagoda-cli site",
+    "build:site": "pagoda-cli build-site",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "dependencies": {
+    "@aipanel/core": "workspace:*",
+    "css-selector-generator": "^3.9.2"
+  }
+}

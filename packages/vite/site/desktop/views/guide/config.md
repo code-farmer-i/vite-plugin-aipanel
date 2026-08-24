@@ -1,33 +1,33 @@
 # Vite 插件配置
 
-Vite 插件负责启动 OpenCode Web 服务，是浏览器扩展正常工作所必需的。默认配置即可满足大多数场景，以下配置用于高级定制。
+Vite 插件负责启动 AIPanel Web 服务，是浏览器扩展正常工作所必需的。默认配置即可满足大多数场景，以下配置用于高级定制。
 
 ## 安装
 
 ```bash
-npm install -D vite-plugin-opencode-assistant
+npm install -D vite-plugin-aipanel
 ```
 
 ## 最小配置
 
 ```ts
 import { defineConfig } from "vite";
-import opencodeAssistant from "vite-plugin-opencode-assistant";
+import aipanelAssistant from "vite-plugin-aipanel";
 
 export default defineConfig({
-  plugins: [opencodeAssistant()],
+  plugins: [aipanelAssistant()],
 });
 ```
 
 ## 完整配置
 
 ```ts
-import opencodeAssistant from "vite-plugin-opencode-assistant";
+import aipanelAssistant from "vite-plugin-aipanel";
 
-opencodeAssistant({
+aipanelAssistant({
   // === 基础配置 ===
   enabled: true, // 是否启用，默认 true
-  webPort: 5097, // OpenCode Web 端口，默认 5097
+  webPort: 5097, // AIPanel Web 端口，默认 5097
   proxyPort: 6097, // 代理端口，默认 6097
   hostname: "127.0.0.1", // 绑定地址
   verbose: false, // 详细日志
@@ -35,13 +35,13 @@ opencodeAssistant({
   // === 主题与行为 ===
   theme: "auto", // light | dark | auto
   hotkey: "ctrl+k", // 面板快捷键
-  language: "zh", // OpenCode 界面语言
+  language: "zh", // AIPanel 界面语言
 
   // === Chrome DevTools MCP ===
   warmupChromeMcp: true, // 启动时预热 Chrome DevTools
   chromeDevtoolsPort: 9222, // Chrome 调试端口
 
-  // === OpenCode 内部设置 ===
+  // === Provider 内部设置 ===
   settings: {
     general: {
       showReasoningSummaries: true,
@@ -78,7 +78,7 @@ opencodeAssistant({
 | 配置项               | 类型      | 默认值        | 说明              |
 | -------------------- | --------- | ------------- | ----------------- |
 | `enabled`            | `boolean` | `true`        | 是否启用          |
-| `webPort`            | `number`  | `5097`        | OpenCode Web 端口 |
+| `webPort`            | `number`  | `5097`        | AIPanel Web 端口  |
 | `proxyPort`          | `number`  | `6097`        | 代理端口          |
 | `hostname`           | `string`  | `"127.0.0.1"` | 服务地址          |
 | `theme`              | `string`  | `"auto"`      | 主题              |
@@ -87,7 +87,7 @@ opencodeAssistant({
 | `warmupChromeMcp`    | `boolean` | `true`        | 预热 Chrome MCP   |
 | `chromeDevtoolsPort` | `number`  | `9222`        | Chrome 调试端口   |
 | `language`           | `string`  | -             | 界面语言          |
-| `settings`           | `object`  | -             | OpenCode 内部设置 |
+| `settings`           | `object`  | -             | Provider 内部设置 |
 | `logFiles`           | `array`   | -             | 自定义日志文件    |
 
 ### logFiles 说明
@@ -104,4 +104,4 @@ logFiles: [
 ];
 ```
 
-> 详见 [Vite 插件配置完整参考](https://github.com/opencode-ai/vite-plugin-opencode-assistant) 获取 `settings` 全部子配置项。
+> 详见 [Vite 插件配置完整参考](https://github.com/opencode-ai/vite-plugin-aipanel) 获取 `settings` 全部子配置项。

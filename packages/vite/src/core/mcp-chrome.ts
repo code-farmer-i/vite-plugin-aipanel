@@ -4,7 +4,7 @@
  * 专注于 Chrome DevTools 页面匹配与解析逻辑
  */
 import type { ViteDevServer } from "vite";
-import { createLogger } from "@vite-plugin-opencode-assistant/shared/node";
+import { createLogger } from "@aipanel/core/node";
 import type { McpProxy } from "./mcp-proxy";
 
 const log = createLogger("McpChrome");
@@ -119,7 +119,7 @@ export async function validatePageId(
  *
  * 策略：
  * 1. list_pages → 解析每行的 "pageId: title (URL)" 格式
- * 2. 仅用 sessionId（_opencode_pk）匹配，跨导航可靠；不做 URL 降级匹配
+ * 2. 仅用 sessionId（_aipanel_pk）匹配，跨导航可靠；不做 URL 降级匹配
  *
  * 失败时返回具体原因，由调用方透传给 Agent。
  */
@@ -172,7 +172,7 @@ export async function resolveChromePageId(
       for (const page of pages) {
         await mcp.callChromeDevTool("select_page", { pageId: page.pageId, bringToFront: false });
         const evalResult: any = await mcp.callChromeDevTool("evaluate_script", {
-          function: "() => sessionStorage.getItem('_opencode_pk')",
+          function: "() => sessionStorage.getItem('_aipanel_pk')",
         });
         const rawText: string | undefined = evalResult?.result?.content?.[0]?.text;
         const extracted = extractEvalValue(rawText);
@@ -203,7 +203,7 @@ export async function resolveChromePageId(
     // 无 sessionId：不做 URL 兜底，明确报错
     return {
       ok: false,
-      error: `上下文缺少会话标识（_opencode_pk），无法定位页面，请刷新目标页面后重试`,
+      error: `上下文缺少会话标识（_aipanel_pk），无法定位页面，请刷新目标页面后重试`,
     };
   } catch (err) {
     const msg = `MCP 调用失败: ${(err as Error).message}`;

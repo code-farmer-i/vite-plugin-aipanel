@@ -1,11 +1,6 @@
-import {
-  EXT_MSG,
-  EXT_BROADCAST,
-  START_API_PATH,
-  createLogger,
-} from "@vite-plugin-opencode-assistant/shared";
+import { EXT_MSG, EXT_BROADCAST, START_API_PATH, createLogger } from "@aipanel/core";
 
-const log = createLogger("OpenCode BG");
+const log = createLogger("AIPanel BG");
 
 /** 需要从 Content Script 转发到 Side Panel 的消息类型 */
 const FORWARD_TYPES = new Set<string>([EXT_BROADCAST.PAGE_CONTEXT, EXT_BROADCAST.THEME_CHANGE]);

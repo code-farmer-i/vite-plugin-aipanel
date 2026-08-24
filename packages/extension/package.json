@@ -1,16 +1,16 @@
 {
-  "name": "@vite-plugin-opencode-assistant/extension",
+  "name": "@aipanel/extension",
   "version": "1.1.69",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && tsx scripts/build-bg-cs.ts && cd dist && zip -r ../opencode-assistant.zip . && cd ..",
+    "build": "vite build && tsx scripts/build-bg-cs.ts && cd dist && zip -r ../aipanel-assistant.zip . && cd ..",
     "dev": "vite build --watch"
   },
   "dependencies": {
-    "@vite-plugin-opencode-assistant/client": "workspace:*",
-    "@vite-plugin-opencode-assistant/components": "workspace:*",
-    "@vite-plugin-opencode-assistant/shared": "workspace:*",
+    "@aipanel/client": "workspace:*",
+    "@aipanel/ui": "workspace:*",
+    "@aipanel/core": "workspace:*",
     "vue": "^3.5.39"
   },
   "devDependencies": {

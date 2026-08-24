@@ -1,13 +1,8 @@
 import { createApp } from "vue";
-import {
-  CONFIG_DATA_ATTR,
-  WIDGET_MSG,
-  createLogger,
-  setVerbose,
-} from "@vite-plugin-opencode-assistant/shared";
-import type { WidgetOptions } from "@vite-plugin-opencode-assistant/shared";
+import { CONFIG_DATA_ATTR, WIDGET_MSG, createLogger, setVerbose } from "@aipanel/core";
+import type { WidgetOptions } from "@aipanel/core";
 
-const log = createLogger("OpenCode");
+const log = createLogger("AIPanel");
 import App from "./App.vue";
 import "./styles.css";
 
@@ -30,7 +25,7 @@ if (scriptTag) {
   }
 }
 
-const INIT_MARKER = "__OPENCODE_INITIALIZED__";
+const INIT_MARKER = "__AIPANEL_INITIALIZED__";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 if (!(window as any)[INIT_MARKER]) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,7 +63,7 @@ if (!(window as any)[INIT_MARKER]) {
 
   // 添加清理函数到 window，便于热更新或测试时清理
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).__OPENCODE_CLEANUP__ = () => {
+  (window as any).__AIPANEL_CLEANUP__ = () => {
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     app.unmount();
     container.remove();

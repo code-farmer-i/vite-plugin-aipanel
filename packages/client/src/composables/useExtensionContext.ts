@@ -1,9 +1,6 @@
 import { onMounted, onUnmounted, ref } from "vue";
-import type {
-  OpenCodeSelectedElement,
-  ServiceStatus,
-} from "@vite-plugin-opencode-assistant/shared";
-import { EXT_MSG, CONTEXT_API_PATH, createLogger } from "@vite-plugin-opencode-assistant/shared";
+import type { AIPanelSelectedElement, ServiceStatus } from "@aipanel/core";
+import { EXT_MSG, CONTEXT_API_PATH, createLogger } from "@aipanel/core";
 
 /**
  * 扩展模式：通过 chrome.runtime 监听目标页面的 PAGE_CONTEXT 消息，
@@ -14,7 +11,7 @@ import { EXT_MSG, CONTEXT_API_PATH, createLogger } from "@vite-plugin-opencode-a
  */
 export function useExtensionContext(
   serviceStatus: { value: ServiceStatus },
-  selectedElements: { value: OpenCodeSelectedElement[] },
+  selectedElements: { value: AIPanelSelectedElement[] },
   viteBaseUrl = "",
   serviceInstanceId = "",
 ) {
@@ -34,7 +31,7 @@ export function useExtensionContext(
   const basePath = (path: string) => (viteBaseUrl ? `${viteBaseUrl}${path}` : path);
 
   const sendContext = (url: string, title: string) => {
-    log.debug(`[ExtCtx] POST 上下文: tabId=${activeTabId} url=${url} title=${title}`);
+    log.debug(`POST 上下文: tabId=${activeTabId} url=${url} title=${title}`);
     fetch(basePath(CONTEXT_API_PATH), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -74,7 +71,7 @@ export function useExtensionContext(
 
     // Tab 切换：更新 activeTabId
     if (msg.type === EXT_MSG.TAB_SWITCHED) {
-      log.debug(`[ExtCtx] activeTabId: ${activeTabId} → ${msg.tabId} (windowId=${msg.windowId})`);
+      log.debug(`activeTabId: ${activeTabId} → ${msg.tabId} (windowId=${msg.windowId})`);
       activeTabId = msg.tabId;
       return;
     }

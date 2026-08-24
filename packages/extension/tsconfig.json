@@ -4,7 +4,7 @@
     "outDir": "dist",
     "types": ["chrome", "vite/client"],
     "paths": {
-      "@vite-plugin-opencode-assistant/client/*": ["../client/src/*"]
+      "@aipanel/client/*": ["../client/src/*"]
     }
   },
   "include": ["src"]

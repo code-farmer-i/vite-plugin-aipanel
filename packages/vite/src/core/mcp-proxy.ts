@@ -6,18 +6,14 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
 import crypto from "node:crypto";
 import path from "node:path";
-import {
-  createLogger,
-  createPackageRequire,
-  resolvePackageDir,
-} from "@vite-plugin-opencode-assistant/shared/node";
+import { createLogger, createPackageRequire, resolvePackageDir } from "@aipanel/core/node";
 
 const log = createLogger("McpProxy");
 
 /** 通过 require.resolve 解析 chrome-devtools-mcp 的实际可执行文件路径 */
 function resolveChromeDevToolsMcpBin(): string {
   // 从插件自身位置解析，确保 npm/yarn/pnpm（strict mode）都能正确找到传递依赖
-  const pluginDir = resolvePackageDir("vite-plugin-opencode-assistant");
+  const pluginDir = resolvePackageDir("vite-plugin-aipanel");
   const require = createPackageRequire(pluginDir);
   const pkgJsonPath = require.resolve("chrome-devtools-mcp/package.json");
   const pkgDir = path.dirname(pkgJsonPath);
@@ -127,7 +123,7 @@ export class McpProxy {
     await this.call("initialize", {
       protocolVersion: "2024-11-05",
       capabilities: {},
-      clientInfo: { name: "vite-plugin-opencode", version: "1.0.0" },
+      clientInfo: { name: "vite-plugin-aipanel", version: "1.0.0" },
     });
 
     log.debug("MCP proxy ready");

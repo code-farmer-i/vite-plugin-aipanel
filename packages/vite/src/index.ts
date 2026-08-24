@@ -3,20 +3,20 @@ import type http from "http";
 import crypto from "crypto";
 import fs from "fs";
 import Inspector from "unplugin-vue-inspector/vite";
-import type { OpenCodeOptions, PageContext } from "@vite-plugin-opencode-assistant/shared";
+import type { PageContext, PluginOptions, WebProvider } from "@aipanel/core";
 import {
   CONTEXT_API_PATH,
-  DEFAULT_CONFIG,
   DEFAULT_PROXY_PORT,
   MCP_API_PATH,
+  resolvePluginConfig,
   setVerbose,
-} from "@vite-plugin-opencode-assistant/shared";
-import { createLogger, initProcessLogCapture } from "@vite-plugin-opencode-assistant/shared/node";
+} from "@aipanel/core";
+import { createLogger, initProcessLogCapture } from "@aipanel/core/node";
 
 import { setupMiddlewares, LOGS_API_PATH, VUE_DEVTOOLS_API_PATH } from "./endpoints/index";
 import { injectWidget } from "./core/injector";
-import { OpenCodeAPI } from "./core/api";
-import { OpenCodeService } from "./core/service";
+import { loadProvider } from "./core/provider-loader";
+import { AIPanelService } from "./core/service";
 import { McpProxy } from "./core/mcp-proxy";
 import {
   resolveWidgetPath,
@@ -25,11 +25,13 @@ import {
 } from "./utils/paths";
 import { findGitRoot } from "./utils/system";
 
-const DEVTOOLS_BRIDGE_IMPORTEE = "virtual:opencode-vue-devtools-bridge";
-const DEVTOOLS_BRIDGE_QUERY = "opencode_vue_devtools_bridge";
+export type { PluginOptions } from "@aipanel/core";
+
+const DEVTOOLS_BRIDGE_IMPORTEE = "virtual:aipanel-vue-devtools-bridge";
+const DEVTOOLS_BRIDGE_QUERY = "aipanel_vue_devtools_bridge";
 const BRIDGE_SOURCE_PATH = resolveVueDevtoolsBridgePath();
 
-export default function opencodePlugin(options: OpenCodeOptions = {}): Plugin[] {
+export default function aipanelPlugin(options: PluginOptions = {}): Plugin[] {
   const plugins: Plugin[] = [];
 
   plugins.push(
@@ -40,13 +42,13 @@ export default function opencodePlugin(options: OpenCodeOptions = {}): Plugin[] 
     }),
   );
 
-  plugins.push(createOpenCodePlugin(options));
+  plugins.push(createAIPanelPlugin(options));
 
   return plugins;
 }
 
-function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
-  const config = { ...DEFAULT_CONFIG, ...options } as Required<OpenCodeOptions>;
+function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
+  const config = resolvePluginConfig(options);
 
   setVerbose(config.verbose);
 
@@ -70,15 +72,9 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
 
   const mcpProxy = new McpProxy({ idleTimeout: 5 * 60 * 1000 });
 
-  const api = new OpenCodeAPI(
-    config.hostname,
-    () => actualWebPort,
-    () => actualProxyPort,
-    config.chromeDevtoolsPort,
-  );
-  const service = new OpenCodeService(
+  let provider: WebProvider | null = null;
+  const service = new AIPanelService(
     config,
-    api,
     sseClients,
     (port) => {
       actualWebPort = port;
@@ -91,7 +87,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
   service.workspaceRoot = findGitRoot(process.cwd());
 
   return {
-    name: "vite-plugin-opencode",
+    name: "vite-plugin-aipanel",
     apply(_viteConfig, env) {
       if (!config.enabled) return false;
 
@@ -104,6 +100,17 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
       projectRoot = server.config.root;
 
       let viteOrigin = "";
+
+      // 动态加载 Provider（用户指定哪个就加载哪个），初始化动作由 Provider 包自身定义
+      provider = await loadProvider(config.provider, {
+        hostname: config.hostname,
+        chromeDevtoolsPort: config.chromeDevtoolsPort,
+        getWebPort: () => actualWebPort,
+        getProxyPort: () => actualProxyPort,
+        options: config as unknown as Record<string, unknown>,
+      });
+      provider.applyConfig?.({ theme: config.theme });
+      service.setProvider(provider);
 
       setupMiddlewares(
         server,
@@ -153,9 +160,12 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
           get serviceInstanceId() {
             return serviceInstanceId;
           },
-          getSessions: () => api.getSessions(service.workspaceRoot!),
-          createSession: () => api.createSession(service.workspaceRoot!),
-          deleteSession: (id) => api.deleteSession(id),
+          getSessions: () => provider!.listSessions(service.workspaceRoot!),
+          createSession: () => provider!.createSession(service.workspaceRoot!),
+          deleteSession: (id) =>
+            provider!.deleteSession
+              ? provider!.deleteSession(id)
+              : Promise.reject(new Error("当前 Provider 不支持删除会话")),
           resolveWidgetPath,
           resolveWidgetStylePath,
           retryWarmupChromeMcp: () => service.retryWarmupChromeMcp(),
@@ -280,7 +290,7 @@ function createOpenCodePlugin(options: OpenCodeOptions = {}): Plugin {
       // 用 8 位随机字符，避免多 Tab 场景下标识碰撞
       const titleInject = `<script>
         (function () {
-          var KEY = "_opencode_pk";
+          var KEY = "_aipanel_pk";
           if (!sessionStorage.getItem(KEY)) {
             sessionStorage.setItem(KEY, "[" + Math.random().toString(36).slice(2, 10) + "]");
           }

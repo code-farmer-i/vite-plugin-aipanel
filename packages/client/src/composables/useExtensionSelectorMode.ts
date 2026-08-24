@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted } from "vue";
-import type { OpenCodeSelectedElement } from "@vite-plugin-opencode-assistant/shared";
-import { WIDGET_MSG } from "@vite-plugin-opencode-assistant/shared";
+import type { AIPanelSelectedElement } from "@aipanel/core";
+import { WIDGET_MSG } from "@aipanel/core";
 
 interface UseExtensionSelectorModeOptions {
   onSelectModeChange: (val: boolean) => void;
@@ -31,7 +31,7 @@ export function useExtensionSelectorMode(options: UseExtensionSelectorModeOption
   });
 
   /** 回传选中结果到目标页面 */
-  function notifySelectionResult(element: OpenCodeSelectedElement) {
+  function notifySelectionResult(element: AIPanelSelectedElement) {
     window.postMessage(
       {
         type: WIDGET_MSG.ELEMENT_SELECTED,

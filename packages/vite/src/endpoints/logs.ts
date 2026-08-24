@@ -7,9 +7,9 @@ import type { ViteDevServer } from "vite";
 import {
   getProcessLogBuffer,
   type ProcessLogEntry,
-} from "@vite-plugin-opencode-assistant/shared/node";
-import { RequestContext, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
-import { LOGS_API_PATH } from "@vite-plugin-opencode-assistant/shared";
+} from "@aipanel/core/node";
+import { RequestContext, createLogger } from "@aipanel/core/node";
+import { LOGS_API_PATH } from "@aipanel/core";
 
 const log = createLogger("Endpoints:Logs");
 

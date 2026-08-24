@@ -5,8 +5,8 @@ defineProps<{
 </script>
 
 <template>
-  <div class="opencode-custom-loading">
-    <div class="opencode-loading-spinner"></div>
-    <div class="opencode-loading-text">{{ loadingText }}</div>
+  <div class="aipanel-custom-loading">
+    <div class="aipanel-loading-spinner"></div>
+    <div class="aipanel-loading-text">{{ loadingText }}</div>
   </div>
 </template>

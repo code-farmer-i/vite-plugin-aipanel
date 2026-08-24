@@ -1,8 +1,8 @@
 import { ref, computed, type Ref } from "vue";
-import { SESSIONS_API_PATH, createLogger } from "@vite-plugin-opencode-assistant/shared";
-import type { OpenCodeWidgetSession, SessionInfo } from "@vite-plugin-opencode-assistant/shared";
+import { SESSIONS_API_PATH, createLogger } from "@aipanel/core";
+import type { ChatSession, AIPanelWidgetSession } from "@aipanel/core";
 
-const log = createLogger("OpenCode");
+const log = createLogger("AIPanel");
 
 export interface UseSessionsOptions {
   showNotification: (msg: string) => void;
@@ -14,10 +14,20 @@ export interface UseSessionsOptions {
   >;
 }
 
+/** 归一化会话 → 挂件会话 */
+function toWidgetSession(s: ChatSession): AIPanelWidgetSession {
+  return {
+    id: s.id,
+    title: s.title,
+    updatedAt: s.updatedAt || Date.now(),
+    url: s.url,
+  };
+}
+
 export function useSessions(options: UseSessionsOptions) {
   const { showNotification, viteBaseUrl = "" } = options;
   const basePath = (path: string) => (viteBaseUrl ? `${viteBaseUrl}${path}` : path);
-  const sessions = ref<OpenCodeWidgetSession[]>([]);
+  const sessions = ref<AIPanelWidgetSession[]>([]);
   const loadingSessionList = ref<boolean | undefined>(undefined);
   const currentSessionId = ref<string | null>(null);
   const iframeLoading = ref(true);
@@ -33,18 +43,8 @@ export function useSessions(options: UseSessionsOptions) {
     iframeLoading.value = true;
     try {
       const response = await fetch(basePath(SESSIONS_API_PATH));
-      const data: SessionInfo[] = await response.json();
-      sessions.value = data
-        .filter((s) => {
-          if (s.title === "__chrome_mcp_warmup__") return false;
-          if (s.parentID) return false;
-          if (s.time?.archived) return false;
-          return true;
-        })
-        .map((s) => ({
-          ...s,
-          updatedAt: s.time?.updated || Date.now(),
-        }));
+      const data: ChatSession[] = await response.json();
+      sessions.value = data.map(toWidgetSession);
 
       if (!sessions.value.length) {
         createSession();
@@ -82,13 +82,8 @@ export function useSessions(options: UseSessionsOptions) {
   const createSession = async () => {
     try {
       const response = await fetch(basePath(SESSIONS_API_PATH), { method: "POST" });
-      const newSession = await response.json();
-      sessions.value.unshift({
-        id: newSession.id,
-        title: "新会话",
-        updatedAt: Date.now(),
-        url: newSession.url,
-      });
+      const newSession: ChatSession = await response.json();
+      sessions.value.unshift(toWidgetSession(newSession));
       currentSessionId.value = newSession.id;
       iframeLoading.value = true;
     } catch {
@@ -96,7 +91,7 @@ export function useSessions(options: UseSessionsOptions) {
     }
   };
 
-  const deleteSession = async (session: OpenCodeWidgetSession) => {
+  const deleteSession = async (session: AIPanelWidgetSession) => {
     try {
       await fetch(basePath(`${SESSIONS_API_PATH}?id=${session.id}`), { method: "DELETE" });
       await loadSessions();
@@ -115,7 +110,7 @@ export function useSessions(options: UseSessionsOptions) {
     }
   };
 
-  const selectSession = (session: OpenCodeWidgetSession) => {
+  const selectSession = (session: AIPanelWidgetSession) => {
     if (currentSessionId.value === session.id) return;
     currentSessionId.value = session.id;
     iframeLoading.value = true;

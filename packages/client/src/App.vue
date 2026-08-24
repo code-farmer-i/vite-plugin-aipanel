@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
-import { OpenCodeWidget } from "@vite-plugin-opencode-assistant/components";
+import { AIPanelWidget } from "@aipanel/ui";
 import type {
-  OpenCodeWidgetTheme,
-  OpenCodeSelectedElement,
-} from "@vite-plugin-opencode-assistant/shared";
-import type { WidgetOptions } from "@vite-plugin-opencode-assistant/shared";
-import { WIDGET_MSG, WARMUP_API_PATH, START_API_PATH, createLogger } from "@vite-plugin-opencode-assistant/shared";
+  AIPanelWidgetTheme,
+  AIPanelSelectedElement,
+} from "@aipanel/core";
+import type { WidgetOptions } from "@aipanel/core";
+import { WIDGET_MSG, WARMUP_API_PATH, START_API_PATH, createLogger } from "@aipanel/core";
 
 import { useHotkey } from "./composables/useHotkey";
 import { useServerSSE } from "./composables/useServerSSE";
-import { useOpencodeSessionSSE } from "./composables/useOpencodeSessionSSE";
+import { useSessionEvents } from "./composables/useSessionEvents";
 import { useSessions } from "./composables/useSessions";
 import { useTheme } from "./composables/useTheme";
 import { useSelectedElements } from "./composables/useSelectedElements";
@@ -21,7 +21,7 @@ import { useExtensionMode } from "./composables/useExtensionMode";
 import { useExtensionSelectorMode } from "./composables/useExtensionSelectorMode";
 import LoadingContent from "./components/LoadingContent.vue";
 import ChromeWarmupError from "./components/ChromeWarmupError.vue";
-import { EXT_MSG } from "@vite-plugin-opencode-assistant/shared";
+import { EXT_MSG } from "@aipanel/core";
 
 const props = defineProps<{
   config: Partial<WidgetOptions>;
@@ -31,7 +31,7 @@ const open = ref(false);
 const selectMode = ref(false);
 const sessionListCollapsed = ref(true);
 const loading = ref(false);
-const widgetRef = ref<InstanceType<typeof OpenCodeWidget> | null>(null);
+const widgetRef = ref<InstanceType<typeof AIPanelWidget> | null>(null);
 const retryingWarmup = ref(false);
 
 const {
@@ -39,7 +39,6 @@ const {
   open: autoOpen = false,
   hotkey = "ctrl+k",
   proxyPort = 4098,
-  proxyHost = "localhost",
   displayMode = "bubble",
   splitMode,
   vitePort = "",
@@ -47,10 +46,10 @@ const {
   myWindowId,
 } = props.config;
 
-const opencodeLog = createLogger("OpenCode");
+const aipanelLog = createLogger("AIPanel");
 const log = createLogger("App");
 
-const widgetTheme = initialTheme as OpenCodeWidgetTheme;
+const widgetTheme = initialTheme as AIPanelWidgetTheme;
 const splitPanelWidth = ref(splitMode?.width ?? 500);
 
 const isExtensionMode = displayMode === "extension";
@@ -65,15 +64,10 @@ const apiPath = (path: string) => viteBaseUrl.value ? `${viteBaseUrl.value}${pat
 // 扩展模式 composable 返回值（在 composable 调用后填充）
 const ext = {
   onSelectModeChange: null as ((val: boolean) => void) | null,
-  broadcastTheme: null as ((theme: OpenCodeWidgetTheme) => void) | null,
-  notifySelectionResult: null as ((element: OpenCodeSelectedElement) => void) | null,
+  broadcastTheme: null as ((theme: AIPanelWidgetTheme) => void) | null,
+  notifySelectionResult: null as ((element: AIPanelSelectedElement) => void) | null,
   notifySelectModeChange: null as ((val: boolean) => void) | null,
 };
-
-// 构建 proxy base URL
-const proxyBaseUrl = computed(() => {
-  return `http://${proxyHost}:${proxyPort}`;
-});
 
 const showNotification = (
   msg: string,
@@ -118,14 +112,23 @@ const { updateContext } = isExtensionMode
   ? useExtensionContext(serviceStatus, selectedElements, viteBaseUrl.value, serviceInstanceId)
   : usePageContext(serviceStatus, selectedElements, viteBaseUrl.value);
 
-// Server SSE: 监听 Vite server 事件 (服务启动状态)
+// 消费 Provider 归一化会话事件（SESSION_EVENT，来自服务端 SSE）
+const sessionEvents = useSessionEvents({
+  currentSessionId,
+  onSessionUpdate: (session) => {
+    // 当 Provider 自动生成标题后，更新本地 session 列表
+    updateSessionInfo(session);
+  },
+});
+
+// Server SSE: 监听 Vite server 事件 (服务启动状态 + 会话事件)
 const serverSSE = useServerSSE({
   viteBaseUrl: viteBaseUrl.value,
   onStatusSync: (data) => {
     log.debug(`SSE STATUS_SYNC: ${JSON.stringify(data)} currentStatus: ${serviceStatus.value}`);
     // SSE 重连后如果服务仍在启动中，重置为 starting 以显示蒙层
     if (justReconnected && data.task && data.task !== "ready" && data.task !== "chrome_mcp_failed" &&
-      data.task !== "session_creation_failed" && data.task !== "opencode_not_installed" &&
+      data.task !== "session_creation_failed" && data.task !== "provider_not_installed" &&
       data.task !== "web_start_timeout") {
       log.debug(`SSE 重连后服务仍在启动中(${data.task})，重置 status 为 starting`);
       currentTask.value = data.task;
@@ -145,6 +148,7 @@ const serverSSE = useServerSSE({
     log.debug(`SSE TASK_UPDATE: ${JSON.stringify(data)} currentStatus: ${serviceStatus.value}`);
     updateStatusFromTask(data.task, data.errorType, data.errorMessage);
   },
+  onSessionEvent: (event) => sessionEvents.handleEvent(event),
   onClearElements: () => clearElements(),
   onConnected: () => updateContext(true),
 });
@@ -175,22 +179,9 @@ watch(serverSSE.isConnected, (connected, wasConnected) => {
   }
 });
 
-// OpenCode Session SSE: 监听 OpenCode session thinking 状态和标题更新
-const opencodeSSE = useOpencodeSessionSSE({
-  proxyBaseUrl: proxyBaseUrl.value,
-  currentSessionId,
-  onConnected: () => {
-    opencodeLog.debug("Session SSE connected");
-  },
-  onSessionUpdate: (session) => {
-    // 当 OpenCode 自动生成标题后，更新本地 session 列表
-    updateSessionInfo(session);
-  },
-});
-
 // 只要有一个会话处于 thinking 状态就设为 true
-const thinking = opencodeSSE.hasAnyThinking;
-const sessionStates = opencodeSSE.sessionStates;
+const thinking = sessionEvents.hasAnyThinking;
+const sessionStates = sessionEvents.sessionStates;
 
 const showSessionListSkeleton = computed(() => serviceStatus.value === "starting");
 const computedLoading = computed(() => {
@@ -225,7 +216,7 @@ const retryWarmup = async () => {
       showNotification(data.error || "重试失败，请确认 Chrome 远程调试已开启");
     }
   } catch (e) {
-    opencodeLog.error("Retry warmup failed:", { error: e });
+    aipanelLog.error("Retry warmup failed:", { error: e });
     showNotification("重试失败，请稍后再试");
   } finally {
     retryingWarmup.value = false;
@@ -284,7 +275,6 @@ if (!isExtensionMode) {
 watch(serviceStatus, (status, oldStatus) => {
   if (status !== "idle" && oldStatus === "idle") {
     serverSSE.connect();
-    opencodeSSE.connect();
   }
   if (status === "ready" && oldStatus !== "ready") {
     log.debug("服务就绪，加载会话列表");
@@ -329,7 +319,6 @@ onMounted(() => {
     log.debug("onMounted: ready 分支，直接加载会话");
     loadSessions();
     serverSSE.connect();
-    opencodeSSE.connect();
     updateContext(true);
   } else if (serviceStatus.value === "idle") {
     if (isExtensionMode) {
@@ -380,7 +369,7 @@ const handleToggle = async (val: boolean) => {
   if (val) updateContext();
 };
 
-const handleSelectNode = async (element: OpenCodeSelectedElement, pageUrl?: string, pageTitle?: string) => {
+const handleSelectNode = async (element: AIPanelSelectedElement, pageUrl?: string, pageTitle?: string) => {
   if (isExtensionSelectorMode) {
 
     ext.notifySelectionResult?.(element);
@@ -454,7 +443,7 @@ const handleSessionListCollapsedChange = (val: boolean) => {
   sessionListCollapsed.value = val;
 };
 
-const handleThemeChange = (val: OpenCodeWidgetTheme) => {
+const handleThemeChange = (val: AIPanelWidgetTheme) => {
   theme.value = val;
   if (isExtensionMode) {
     ext.broadcastTheme?.(val);
@@ -481,7 +470,7 @@ const handleFrameLoaded = () => {
 </script>
 
 <template>
-  <OpenCodeWidget
+  <AIPanelWidget
     ref="widgetRef"
     :theme="theme"
     :open="open"
@@ -528,5 +517,5 @@ const handleFrameLoaded = () => {
         @retry="retryWarmup"
       />
     </template>
-  </OpenCodeWidget>
+  </AIPanelWidget>
 </template>

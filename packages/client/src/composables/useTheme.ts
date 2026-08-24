@@ -1,16 +1,13 @@
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
-import type { OpenCodeWidgetTheme } from "@vite-plugin-opencode-assistant/shared";
-import { WIDGET_MSG } from "@vite-plugin-opencode-assistant/shared";
+import type { AIPanelWidgetTheme } from "@aipanel/core";
+import { WIDGET_MSG } from "@aipanel/core";
 
 interface WidgetRef {
   sendMessageToIframe: (type: string, data?: Record<string, unknown>) => void;
 }
 
-export function useTheme(
-  initialTheme: OpenCodeWidgetTheme,
-  widgetRef: { value: WidgetRef | null },
-) {
-  const theme = ref<OpenCodeWidgetTheme>(initialTheme);
+export function useTheme(initialTheme: AIPanelWidgetTheme, widgetRef: { value: WidgetRef | null }) {
+  const theme = ref<AIPanelWidgetTheme>(initialTheme);
 
   const resolvedTheme = computed(() => {
     if (theme.value === "auto") {

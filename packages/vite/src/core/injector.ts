@@ -1,9 +1,9 @@
-import type { WidgetOptions } from "@vite-plugin-opencode-assistant/shared";
+import type { WidgetOptions } from "@aipanel/core";
 import {
   CONFIG_DATA_ATTR,
   WIDGET_SCRIPT_PATH,
   WIDGET_STYLE_PATH,
-} from "@vite-plugin-opencode-assistant/shared";
+} from "@aipanel/core";
 
 export function injectWidget(options: WidgetOptions): string {
   const configBase64 = Buffer.from(JSON.stringify(options)).toString("base64");

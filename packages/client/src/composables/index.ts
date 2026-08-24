@@ -1,7 +1,6 @@
 export { useSSE } from "./useSSE";
 export { useServerSSE } from "./useServerSSE";
-export { useOpencodeSSE } from "./useOpencodeSSE";
-export { useOpencodeSessionSSE } from "./useOpencodeSessionSSE";
+export { useSessionEvents } from "./useSessionEvents";
 export { useHotkey } from "./useHotkey";
 export { useSessions } from "./useSessions";
 export { useTheme } from "./useTheme";

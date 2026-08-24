@@ -1,8 +1,8 @@
 import type {
+  ChatSession,
   PageContext,
-  SessionInfo,
   ServiceStartupTask,
-} from "@vite-plugin-opencode-assistant/shared";
+} from "@aipanel/core";
 import type http from "http";
 
 export interface EndpointContext {
@@ -21,8 +21,8 @@ export interface EndpointContext {
   get actualProxyPort(): number;
   get actualWebPort(): number;
   get serviceInstanceId(): string;
-  getSessions: () => Promise<SessionInfo[]>;
-  createSession: () => Promise<SessionInfo>;
+  getSessions: () => Promise<ChatSession[]>;
+  createSession: () => Promise<ChatSession>;
   deleteSession: (id: string) => Promise<void>;
   resolveWidgetPath: () => string;
   resolveWidgetStylePath: () => string;

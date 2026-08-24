@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted, type Ref } from "vue";
-import type { OpenCodeSelectedElement, OpenCodeWidgetTheme } from "@vite-plugin-opencode-assistant/shared";
-import { WIDGET_MSG, EXT_MSG } from "@vite-plugin-opencode-assistant/shared";
+import type { AIPanelSelectedElement, AIPanelWidgetTheme } from "@aipanel/core";
+import { WIDGET_MSG, EXT_MSG } from "@aipanel/core";
 
 interface ExtensionMessage {
   type: string;
@@ -12,18 +12,18 @@ interface ExtensionMessage {
   pageUrl?: string;
   pageTitle?: string;
   serviceInstanceId?: string;
-  theme?: OpenCodeWidgetTheme;
+  theme?: AIPanelWidgetTheme;
 }
 
 interface UseExtensionModeOptions {
   selectMode: Ref<boolean>;
   serviceInstanceId: string;
   onElementSelected: (
-    element: OpenCodeSelectedElement,
+    element: AIPanelSelectedElement,
     pageUrl?: string,
     pageTitle?: string,
   ) => void;
-  onThemeChange?: (theme: OpenCodeWidgetTheme) => void;
+  onThemeChange?: (theme: AIPanelWidgetTheme) => void;
 }
 
 /**
@@ -94,7 +94,7 @@ export function useExtensionMode(options: UseExtensionModeOptions) {
   }
 
   /** 广播主题变更（同步到所有实例） */
-  function broadcastTheme(theme: OpenCodeWidgetTheme) {
+  function broadcastTheme(theme: AIPanelWidgetTheme) {
     chrome.runtime.sendMessage({ type: EXT_MSG.THEME_CHANGE, theme }).catch(() => {});
   }
 

@@ -1,5 +1,5 @@
 import { ref, computed, onUnmounted, type Ref } from "vue";
-import { createLogger } from "@vite-plugin-opencode-assistant/shared";
+import { createLogger } from "@aipanel/core";
 
 const log = createLogger("SSE");
 

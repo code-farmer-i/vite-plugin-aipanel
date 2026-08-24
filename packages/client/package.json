@@ -1,5 +1,5 @@
 {
-  "name": "@vite-plugin-opencode-assistant/client",
+  "name": "@aipanel/client",
   "version": "1.1.69",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     "./composables/*": "./src/composables/*"
   },
   "dependencies": {
-    "@vite-plugin-opencode-assistant/components": "workspace:*",
-    "@vite-plugin-opencode-assistant/shared": "workspace:*",
+    "@aipanel/ui": "workspace:*",
+    "@aipanel/core": "workspace:*",
     "vue": "^3.5.39"
   }
 }

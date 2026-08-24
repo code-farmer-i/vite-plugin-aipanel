@@ -27,7 +27,7 @@
 
 ### 📦 产物
 
-- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.69/packages/extension/opencode-assistant.zip)
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.1.69/packages/extension/opencode-assistant.zip)
 
 ## v1.1.68
 
@@ -47,7 +47,7 @@
 
 ### 📦 产物
 
-- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.68/packages/extension/opencode-assistant.zip)
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.1.68/packages/extension/opencode-assistant.zip)
 
 ## v1.1.67
 
@@ -61,7 +61,7 @@
 
 ### 📦 产物
 
-- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.67/packages/extension/opencode-assistant.zip)
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.1.67/packages/extension/opencode-assistant.zip)
 
 ## v1.1.66
 
@@ -96,7 +96,7 @@
 
 ### 📦 产物
 
-- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.66/packages/extension/opencode-assistant.zip)
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.1.66/packages/extension/opencode-assistant.zip)
 
 ## v1.1.65
 
@@ -116,7 +116,7 @@
 
 ### 📦 产物
 
-- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.65/packages/extension/opencode-assistant.zip)
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.1.65/packages/extension/opencode-assistant.zip)
 
 ## v1.1.64
 
@@ -143,7 +143,7 @@
 
 ### 📦 产物
 
-- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.64/packages/extension/opencode-assistant.zip)
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.1.64/packages/extension/opencode-assistant.zip)
 
 ## v1.1.63
 
@@ -163,7 +163,7 @@
 
 ### 📦 产物
 
-- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/v1.1.63/packages/extension/opencode-assistant.zip)
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.1.63/packages/extension/opencode-assistant.zip)
 
 ## v1.1.62
 

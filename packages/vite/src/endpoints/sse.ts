@@ -1,6 +1,6 @@
 import type { ViteDevServer } from "vite";
-import { SSE_EVENTS_PATH } from "@vite-plugin-opencode-assistant/shared";
-import { RequestContext, createLogger } from "@vite-plugin-opencode-assistant/shared/node";
+import { SSE_EVENTS_PATH } from "@aipanel/core";
+import { RequestContext, createLogger } from "@aipanel/core/node";
 import type { EndpointContext } from "./types";
 
 const log = createLogger("Endpoints:SSE");

@@ -46,7 +46,7 @@ defineOptions({
               </g>
             </svg>
           </div>
-          <span>OpenCode Assistant</span>
+          <span>AIPanel Assistant</span>
         </div>
 
         <h1 class="hero-title">
@@ -61,7 +61,7 @@ defineOptions({
 
         <div class="hero-cta">
           <a
-            href="https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/main/packages/extension/opencode-assistant.zip"
+            href="https://github.com/code-farmer-i/vite-plugin-aipanel/raw/main/packages/extension/aipanel-assistant.zip"
             target="_blank"
             class="btn-primary"
           >
@@ -136,7 +136,7 @@ defineOptions({
       <div class="section-header">
         <span class="section-eyebrow">FEATURES</span>
         <h2>核心能力</h2>
-        <p>浏览器插件 + OpenCode AI 引擎，让开发更高效</p>
+        <p>浏览器插件 + AIPanel AI 引擎，让开发更高效</p>
       </div>
 
       <div class="feature-grid">
@@ -175,7 +175,7 @@ defineOptions({
             </svg>
           </div>
           <h3>侧边栏对话</h3>
-          <p>Chrome 侧边栏直接唤起 OpenCode，对话开发两不误。</p>
+          <p>Chrome 侧边栏直接唤起 AIPanel，对话开发两不误。</p>
         </div>
         <div class="f-card">
           <div
@@ -304,7 +304,7 @@ defineOptions({
       <div class="section-header">
         <span class="section-eyebrow">GET STARTED</span>
         <h2>开始使用</h2>
-        <p>跟随完整指南，一步一步接入 OpenCode Assistant</p>
+        <p>跟随完整指南，一步一步接入 AIPanel Assistant</p>
       </div>
 
       <div class="qs-entry">
@@ -375,7 +375,7 @@ defineOptions({
         <h2>准备好升级开发体验了吗？</h2>
         <p>立即下载插件，让 AI 陪你写代码</p>
         <a
-          href="https://github.com/code-farmer-i/vite-plugin-opencode-assistant/raw/main/packages/extension/opencode-assistant.zip"
+          href="https://github.com/code-farmer-i/vite-plugin-aipanel/raw/main/packages/extension/aipanel-assistant.zip"
           target="_blank"
           class="btn-primary"
         >

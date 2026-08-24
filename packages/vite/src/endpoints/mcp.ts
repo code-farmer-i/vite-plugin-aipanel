@@ -1,7 +1,7 @@
 import type { ViteDevServer } from "vite";
 import type { IncomingMessage } from "node:http";
-import type { LogFileConfig, PageContext } from "@vite-plugin-opencode-assistant/shared";
-import { MCP_API_PATH, VUE_DEVTOOLS_ACTIONS, sleep } from "@vite-plugin-opencode-assistant/shared";
+import type { LogFileConfig, PageContext } from "@aipanel/core";
+import { MCP_API_PATH, VUE_DEVTOOLS_ACTIONS, sleep } from "@aipanel/core";
 import { McpProxy } from "../core/mcp-proxy";
 import {
   createLogger,
@@ -9,7 +9,7 @@ import {
   readLogFileTail,
   type ProcessLogEntry,
   type FileLogEntry,
-} from "@vite-plugin-opencode-assistant/shared/node";
+} from "@aipanel/core/node";
 import type { PageInfo } from "../core/mcp-chrome";
 import {
   parseListPages,

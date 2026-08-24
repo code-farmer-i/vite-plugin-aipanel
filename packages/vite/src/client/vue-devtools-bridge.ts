@@ -1,6 +1,6 @@
 /**
  * Vue DevTools 桥接脚本
- * 注入到用户页面，初始化 @vue/devtools-kit 并暴露到 window.__opencode_vue
+ * 注入到用户页面，初始化 @vue/devtools-kit 并暴露到 window.__aipanel_vue
  * AI 通过 Chrome DevTools evaluate_script 调用此 API
  *
  * API Proxy 自动对读操作做 safeStringify，getInspectorState 额外裁剪 Vue 内部数据
@@ -215,7 +215,7 @@ const safeApi = new Proxy(devtools.api, {
 
 declare global {
   interface Window {
-    __opencode_vue: {
+    __aipanel_vue: {
       api: typeof safeApi;
       router: typeof devtoolsRouter;
       ctx: typeof devtools.ctx;
@@ -226,7 +226,7 @@ declare global {
 
 devtools.init();
 
-window.__opencode_vue = {
+window.__aipanel_vue = {
   api: safeApi,
   router: devtoolsRouter,
   ctx: devtools.ctx,

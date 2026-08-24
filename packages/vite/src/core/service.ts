@@ -1,27 +1,15 @@
 import type { ResultPromise } from "execa";
 import type http from "http";
-import { prepareOpenCodeRuntime, startOpenCodeWeb } from "./opencode-web";
-import type { OpenCodeOptions, ServiceStartupTask } from "@vite-plugin-opencode-assistant/shared";
-import {
-  DEFAULT_PROXY_PORT,
-  SERVER_START_TIMEOUT,
-  ChromeMcpWarmupErrorType,
-} from "@vite-plugin-opencode-assistant/shared";
-import { createLogger, findAvailablePort } from "@vite-plugin-opencode-assistant/shared/node";
-import {
-  checkOpenCodeInstalled,
-  findGitRoot,
-  getOpenCodeVersion,
-  killOrphanOpenCodeProcesses,
-  waitForServer,
-} from "../utils/system";
-import type { OpenCodeAPI } from "./api";
+import type { PluginOptions, ServiceStartupTask, WebProvider } from "@aipanel/core";
+import { DEFAULT_PROXY_PORT, SERVER_START_TIMEOUT, ChromeMcpWarmupErrorType } from "@aipanel/core";
+import { createLogger, findAvailablePort } from "@aipanel/core/node";
+import { findGitRoot, waitForServer } from "../utils/system";
 import { startProxyServer } from "./proxy-server";
 import type { McpProxy } from "./mcp-proxy";
 
 const log = createLogger("Service");
 
-export class OpenCodeService {
+export class AIPanelService {
   public webProcess: ResultPromise | null = null;
   public actualWebPort: number;
   public actualProxyPort: number;
@@ -34,16 +22,22 @@ export class OpenCodeService {
   public currentTask: { task: ServiceStartupTask; data?: Record<string, unknown> } | null = null;
   public workspaceRoot: string | null = null;
   private mcp: McpProxy | null = null;
+  private provider: WebProvider | null = null;
+  private unsubscribeEvents: (() => void) | null = null;
 
   constructor(
-    private config: Required<OpenCodeOptions>,
-    private api: OpenCodeAPI,
+    private config: Required<PluginOptions>,
     private sseClients: Set<http.ServerResponse>,
     private onPortAllocated: (port: number) => void,
     private onProxyPortAllocated: (port: number) => void,
   ) {
     this.actualWebPort = config.webPort;
     this.actualProxyPort = config.proxyPort ?? DEFAULT_PROXY_PORT;
+  }
+
+  /** 设置 Provider（由编排层动态加载后调用） */
+  setProvider(provider: WebProvider): void {
+    this.provider = provider;
   }
 
   private sendTaskUpdate(task: ServiceStartupTask, data?: Record<string, unknown>) {
@@ -77,6 +71,11 @@ export class OpenCodeService {
 
     this.mcp = mcp;
 
+    const provider = this.provider;
+    if (!provider) {
+      throw new Error("Provider 未初始化，请先调用 setProvider");
+    }
+
     this.startPromise = (async () => {
       const timer = log.timer("startServices", {
         corsOrigins,
@@ -84,40 +83,25 @@ export class OpenCodeService {
         logsApiUrl,
         viteOrigin,
       });
-      log.info("Starting OpenCode services...");
+      log.info("Starting Web UI services...");
 
-      const orphanCount = await killOrphanOpenCodeProcesses();
+      const orphanCount = (await provider.killOrphans?.()) ?? 0;
       if (orphanCount > 0) {
-        log.debug(`Killed ${orphanCount} orphan OpenCode process(es)`);
+        log.debug(`Killed ${orphanCount} orphan Web UI process(es)`);
       }
 
-      this.sendTaskUpdate("checking_opencode");
-      if (!(await checkOpenCodeInstalled())) {
-        log.error(`OpenCode is not installed!
-
-Please install OpenCode first:
-
-  # YOLO
-  curl -fsSL https://opencode.ai/install | bash
-
-  # Package managers
-  npm i -g opencode-ai@latest        # or bun/pnpm/yarn
-  scoop install opencode             # Windows
-  choco install opencode             # Windows
-  brew install anomalyco/tap/opencode # macOS and Linux (recommended, always up to date)
-  brew install opencode              # macOS and Linux (official brew formula, updated less)
-  sudo pacman -S opencode            # Arch Linux (Stable)
-  paru -S opencode-bin               # Arch Linux (Latest from AUR)
-  mise use -g opencode               # Any OS
-  nix run nixpkgs#opencode           # or github:anomalyco/opencode for latest dev branch
-        `);
-        this.sendTaskUpdate("opencode_not_installed");
+      this.sendTaskUpdate("checking_provider");
+      const env = await provider.checkEnvironment();
+      if (!env.ok) {
+        log.error(env.message ?? "Provider environment check failed");
+        this.sendTaskUpdate("provider_not_installed");
         this.startPromise = null;
-        timer.end("❌ OpenCode not installed");
+        timer.end("❌ Provider environment check failed");
         return;
       }
+      const providerVersion = env.version;
 
-      timer.checkpoint("OpenCode installation verified");
+      timer.checkpoint("Provider environment verified");
 
       this.sendTaskUpdate("allocating_port");
       this.actualWebPort = await findAvailablePort(this.config.webPort, this.config.hostname);
@@ -135,55 +119,36 @@ Please install OpenCode first:
       log.debug(`Using workspace root: ${this.workspaceRoot}`);
 
       this.sendTaskUpdate("preparing_runtime");
-      const configDir = prepareOpenCodeRuntime(
-        this.workspaceRoot,
-        vitePort,
-        this.config.enableLsp,
-        this.config.enablePrettier,
-      );
-
-      timer.checkpoint("Plugin setup complete");
-
-      this.sendTaskUpdate("starting_web");
-      log.debug("Starting OpenCode Web process...", {
+      const startResult = await provider.start({
         port: this.actualWebPort,
         hostname: this.config.hostname,
-        configDir,
-      });
-
-      this.webProcess = startOpenCodeWeb({
-        port: this.actualWebPort,
-        hostname: this.config.hostname,
-        serverUrl: "",
         cwd: this.workspaceRoot,
-        configDir,
         corsOrigins,
+        vitePort,
         contextApiUrl,
         logsApiUrl,
-        logFilesJson: this.config.logFiles ? JSON.stringify(this.config.logFiles) : undefined,
-        enableBlockOnError: this.config.enableBlockOnError,
         verbose: this.config.verbose,
-        enableLsp: this.config.enableLsp,
-        enablePrettier: this.config.enablePrettier,
         vueDevtoolsApiUrl,
       });
+      this.webProcess = (startResult.processHandle as ResultPromise | null) ?? null;
 
       timer.checkpoint("Web process started");
-      const webUrl = `http://${this.config.hostname}:${this.actualWebPort}`;
-      log.debug(`Waiting for OpenCode Web to become ready at ${webUrl}...`);
+      const webUrl = startResult.url;
+      log.debug(`Waiting for Web UI to become ready at ${webUrl}...`);
 
       this.sendTaskUpdate("waiting_web_ready");
       try {
-        await waitForServer(webUrl, SERVER_START_TIMEOUT, this.webProcess);
+        await waitForServer(webUrl, SERVER_START_TIMEOUT, this.webProcess ?? undefined);
 
         if (this.webProcess?.exitCode !== null && this.webProcess?.exitCode !== undefined) {
-          throw new Error(`OpenCode process exited with code ${this.webProcess.exitCode}`);
+          throw new Error(`Web process exited with code ${this.webProcess.exitCode}`);
         }
 
-        const version = await getOpenCodeVersion();
-        log.info(`OpenCode Web started at ${webUrl}${version ? ` (opencode ${version})` : ""}`);
+        log.info(
+          `Web UI started at ${webUrl}${providerVersion ? ` (${provider.displayName} ${providerVersion})` : ""}`,
+        );
       } catch (e) {
-        log.error("OpenCode Web failed to start", { error: e });
+        log.error("Web UI failed to start", { error: e });
         this.sendTaskUpdate("web_start_timeout");
         this.startPromise = null;
         timer.end("❌ Web start timeout");
@@ -209,9 +174,7 @@ Please install OpenCode first:
 
       try {
         const result = await startProxyServer(webUrl, this.actualProxyPort, {
-          theme: this.config.theme,
-          language: this.config.language,
-          settings: this.config.settings,
+          bridgeScript: provider.bridgeScript,
           hostname: this.config.hostname,
         });
         this.proxyServer = result.server;
@@ -228,9 +191,7 @@ Please install OpenCode first:
           log.debug(`Proxy port ${this.actualProxyPort} became unavailable, trying next port...`);
           const nextPort = await findAvailablePort(this.actualProxyPort + 1, this.config.hostname);
           const result = await startProxyServer(webUrl, nextPort, {
-            theme: this.config.theme,
-            language: this.config.language,
-            settings: this.config.settings,
+            bridgeScript: provider.bridgeScript,
             hostname: this.config.hostname,
           });
           this.proxyServer = result.server;
@@ -260,6 +221,18 @@ Please install OpenCode first:
       this.sendTaskUpdate("creating_session");
 
       this.isStarted = true;
+
+      // 订阅 Provider 事件流，归一化后广播给所有 SSE 客户端（SESSION_EVENT）
+      this.unsubscribeEvents?.();
+      this.unsubscribeEvents = provider.subscribeEvents((event) => {
+        this.sseClients.forEach((client) => {
+          try {
+            client.write(`data: ${JSON.stringify({ type: "SESSION_EVENT", event })}\n\n`);
+          } catch (e) {
+            log.debug("Failed to send SESSION_EVENT", { error: e });
+          }
+        });
+      });
 
       if (warmupFailed) {
         this.sendTaskUpdate("chrome_mcp_failed", {
@@ -307,7 +280,10 @@ Please install OpenCode first:
 
   async stop(): Promise<void> {
     const timer = log.timer("stopServices");
-    log.info("Stopping OpenCode services...");
+    log.info("Stopping Web UI services...");
+
+    this.unsubscribeEvents?.();
+    this.unsubscribeEvents = null;
 
     if (this.proxyServer) {
       log.debug("Closing proxy server");
@@ -315,11 +291,8 @@ Please install OpenCode first:
       this.proxyServer = null;
     }
 
-    if (this.webProcess) {
-      log.debug("Killing web process", { pid: this.webProcess.pid });
-      this.webProcess.kill("SIGTERM");
-      this.webProcess = null;
-    }
+    await this.provider?.stop();
+    this.webProcess = null;
 
     this.isStarted = false;
     this.startPromise = null;

@@ -1,5 +1,5 @@
 {
-  "name": "vite-plugin-opencode-assistant",
+  "name": "vite-plugin-aipanel",
   "version": "1.1.69",
   "description": "Embed OpenCode Web UI in your Vite dev server for real-time code modification and preview",
   "type": "module",
@@ -44,9 +44,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@vite-plugin-opencode-assistant/components": "workspace:*",
-    "@vite-plugin-opencode-assistant/opencode": "workspace:*",
-    "@vite-plugin-opencode-assistant/shared": "workspace:*",
+    "@aipanel/core": "workspace:*",
+    "@aipanel/provider-opencode": "workspace:*",
     "@vue/devtools-kit": "^8.0.0",
     "@vue/language-server": "^3.3.7",
     "chrome-devtools-mcp": "1.7.0",
@@ -58,7 +57,7 @@
     "vite": ">=5.0.0"
   },
   "devDependencies": {
-    "@vite-plugin-opencode-assistant/client": "workspace:*",
+    "@aipanel/client": "workspace:*",
     "sharp": "^0.34.5"
   }
 }

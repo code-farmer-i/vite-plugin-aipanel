@@ -10,7 +10,7 @@ import { setupLogsEndpoint } from "./logs";
 import { setupMcpEndpoint, MCP_API_PATH } from "./mcp";
 import { setupVueDevtoolsEndpoint, VUE_DEVTOOLS_API_PATH } from "./vue-devtools";
 import type { McpProxy } from "../core/mcp-proxy";
-import { LOGS_API_PATH, type LogFileConfig } from "@vite-plugin-opencode-assistant/shared";
+import { LOGS_API_PATH, type LogFileConfig } from "@aipanel/core";
 
 export * from "./types";
 export { LOGS_API_PATH, MCP_API_PATH, VUE_DEVTOOLS_API_PATH };

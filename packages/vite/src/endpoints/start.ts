@@ -1,7 +1,7 @@
 import type { ViteDevServer } from "vite";
 import type { EndpointContext } from "./types";
-import { START_API_PATH } from "@vite-plugin-opencode-assistant/shared";
-import { RequestContext } from "@vite-plugin-opencode-assistant/shared/node";
+import { START_API_PATH } from "@aipanel/core";
+import { RequestContext } from "@aipanel/core/node";
 
 export function setupStartEndpoint(server: ViteDevServer, ctx: EndpointContext) {
   server.middlewares.use(START_API_PATH, async (_req, res) => {

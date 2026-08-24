@@ -3,8 +3,8 @@
   "compilerOptions": {
     "outDir": "dist",
     "paths": {
-      "@vite-plugin-opencode-assistant/components": ["../components/src/open-code-widget"],
-      "@vite-plugin-opencode-assistant/shared": ["../shared/src"]
+      "@aipanel/ui": ["../ui/src"],
+      "@aipanel/core": ["../core/src"]
     }
   },
   "include": ["src"]

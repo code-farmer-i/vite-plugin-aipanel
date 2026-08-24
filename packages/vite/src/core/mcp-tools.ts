@@ -702,7 +702,7 @@ export const CUSTOM_TOOLS: CustomTool[] = [
         source: {
           type: "string",
           description:
-            "来源过滤：console(控制台)、opencode-stdout(服务输出)、opencode-stderr(服务错误)",
+            "来源过滤：console(控制台)、provider-stdout(服务输出)、provider-stderr(服务错误)",
         },
       },
     },

@@ -1,5 +1,5 @@
 {
-  "name": "vite-plugin-opencode-assistant-workspace",
+  "name": "vite-plugin-aipanel-workspace",
   "version": "1.1.69",
   "private": true,
   "type": "module",
@@ -11,26 +11,28 @@
       "vue-tsc": "^3.3.6"
     },
     "onlyBuiltDependencies": [
+      "@vscode/vsce",
+      "@vscode/vsce-sign",
       "esbuild",
+      "keytar",
       "msgpackr-extract",
-      "vue-demi",
-      "@vscode/vsce"
+      "vue-demi"
     ],
     "ignoredBuiltDependencies": [
       "sharp"
     ]
   },
   "scripts": {
-    "build": "pnpm --filter @vite-plugin-opencode-assistant/shared build && pnpm --filter @vite-plugin-opencode-assistant/opencode build && pnpm --filter @vite-plugin-opencode-assistant/components build && pnpm --filter vite-plugin-opencode-assistant build && pnpm --filter @vite-plugin-opencode-assistant/extension build",
-    "dev:components": "pnpm --filter @vite-plugin-opencode-assistant/components dev:site",
-    "dev:playground": "pnpm --filter @vite-plugin-opencode-assistant/docs dev",
-    "dev:docs": "pnpm --filter vite-plugin-opencode-assistant site",
-    "build:docs": "pnpm --filter @vite-plugin-opencode-assistant/docs build",
+    "build": "pnpm --filter @aipanel/core build && pnpm --filter @aipanel/opencode-plugins build && pnpm --filter @aipanel/ui build && pnpm --filter vite-plugin-aipanel build && pnpm --filter @aipanel/extension build",
+    "dev:components": "pnpm --filter @aipanel/ui dev:site",
+    "dev:playground": "pnpm --filter @aipanel/docs dev",
+    "dev:docs": "pnpm --filter vite-plugin-aipanel site",
+    "build:docs": "pnpm --filter @aipanel/docs build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "pnpm --filter vite-plugin-opencode-assistant test",
+    "test": "pnpm --filter vite-plugin-aipanel test",
     "typecheck": "pnpm -r --if-present run typecheck",
     "release": "node scripts/release.js",
     "deploy:docs": "node scripts/deploy-docs.js"

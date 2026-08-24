@@ -4,14 +4,14 @@
 
 两个组件缺一不可：
 
-- **Vite 插件** — 安装在项目里，负责启动 OpenCode Web 服务（AI 对话后端）
+- **Vite 插件** — 安装在项目里，负责启动 AIPanel Web 服务（AI 对话后端）
 - **浏览器扩展** — 安装在 Chrome 里，负责提供侧边栏界面，连接到 Vite 插件启动的服务
 
 简单来说：Vite 插件是"发动机"，浏览器扩展是"方向盘"。
 
 ## 只装扩展不装 Vite 插件能用吗？
 
-不能。扩展本身不含 AI 引擎，它需要连接到 Vite 插件启动的 OpenCode Web 服务才能工作。装完扩展后打开侧边栏，如果显示「未检测到服务」，说明项目的 Vite 插件还未安装或开发服务器未启动。
+不能。扩展本身不含 AI 引擎，它需要连接到 Vite 插件启动的 AIPanel Web 服务才能工作。装完扩展后打开侧边栏，如果显示「未检测到服务」，说明项目的 Vite 插件还未安装或开发服务器未启动。
 
 ## 插件安装后无法使用
 
@@ -29,7 +29,7 @@ curl -fsSL https://opencode.ai/install | bash
 
 **确认项目的 Vite 插件已配置：**
 
-检查 `vite.config.ts` 中是否引入了 `vite-plugin-opencode-assistant`。
+检查 `vite.config.ts` 中是否引入了 `vite-plugin-aipanel`。
 
 **确认开发服务器在运行：**
 
@@ -52,11 +52,11 @@ curl -fsSL https://opencode.ai/install | bash
 
 ## 端口冲突
 
-如果默认的 OpenCode 服务端口被占用，服务会自动寻找可用端口。也可以手动指定：
+如果默认的 AIPanel 服务端口被占用，服务会自动寻找可用端口。也可以手动指定：
 
 ```ts
 // vite.config.ts
-opencodeAssistant({
+aipanelAssistant({
   webPort: 5001,
   proxyPort: 5002,
 });
@@ -90,4 +90,4 @@ Firefox 和 Safari 暂不支持。
 
 ## 如何卸载
 
-在浏览器扩展管理页面（`chrome://extensions/`）找到 OpenCode Assistant，点击「移除」。Vite 插件通过 `npm uninstall vite-plugin-opencode-assistant` 卸载。
+在浏览器扩展管理页面（`chrome://extensions/`）找到 AIPanel Assistant，点击「移除」。Vite 插件通过 `npm uninstall vite-plugin-aipanel` 卸载。

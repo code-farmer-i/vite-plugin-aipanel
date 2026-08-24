@@ -1,13 +1,10 @@
 import { onMounted, onUnmounted, ref } from "vue";
-import type {
-  OpenCodeSelectedElement,
-  ServiceStatus,
-} from "@vite-plugin-opencode-assistant/shared";
-import { CONTEXT_API_PATH, EXT_MSG } from "@vite-plugin-opencode-assistant/shared";
+import type { AIPanelSelectedElement, ServiceStatus } from "@aipanel/core";
+import { CONTEXT_API_PATH, EXT_MSG } from "@aipanel/core";
 
 export function useContext(
   serviceStatus: { value: ServiceStatus },
-  selectedElements: { value: OpenCodeSelectedElement[] },
+  selectedElements: { value: AIPanelSelectedElement[] },
   displayMode?: string,
 ) {
   let currentPageUrl = "";
@@ -25,7 +22,7 @@ export function useContext(
   const getSessionId = () =>
     displayMode === "extension"
       ? extensionSessionId.value
-      : sessionStorage.getItem("_opencode_pk") || "";
+      : sessionStorage.getItem("_aipanel_pk") || "";
 
   const sendContext = (url: string, title: string) => {
     fetch(CONTEXT_API_PATH, {

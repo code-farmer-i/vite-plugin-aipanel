@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
-import { resolve } from "path";
+import { resolve } from "node:path";
 
 export default defineConfig({
   plugins: [vue()],
@@ -8,8 +8,8 @@ export default defineConfig({
     target: "es2020",
     minify: "esbuild",
     lib: {
-      entry: resolve(__dirname, "../client/src/index.ts"),
-      name: "OpenCodeWidgetClient",
+      entry: resolve(import.meta.dirname, "../client/src/index.ts"),
+      name: "AIPanelWidgetClient",
       fileName: "client",
       formats: ["es"],
     },

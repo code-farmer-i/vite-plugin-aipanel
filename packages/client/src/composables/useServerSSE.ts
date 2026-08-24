@@ -2,7 +2,8 @@ import {
   ServiceStartupTask,
   SSE_EVENTS_PATH,
   createLogger,
-} from "@vite-plugin-opencode-assistant/shared";
+  type ProviderEvent,
+} from "@aipanel/core";
 import { useSSE } from "./useSSE";
 
 const log = createLogger("ServerSSE");
@@ -29,12 +30,21 @@ export interface ServerSSETaskUpdateData {
 }
 
 /**
+ * Server SSE 会话事件数据（Provider 归一化事件）
+ */
+export interface ServerSSESessionEventData {
+  type: "SESSION_EVENT";
+  event: ProviderEvent;
+}
+
+/**
  * Server SSE 消息类型
  */
 export type ServerSSEMessage =
   | { type: "CONNECTED" }
   | ServerSSEStatusSyncData
   | ServerSSETaskUpdateData
+  | ServerSSESessionEventData
   | { type: "CLEAR_ELEMENTS" };
 
 /**
@@ -47,6 +57,8 @@ export interface ServerSSEOptions {
   onStatusSync?: (data: ServerSSEStatusSyncData) => void;
   /** 任务更新回调 */
   onTaskUpdate?: (data: ServerSSETaskUpdateData) => void;
+  /** 会话事件回调（Provider 归一化事件） */
+  onSessionEvent?: (event: ProviderEvent) => void;
   /** 清除元素回调 */
   onClearElements?: () => void;
   /** 连接成功回调 */
@@ -59,13 +71,14 @@ export interface ServerSSEOptions {
 
 /**
  * 监听 Vite Server SSE 事件
- * 端点: /__opencode_events__
+ * 端点: /__aipanel_events__
  */
 export function useServerSSE(options: ServerSSEOptions = {}) {
   const {
     viteBaseUrl = "",
     onStatusSync,
     onTaskUpdate,
+    onSessionEvent,
     onClearElements,
     onConnected,
     onDisconnected,
@@ -93,6 +106,9 @@ export function useServerSSE(options: ServerSSEOptions = {}) {
           break;
         case "TASK_UPDATE":
           onTaskUpdate?.(message);
+          break;
+        case "SESSION_EVENT":
+          onSessionEvent?.(message.event);
           break;
         case "CLEAR_ELEMENTS":
           onClearElements?.();

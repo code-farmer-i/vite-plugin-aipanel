@@ -1,8 +1,8 @@
 import { defineConfig } from "@pagoda-cli/core";
-import opencode from "vite-plugin-opencode-assistant";
+// import opencode from "vite-plugin-aipanel";
 
 export default defineConfig({
-  name: "vite-plugin-opencode-assistant",
+  name: "vite-plugin-aipanel",
   build: {
     mode: "lib",
     bundle: false,
@@ -18,9 +18,9 @@ export default defineConfig({
     },
   },
   site: {
-    headerTitle: "OpenCode Assistant",
-    title: "OpenCode Assistant",
-    description: "浏览器插件 + Vite 开发环境，将 OpenCode AI 助手嵌入你的本地开发页面",
+    headerTitle: "AIPanel Assistant",
+    title: "AIPanel Assistant",
+    description: "浏览器插件 + Vite 开发环境，将 AIPanel AI 助手嵌入你的本地开发页面",
     defaultRoute: "index",
     icon: "/logo.svg",
     logo: "/logo.svg",
@@ -49,7 +49,7 @@ export default defineConfig({
       vite: {
         configure(config) {
           config.plugins = config.plugins || [];
-          config.plugins.push(opencode());
+          // config.plugins.push(opencode());
           return config;
         },
       },

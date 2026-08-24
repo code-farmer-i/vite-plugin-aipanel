@@ -1,8 +1,8 @@
 import fs from "fs";
 import path from "path";
-import { resolvePackageDir } from "@vite-plugin-opencode-assistant/shared/node";
+import { resolvePackageDir } from "@aipanel/core/node";
 
-const packageDir = resolvePackageDir("vite-plugin-opencode-assistant");
+const packageDir = resolvePackageDir("vite-plugin-aipanel");
 
 export function resolveWidgetPath(): string {
   const candidatePaths = [

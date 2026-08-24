@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChromeMcpWarmupErrorType } from "@vite-plugin-opencode-assistant/shared";
+import { ChromeMcpWarmupErrorType } from "@aipanel/core";
 
 defineProps<{
   retrying: boolean;
@@ -17,8 +17,8 @@ const handleRetry = () => {
 </script>
 
 <template>
-  <div class="opencode-chrome-warmup-failed">
-    <div class="opencode-chrome-warmup-failed-icon">
+  <div class="aipanel-chrome-warmup-failed">
+    <div class="aipanel-chrome-warmup-failed-icon">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         fill="none"
@@ -37,13 +37,13 @@ const handleRetry = () => {
     </div>
 
     <template v-if="errorType === ChromeMcpWarmupErrorType.CHROME_NOT_CONNECTED">
-      <div class="opencode-chrome-warmup-failed-title">Chrome DevTools MCP 连接失败</div>
-      <div class="opencode-chrome-warmup-failed-text">
+      <div class="aipanel-chrome-warmup-failed-title">Chrome DevTools MCP 连接失败</div>
+      <div class="aipanel-chrome-warmup-failed-text">
         <p>请按以下步骤开启 Chrome 远程调试：</p>
-        <div class="opencode-chrome-warmup-steps">
+        <div class="aipanel-chrome-warmup-steps">
           <div>
             在 Chrome 地址栏输入
-            <code class="opencode-chrome-warmup-code">chrome://inspect/#remote-debugging</code>
+            <code class="aipanel-chrome-warmup-code">chrome://inspect/#remote-debugging</code>
           </div>
           <div>勾选 'Allow remote debugging for this browser instance' 选项</div>
           <div>重新启动浏览器</div>
@@ -51,25 +51,25 @@ const handleRetry = () => {
         </div>
         <p
           v-if="errorMessage"
-          class="opencode-chrome-warmup-error-detail"
+          class="aipanel-chrome-warmup-error-detail"
         >{{ errorMessage }}</p>
       </div>
     </template>
 
     <template v-else>
-      <div class="opencode-chrome-warmup-failed-title">Chrome DevTools MCP 连接失败</div>
-      <div class="opencode-chrome-warmup-failed-text">
+      <div class="aipanel-chrome-warmup-failed-title">Chrome DevTools MCP 连接失败</div>
+      <div class="aipanel-chrome-warmup-failed-text">
         <p
           v-if="errorMessage"
-          class="opencode-chrome-warmup-error-detail"
+          class="aipanel-chrome-warmup-error-detail"
         >{{ errorMessage }}</p>
         <p v-else>连接失败，请重试</p>
       </div>
     </template>
 
-    <div class="opencode-chrome-warmup-failed-actions">
+    <div class="aipanel-chrome-warmup-failed-actions">
       <button
-        class="opencode-chrome-warmup-failed-btn primary"
+        class="aipanel-chrome-warmup-failed-btn primary"
         :disabled="retrying"
         @click="handleRetry"
       >
@@ -80,24 +80,24 @@ const handleRetry = () => {
 </template>
 
 <style scoped>
-.opencode-chrome-warmup-error-detail {
+.aipanel-chrome-warmup-error-detail {
   margin-top: 12px;
   padding: 8px 12px;
-  background: var(--oc-bg-tertiary);
+  background: var(--ap-bg-tertiary);
   border-radius: 6px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 12px;
-  color: var(--oc-text-secondary);
+  color: var(--ap-text-secondary);
   word-break: break-word;
 }
 
-.opencode-chrome-warmup-failed-actions {
+.aipanel-chrome-warmup-failed-actions {
   margin-top: 16px;
   display: flex;
   justify-content: center;
 }
 
-.opencode-chrome-warmup-failed-btn {
+.aipanel-chrome-warmup-failed-btn {
   padding: 10px 20px;
   border-radius: 8px;
   border: none;
@@ -106,16 +106,16 @@ const handleRetry = () => {
   transition: background-color 0.15s ease;
 }
 
-.opencode-chrome-warmup-failed-btn.primary {
-  background: var(--oc-primary);
+.aipanel-chrome-warmup-failed-btn.primary {
+  background: var(--ap-primary);
   color: white;
 }
 
-.opencode-chrome-warmup-failed-btn.primary:hover:not(:disabled) {
-  background: var(--oc-primary-hover);
+.aipanel-chrome-warmup-failed-btn.primary:hover:not(:disabled) {
+  background: var(--ap-primary-hover);
 }
 
-.opencode-chrome-warmup-failed-btn:disabled {
+.aipanel-chrome-warmup-failed-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

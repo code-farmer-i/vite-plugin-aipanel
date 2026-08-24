@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { OpenCodeLogo } from "@vite-plugin-opencode-assistant/components";
+import { AIPanelLogo } from "@aipanel/ui";
 
 const props = defineProps<{
   onRefresh: () => Promise<boolean>;
@@ -28,19 +28,19 @@ async function handleRefresh() {
 </script>
 
 <template>
-  <div class="opencode-no-service">
-    <div class="opencode-no-service-icon">
-      <OpenCodeLogo :size="64" />
+  <div class="aipanel-no-service">
+    <div class="aipanel-no-service-icon">
+      <AIPanelLogo :size="64" />
     </div>
-    <h2 class="opencode-no-service-title">OpenCode Assistant</h2>
-    <p class="opencode-no-service-desc">当前页面未检测到 OpenCode 助手服务</p>
-    <div class="opencode-no-service-card">
-      <p>请打开使用 <code>vite-plugin-opencode-assistant</code> 的 localhost 页面</p>
-      <p class="opencode-no-service-hint">例如：<code>http://localhost:5173</code></p>
+    <h2 class="aipanel-no-service-title">AIPanel Assistant</h2>
+    <p class="aipanel-no-service-desc">当前页面未检测到 AIPanel 助手服务</p>
+    <div class="aipanel-no-service-card">
+      <p>请打开使用 <code>vite-plugin-aipanel</code> 的 localhost 页面</p>
+      <p class="aipanel-no-service-hint">例如：<code>http://localhost:5173</code></p>
     </div>
     <button
-      class="opencode-no-service-refresh"
-      :class="{ 'opencode-no-service-refresh--loading': checking }"
+      class="aipanel-no-service-refresh"
+      :class="{ 'aipanel-no-service-refresh--loading': checking }"
       :disabled="checking"
       @click="handleRefresh"
     >
@@ -51,7 +51,7 @@ async function handleRefresh() {
         fill="none"
         stroke="currentColor"
         stroke-width="2"
-        :class="{ 'opencode-spin': checking }"
+        :class="{ 'aipanel-spin': checking }"
       >
         <polyline points="23,4 23,10 17,10" />
         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
@@ -60,13 +60,13 @@ async function handleRefresh() {
     </button>
     <p
       v-if="resultMsg"
-      class="opencode-no-service-result"
+      class="aipanel-no-service-result"
     >{{ resultMsg }}</p>
   </div>
 </template>
 
 <style scoped>
-.opencode-no-service {
+.aipanel-no-service {
   --ns-bg: #f8f9fa;
   --ns-card-bg: #fff;
   --ns-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
@@ -90,7 +90,7 @@ async function handleRefresh() {
 }
 
 @media (prefers-color-scheme: dark) {
-  .opencode-no-service {
+  .aipanel-no-service {
     --ns-bg: #1a1a1a;
     --ns-card-bg: #252525;
     --ns-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
@@ -104,13 +104,13 @@ async function handleRefresh() {
   }
 }
 
-.opencode-no-service-icon {
+.aipanel-no-service-icon {
   margin-bottom: 24px;
   opacity: 0.6;
-  animation: opencode-ns-float 3s ease-in-out infinite;
+  animation: aipanel-ns-float 3s ease-in-out infinite;
 }
 
-@keyframes opencode-ns-float {
+@keyframes aipanel-ns-float {
 
   0%,
   100% {
@@ -122,7 +122,7 @@ async function handleRefresh() {
   }
 }
 
-.opencode-no-service-title {
+.aipanel-no-service-title {
   font-size: 20px;
   font-weight: 600;
   color: var(--ns-title);
@@ -130,14 +130,14 @@ async function handleRefresh() {
   letter-spacing: -0.01em;
 }
 
-.opencode-no-service-desc {
+.aipanel-no-service-desc {
   font-size: 14px;
   color: var(--ns-sub);
   margin: 0 0 28px;
   line-height: 1.5;
 }
 
-.opencode-no-service-card {
+.aipanel-no-service-card {
   background: var(--ns-card-bg);
   border: 1px solid var(--ns-border);
   border-radius: 10px;
@@ -146,18 +146,18 @@ async function handleRefresh() {
   max-width: 360px;
 }
 
-.opencode-no-service-card p {
+.aipanel-no-service-card p {
   font-size: 13px;
   color: var(--ns-text);
   margin: 0 0 8px;
   line-height: 1.6;
 }
 
-.opencode-no-service-card p:last-child {
+.aipanel-no-service-card p:last-child {
   margin-bottom: 0;
 }
 
-.opencode-no-service-card code {
+.aipanel-no-service-card code {
   background: var(--ns-code-bg);
   color: var(--ns-code);
   padding: 2px 6px;
@@ -166,13 +166,13 @@ async function handleRefresh() {
   font-weight: 500;
 }
 
-.opencode-no-service-hint {
+.aipanel-no-service-hint {
   font-size: 13px;
   color: var(--ns-hint);
   margin: 0;
 }
 
-.opencode-no-service-refresh {
+.aipanel-no-service-refresh {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -188,29 +188,29 @@ async function handleRefresh() {
   transition: all 0.2s;
 }
 
-.opencode-no-service-refresh:hover {
+.aipanel-no-service-refresh:hover {
   border-color: #667eea;
   color: #667eea;
   box-shadow: 0 1px 4px rgba(102, 126, 234, 0.15);
 }
 
-.opencode-no-service-refresh svg {
+.aipanel-no-service-refresh svg {
   flex-shrink: 0;
 }
 
-.opencode-no-service-refresh--loading {
+.aipanel-no-service-refresh--loading {
   opacity: 0.7;
   cursor: not-allowed;
 }
 
-.opencode-no-service-result {
+.aipanel-no-service-result {
   margin-top: 12px;
   font-size: 12px;
   color: #f59e0b;
-  animation: opencode-fade-in 0.3s ease;
+  animation: aipanel-fade-in 0.3s ease;
 }
 
-@keyframes opencode-fade-in {
+@keyframes aipanel-fade-in {
   from {
     opacity: 0;
     transform: translateY(-4px);
@@ -222,11 +222,11 @@ async function handleRefresh() {
   }
 }
 
-.opencode-spin {
-  animation: opencode-spin 0.8s linear infinite;
+.aipanel-spin {
+  animation: aipanel-spin 0.8s linear infinite;
 }
 
-@keyframes opencode-spin {
+@keyframes aipanel-spin {
   from {
     transform: rotate(0deg);
   }

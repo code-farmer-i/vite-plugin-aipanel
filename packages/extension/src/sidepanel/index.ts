@@ -1,17 +1,17 @@
-import { EXT_MSG, createLogger, setVerbose } from "@vite-plugin-opencode-assistant/shared";
+import { EXT_MSG, createLogger, setVerbose } from "@aipanel/core";
 
-const log = createLogger("OpenCode SP");
+const log = createLogger("AIPanel SP");
 
 /**
- * OpenCode Assistant - Side Panel
+ * AIPanel Assistant - Side Panel
  *
- * 服务检测由 Background Service Worker 轮询 /__opencode_start__ 完成。
+ * 服务检测由 Background Service Worker 轮询 /__aipanel_start__ 完成。
  * SP 通过 SERVICE_APPEARED / SERVICE_GONE / TAB_SWITCHED 消息驱动实例生命周期。
  * 多实例通过 overflow:hidden + 定位偏移切换，不销毁不 display:none。
  */
 log.info("Side Panel 入口已加载");
 
-import "@vite-plugin-opencode-assistant/client/styles.css";
+import "@aipanel/client/styles.css";
 
 interface ServiceInfo {
   proxyPort: number;
@@ -52,7 +52,7 @@ let myWindowId: number | undefined;
 /** 创建 wrapper 容器（overflow:hidden 确保所有实例保持渲染） */
 function createWrapper(): HTMLDivElement {
   const div = document.createElement("div");
-  div.id = "opencode-sidepanel-wrapper";
+  div.id = "aipanel-sidepanel-wrapper";
   div.style.cssText = "width:100%;height:100%;overflow:hidden;position:relative;";
   return div;
 }
@@ -93,7 +93,7 @@ async function initContainers() {
   document.body.appendChild(wrapperEl);
 
   noServiceEl = document.createElement("div");
-  noServiceEl.id = "opencode-no-service-root";
+  noServiceEl.id = "aipanel-no-service-root";
   noServiceEl.style.cssText = "position:absolute;top:0;left:-10000px;width:100%;height:100%;";
   wrapperEl.appendChild(noServiceEl);
 
@@ -117,7 +117,7 @@ async function createAppInstance(info: ServiceInfo): Promise<AppInstance> {
   appInstances.set(info.serviceInstanceId, placeholder);
 
   const { createApp } = await import("vue");
-  const { default: App } = await import("@vite-plugin-opencode-assistant/client/App.vue");
+  const { default: App } = await import("@aipanel/client/App.vue");
 
   const rootEl = document.createElement("div");
   rootEl.style.cssText = "position:absolute;top:0;left:-10000px;width:100%;height:100%;";
@@ -217,7 +217,7 @@ function handleServiceAppeared(info: ServiceInfo) {
 /** 处理服务下线 */
 function handleServiceGone(serviceInstanceId: string) {
   const inst = appInstances.get(serviceInstanceId);
-  log.info(`[SP] handleServiceGone: ${serviceInstanceId} hasInstance=${!!inst}`);
+  log.info(`handleServiceGone: ${serviceInstanceId} hasInstance=${!!inst}`);
   if (!inst || inst.zombie) return;
 
   inst.zombie = true;
@@ -233,9 +233,9 @@ function handleServiceGone(serviceInstanceId: string) {
 
 /** 处理 Tab 切换 */
 function handleTabSwitched(info: ServiceInfo | null) {
-  log.info(`[SP] handleTabSwitched info=${info?.serviceInstanceId || "null"}`);
+  log.info(`handleTabSwitched info=${info?.serviceInstanceId || "null"}`);
   if (!info) {
-    log.info("[SP] 显示无服务覆盖层");
+    log.info("显示无服务覆盖层");
     showNoServiceOverlay();
     return;
   }
@@ -268,7 +268,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   switch (msg.type) {
     case EXT_MSG.TAB_SWITCHED:
       log.info(
-        `[SP] 激活: windowId=${msg.windowId} tabId=${msg.tabId} sid=${msg.portInfo?.serviceInstanceId}`,
+        `激活: windowId=${msg.windowId} tabId=${msg.tabId} sid=${msg.portInfo?.serviceInstanceId}`,
       );
       // 仅在 myWindowId 未初始化时从消息中获取窗口 ID
       if (myWindowId === undefined && msg.windowId !== undefined) {
@@ -279,7 +279,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 
     case EXT_MSG.SERVICE_APPEARED:
       if (msg.serviceInstanceId && msg.proxyPort && msg.vitePort) {
-        log.info(`[SP] 服务上线: sid=${msg.serviceInstanceId}`);
+        log.info(`服务上线: sid=${msg.serviceInstanceId}`);
         handleServiceAppeared({
           serviceInstanceId: msg.serviceInstanceId,
           vitePort: msg.vitePort,
@@ -291,7 +291,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 
     case EXT_MSG.SERVICE_GONE:
       log.info(
-        `[SP] 收到 SERVICE_GONE: sid=${msg.serviceInstanceId} msgWindowId=${msg.windowId} myWindowId=${myWindowId}`,
+        `收到 SERVICE_GONE: sid=${msg.serviceInstanceId} msgWindowId=${msg.windowId} myWindowId=${myWindowId}`,
       );
       if (msg.serviceInstanceId) {
         handleServiceGone(msg.serviceInstanceId);

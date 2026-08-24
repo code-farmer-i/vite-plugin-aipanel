@@ -1,15 +1,15 @@
-import { EXT_MSG, WIDGET_MSG, createLogger } from "@vite-plugin-opencode-assistant/shared";
+import { EXT_MSG, WIDGET_MSG, createLogger } from "@aipanel/core";
 
-const log = createLogger("OpenCode CS");
+const log = createLogger("AIPanel CS");
 
 /**
- * OpenCode Assistant - Content Script
+ * AIPanel Assistant - Content Script
  *
  * 页面上下文同步 + 选择模式消息中转。
- * 服务检测已迁移至 Background Service Worker（轮询 /__opencode_start__）。
+ * 服务检测已迁移至 Background Service Worker（轮询 /__aipanel_start__）。
  * UI 在 Side Panel 中渲染。
  */
-const INIT_MARKER = "__OPENCODE_EXTENSION_INITIALIZED__";
+const INIT_MARKER = "__AIPANEL_EXTENSION_INITIALIZED__";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const win = window as any;
 
@@ -29,7 +29,7 @@ if (win[INIT_MARKER]) {
         ctx: {
           url: location.href,
           title: document.title,
-          sessionId: sessionStorage.getItem("_opencode_pk") || undefined,
+          sessionId: sessionStorage.getItem("_aipanel_pk") || undefined,
         },
       })
       .catch(() => {});

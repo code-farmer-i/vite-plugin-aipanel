@@ -1,12 +1,12 @@
 import { ref, watch } from "vue";
-import type { OpenCodeSelectedElement } from "@vite-plugin-opencode-assistant/shared";
-import { SELECTED_ELEMENTS_KEY } from "@vite-plugin-opencode-assistant/shared";
+import type { AIPanelSelectedElement } from "@aipanel/core";
+import { SELECTED_ELEMENTS_KEY } from "@aipanel/core";
 
 export function useSelectedElements(serviceInstanceId = "") {
   const storageKey = serviceInstanceId
     ? `${SELECTED_ELEMENTS_KEY}_${serviceInstanceId}`
     : SELECTED_ELEMENTS_KEY;
-  const selectedElements = ref<OpenCodeSelectedElement[]>([]);
+  const selectedElements = ref<AIPanelSelectedElement[]>([]);
 
   try {
     const stored = sessionStorage.getItem(storageKey);
@@ -25,7 +25,7 @@ export function useSelectedElements(serviceInstanceId = "") {
     { deep: true },
   );
 
-  const addElement = (element: OpenCodeSelectedElement) => {
+  const addElement = (element: AIPanelSelectedElement) => {
     const exists = selectedElements.value.some(
       (el) => el.filePath === element.filePath && el.line === element.line,
     );

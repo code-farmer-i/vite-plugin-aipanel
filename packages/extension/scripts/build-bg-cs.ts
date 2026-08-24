@@ -26,7 +26,7 @@ await build({
     lib: {
       entry: resolve(rootDir, "src/content/index.ts"),
       formats: ["iife"],
-      name: "OpenCodeContent",
+      name: "AIPanelContent",
       fileName: () => "content.js",
     },
   },
@@ -39,7 +39,7 @@ await build({
     lib: {
       entry: resolve(rootDir, "src/background/index.ts"),
       formats: ["iife"],
-      name: "OpenCodeBackground",
+      name: "AIPanelBackground",
       fileName: () => "background.js",
     },
   },

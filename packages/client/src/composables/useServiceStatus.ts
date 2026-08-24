@@ -1,6 +1,6 @@
 import { ref, computed } from "vue";
-import type { ServiceStartupTask, ServiceStatus } from "@vite-plugin-opencode-assistant/shared";
-import { SERVICE_STARTUP_TASKS, createLogger } from "@vite-plugin-opencode-assistant/shared";
+import type { ServiceStartupTask, ServiceStatus } from "@aipanel/core";
+import { SERVICE_STARTUP_TASKS, createLogger } from "@aipanel/core";
 
 export function useServiceStatus() {
   const currentTask = ref<ServiceStartupTask | "">("");
@@ -35,7 +35,7 @@ export function useServiceStatus() {
       chromeMcpErrorMessage.value = errorMessage;
     } else if (
       task === "session_creation_failed" ||
-      task === "opencode_not_installed" ||
+      task === "provider_not_installed" ||
       task === "web_start_timeout"
     ) {
       serviceStatus.value = "failed";

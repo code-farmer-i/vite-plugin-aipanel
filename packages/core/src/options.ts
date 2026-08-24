@@ -14,15 +14,15 @@ export interface PluginOptions<P extends Record<string, unknown> = Record<string
   enabled?: boolean;
   /** 选择的 Web Provider 标识，默认 "default" */
   provider?: string;
-  /** Web 服务端口，默认 4097 */
+  /** Web 服务端口，默认 5097 */
   webPort?: number;
-  /** 代理服务端口，默认 4098 */
+  /** 代理服务端口，默认 6097 */
   proxyPort?: number;
   /** 服务主机名，默认 '127.0.0.1' */
   hostname?: string;
   /** 挂件位置，默认 'bottom-right' */
   position?: "bottom-right" | "bottom-left" | "top-right" | "top-left";
-  /** 主题模式，默认 'auto' */
+  /** 主题模式，默认 'dark' */
   theme?: "light" | "dark" | "auto";
   /** 是否自动打开面板，默认 false */
   open?: boolean;

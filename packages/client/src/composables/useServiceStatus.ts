@@ -36,7 +36,8 @@ export function useServiceStatus() {
     } else if (
       task === "session_creation_failed" ||
       task === "provider_not_installed" ||
-      task === "web_start_timeout"
+      task === "web_start_timeout" ||
+      task === "proxy_start_failed"
     ) {
       serviceStatus.value = "failed";
     } else if (serviceStatus.value === "idle" && task) {

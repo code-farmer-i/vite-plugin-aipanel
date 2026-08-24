@@ -119,30 +119,8 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
 
       let viteOrigin = "";
 
-      // 动态加载 Provider（用户指定哪个就加载哪个），初始化动作由 Provider 包自身定义
-      try {
-        provider = await loadProvider(config.provider, {
-          hostname: config.hostname,
-          chromeDevtoolsPort: config.chromeDevtoolsPort,
-          getWebPort: () => actualWebPort,
-          getProxyPort: () => actualProxyPort,
-          options: config as unknown as Record<string, unknown>,
-        });
-      } catch (e) {
-        // Provider 加载失败不拖垮 Vite dev server：记录失败状态，由客户端展示错误
-        log.error("加载 Web Provider 失败", {
-          provider: config.provider,
-          error: e instanceof Error ? e.message : String(e),
-        });
-        service.currentTask = {
-          task: "provider_not_installed",
-          data: { error: e instanceof Error ? e.message : String(e) },
-        };
-        return;
-      }
-      provider.applyConfig?.({ theme: config.theme });
-      service.setProvider(provider);
-
+      // 先注册中间件（SSE/会话/上下文/挂件等端点），保证即使 Provider 加载失败，
+      // 客户端也能通过 SSE 收到 provider_not_installed 状态，挂件也能正常渲染
       setupMiddlewares(
         server,
         {
@@ -191,12 +169,20 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
           get serviceInstanceId() {
             return serviceInstanceId;
           },
-          getSessions: () => provider!.listSessions(service.workspaceRoot!),
-          createSession: () => provider!.createSession(service.workspaceRoot!),
-          deleteSession: (id) =>
-            provider!.deleteSession
-              ? provider!.deleteSession(id)
-              : Promise.reject(new Error("当前 Provider 不支持删除会话")),
+          getSessions: () => {
+            if (!provider) return Promise.reject(new Error("Provider 未初始化"));
+            return provider.listSessions(service.workspaceRoot!);
+          },
+          createSession: () => {
+            if (!provider) return Promise.reject(new Error("Provider 未初始化"));
+            return provider.createSession(service.workspaceRoot!);
+          },
+          deleteSession: (id) => {
+            if (!provider) return Promise.reject(new Error("Provider 未初始化"));
+            return provider.deleteSession
+              ? provider.deleteSession(id)
+              : Promise.reject(new Error("当前 Provider 不支持删除会话"));
+          },
           resolveWidgetPath,
           resolveWidgetStylePath,
           retryWarmupChromeMcp: () => service.retryWarmupChromeMcp(),
@@ -204,6 +190,32 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
         mcpProxy,
         config.logFiles,
       );
+
+      // 动态加载 Provider（用户指定哪个就加载哪个），初始化动作由 Provider 包自身定义
+      try {
+        provider = await loadProvider(config.provider, {
+          hostname: config.hostname,
+          chromeDevtoolsPort: config.chromeDevtoolsPort,
+          getWebPort: () => actualWebPort,
+          getProxyPort: () => actualProxyPort,
+          options: config as unknown as Record<string, unknown>,
+        });
+      } catch (e) {
+        // Provider 加载失败不拖垮 Vite dev server：记录失败状态，由客户端通过 SSE 展示错误
+        log.error("加载 Web Provider 失败", {
+          provider: config.provider,
+          error: e instanceof Error ? e.message : String(e),
+        });
+        service.currentTask = {
+          task: "provider_not_installed",
+          data: { error: e instanceof Error ? e.message : String(e) },
+        };
+        // 中间件已注册，SSE 端点会把该状态推送给客户端；跳过后续服务启动流程
+        timer.end("❌ Provider 加载失败");
+        return;
+      }
+      provider.applyConfig?.({ theme: config.theme });
+      service.setProvider(provider);
 
       server.httpServer?.on("listening", async () => {
         log.debug("Vite server listening event fired");

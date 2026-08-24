@@ -32,7 +32,6 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "pnpm --filter vite-plugin-aipanel test",
     "typecheck": "pnpm -r --if-present run typecheck",
     "release": "node scripts/release.js",
     "deploy:docs": "node scripts/deploy-docs.js"

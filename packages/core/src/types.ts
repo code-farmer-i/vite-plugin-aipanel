@@ -123,6 +123,7 @@ export type ServiceStartupTask =
   | "creating_session"
   | "provider_not_installed"
   | "web_start_timeout"
+  | "proxy_start_failed"
   | "session_creation_failed"
   | "chrome_mcp_failed"
   | "ready";
@@ -141,6 +142,7 @@ export const SERVICE_STARTUP_TASKS: Record<ServiceStartupTask, string> = {
   creating_session: "创建会话",
   provider_not_installed: "Provider 未安装",
   web_start_timeout: "服务启动超时",
+  proxy_start_failed: "代理服务启动失败",
   session_creation_failed: "会话创建失败",
   chrome_mcp_failed: "Chrome DevTools 连接失败",
   ready: "准备完成",

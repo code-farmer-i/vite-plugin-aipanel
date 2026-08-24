@@ -38,7 +38,7 @@ const {
   theme: initialTheme = "auto",
   open: autoOpen = false,
   hotkey = "ctrl+k",
-  proxyPort = 4098,
+  proxyPort = 6097,
   displayMode = "bubble",
   splitMode,
   vitePort = "",
@@ -129,7 +129,7 @@ const serverSSE = useServerSSE({
     // SSE 重连后如果服务仍在启动中，重置为 starting 以显示蒙层
     if (justReconnected && data.task && data.task !== "ready" && data.task !== "chrome_mcp_failed" &&
       data.task !== "session_creation_failed" && data.task !== "provider_not_installed" &&
-      data.task !== "web_start_timeout") {
+      data.task !== "web_start_timeout" && data.task !== "proxy_start_failed") {
       log.debug(`SSE 重连后服务仍在启动中(${data.task})，重置 status 为 starting`);
       currentTask.value = data.task;
       serviceStatus.value = "starting";

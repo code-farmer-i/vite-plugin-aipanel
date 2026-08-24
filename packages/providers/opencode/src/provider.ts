@@ -170,7 +170,7 @@ Please install OpenCode first:
         // 过滤内部会话（warmup）、subagent 子会话（parentID）、已归档会话
         if (s.title === "__chrome_mcp_warmup__") return false;
         if (s.parentID) return false;
-        if (s.time?.archived !== undefined) return false;
+        if (s.time?.archived) return false;
         return true;
       })
       .map((s) => toChatSession(s));
@@ -334,7 +334,7 @@ function toChatSession(s: SessionInfo): ChatSession {
 /**
  * 从用户完整插件配置中解析 OpenCode 专属配置
  * 优先级：providerOptions（新写法）> 顶层 deprecated 字段（旧写法）> provider 默认值。
- * logFiles 为通用配置（顶层字段），直接读取。
+ * logFiles 为通用配置（仅顶层字段，见 core PluginOptions），直接读取。
  */
 function resolveOpenCodeOptions(options?: Record<string, unknown>): OpenCodeProviderOptions {
   if (!options) return { ...DEFAULT_OPENCODE_PROVIDER_OPTIONS };
@@ -344,7 +344,7 @@ function resolveOpenCodeOptions(options?: Record<string, unknown>): OpenCodeProv
     ...DEFAULT_OPENCODE_PROVIDER_OPTIONS,
     language: (po.language as OpenCodeLanguage) ?? (options.language as OpenCodeLanguage),
     settings: (po.settings as OpenCodeSettings) ?? (options.settings as OpenCodeSettings),
-    logFiles: (options.logFiles as LogFileConfig[]) ?? (po.logFiles as LogFileConfig[]),
+    logFiles: options.logFiles as LogFileConfig[],
     enableLsp: (po.enableLsp as boolean) ?? (options.enableLsp as boolean),
     enableBlockOnError:
       (po.enableBlockOnError as boolean) ?? (options.enableBlockOnError as boolean),

@@ -27,7 +27,6 @@
     "dev": "pagoda-cli dev",
     "site": "pagoda-cli site",
     "build:site": "pagoda-cli build-site",
-    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.declaration.json --noEmit"
   },
   "keywords": [

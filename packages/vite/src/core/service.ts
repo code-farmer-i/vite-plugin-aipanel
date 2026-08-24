@@ -120,25 +120,26 @@ export class AIPanelService {
 
       this.sendTaskUpdate("preparing_runtime");
       this.sendTaskUpdate("starting_web");
-      const startResult = await provider.start({
-        port: this.actualWebPort,
-        hostname: this.config.hostname,
-        cwd: this.workspaceRoot,
-        corsOrigins,
-        vitePort,
-        contextApiUrl,
-        logsApiUrl,
-        verbose: this.config.verbose,
-        vueDevtoolsApiUrl,
-      });
-      this.webProcess = (startResult.processHandle as ResultPromise | null) ?? null;
-
-      timer.checkpoint("Web process started");
-      const webUrl = startResult.url;
-      log.debug(`Waiting for Web UI to become ready at ${webUrl}...`);
-
-      this.sendTaskUpdate("waiting_web_ready");
+      let webUrl: string;
       try {
+        const startResult = await provider.start({
+          port: this.actualWebPort,
+          hostname: this.config.hostname,
+          cwd: this.workspaceRoot,
+          corsOrigins,
+          vitePort,
+          contextApiUrl,
+          logsApiUrl,
+          verbose: this.config.verbose,
+          vueDevtoolsApiUrl,
+        });
+        this.webProcess = (startResult.processHandle as ResultPromise | null) ?? null;
+
+        timer.checkpoint("Web process started");
+        webUrl = startResult.url;
+        log.debug(`Waiting for Web UI to become ready at ${webUrl}...`);
+
+        this.sendTaskUpdate("waiting_web_ready");
         await waitForServer(webUrl, SERVER_START_TIMEOUT, this.webProcess ?? undefined);
 
         if (this.webProcess?.exitCode !== null && this.webProcess?.exitCode !== undefined) {
@@ -149,9 +150,10 @@ export class AIPanelService {
           `Web UI started at ${webUrl}${providerVersion ? ` (${provider.displayName} ${providerVersion})` : ""}`,
         );
       } catch (e) {
+        // 覆盖 provider.start() 抛错与 Web 启动超时两类失败：
+        // 清理已启动的 Web 进程（避免残留占用端口），并重置 startPromise 以便后续可重试
         log.error("Web UI failed to start", { error: e });
         this.sendTaskUpdate("web_start_timeout");
-        // 清理已启动的 Web 进程，避免残留占用端口（killOrphans 只清理 PPID=1 的孤儿）
         await provider.stop();
         this.webProcess = null;
         this.startPromise = null;
@@ -204,7 +206,10 @@ export class AIPanelService {
           log.debug(`Proxy server started on fallback port ${this.actualProxyPort}`);
         } else {
           log.error("Proxy server failed to start", { error: nodeErr });
-          // 清理已启动的 Web 进程，并重置 startPromise 以便后续可重试
+          // 通知客户端代理启动失败，并清理已启动的 Web 进程，重置 startPromise 以便后续可重试
+          this.sendTaskUpdate("proxy_start_failed", {
+            errorMessage: nodeErr.message,
+          });
           await provider.stop();
           this.webProcess = null;
           this.startPromise = null;

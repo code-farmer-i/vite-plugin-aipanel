@@ -1,4 +1,4 @@
-import type { Plugin, ViteDevServer } from "vite";
+import type { HtmlTagDescriptor, Plugin, ViteDevServer } from "vite";
 import type http from "http";
 import crypto from "crypto";
 import fs from "fs";
@@ -45,6 +45,56 @@ type ProviderOptionsSchema<ID extends ProviderId> = ID extends "default" | "open
 const DEVTOOLS_BRIDGE_IMPORTEE = "virtual:aipanel-vue-devtools-bridge";
 const DEVTOOLS_BRIDGE_QUERY = "aipanel_vue_devtools_bridge";
 const BRIDGE_SOURCE_PATH = resolveVueDevtoolsBridgePath();
+
+/**
+ * 纯净 MCP 模式专用的静默上下文上报脚本（无任何 UI 副作用）。
+ * 复刻挂件（useContext）的上报协议：POST { url, title, sessionId } 到 /__aipanel_context__，
+ * 让 chrome-devtools_current_page 等工具在无挂件/无扩展时也能感知当前浏览页面。
+ * sessionId 取自 titleInject 写入的 sessionStorage._aipanel_pk，与后端定位逻辑配对。
+ * 多标签场景：通过 visibilitychange 只在当前可见标签上报（force 覆盖去重），
+ * 使 current_page 跟随用户实际浏览的标签，而不是最后加载的标签。
+ */
+const SILENT_CONTEXT_SCRIPT = `<script>
+(function () {
+  var API = "/__aipanel_context__";
+  var last = "";
+  function report(force) {
+    if (document.visibilityState !== "visible") return;
+    var url = location.href;
+    var title = document.title;
+    var key = url + "|" + title;
+    if (!force && key === last) return;
+    last = key;
+    var sessionId = "";
+    try { sessionId = sessionStorage.getItem("_aipanel_pk") || ""; } catch (e) {}
+    fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: url, title: title, sessionId: sessionId }),
+    }).catch(function () {});
+  }
+  var push = history.pushState.bind(history);
+  var replace = history.replaceState.bind(history);
+  history.pushState = function () { push.apply(this, arguments); setTimeout(function () { report(false); }, 0); };
+  history.replaceState = function () { replace.apply(this, arguments); setTimeout(function () { report(false); }, 0); };
+  window.addEventListener("popstate", function () { report(false); });
+  window.addEventListener("hashchange", function () { report(false); });
+  document.addEventListener("visibilitychange", function () {
+    // 切回本标签时强制上报：本页 url/title 未变，但服务端上下文可能已被其他标签覆盖
+    if (document.visibilityState === "visible") report(true);
+  });
+  window.addEventListener("focus", function () {
+    // 多窗口（分屏/多显示器）下所有标签页都 visible，visibilitychange 不触发；
+    // 窗口获得焦点是"用户正在看这个页面"的最准确信号
+    report(true);
+  });
+  try {
+    new MutationObserver(function () { report(false); })
+      .observe(document.head, { childList: true, subtree: true });
+  } catch (e) {}
+  report(false);
+})();
+</script>`;
 
 /**
  * AIPanel Vite 插件
@@ -196,31 +246,34 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
         config.logFiles,
       );
 
-      // 动态加载 Provider（用户指定哪个就加载哪个），初始化动作由 Provider 包自身定义
-      try {
-        provider = await loadProvider(config.provider, {
-          hostname: config.hostname,
-          chromeDevtoolsPort: config.chromeDevtoolsPort,
-          getWebPort: () => actualWebPort,
-          getProxyPort: () => actualProxyPort,
-          options: config as unknown as Record<string, unknown>,
-        });
-      } catch (e) {
-        // Provider 加载失败不拖垮 Vite dev server：记录失败状态，由客户端通过 SSE 展示错误
-        log.error("加载 Web Provider 失败", {
-          provider: config.provider,
-          error: e instanceof Error ? e.message : String(e),
-        });
-        service.currentTask = {
-          task: "provider_not_installed",
-          data: { error: e instanceof Error ? e.message : String(e) },
-        };
-        // 中间件已注册，SSE 端点会把该状态推送给客户端；跳过后续服务启动流程
-        timer.end("❌ Provider 加载失败");
-        return;
+      // 纯净 MCP 模式：不加载 Web Provider，仅暴露 MCP 工具服务。
+      // 否则动态加载 Provider（初始化动作由 Provider 包自身定义）。
+      if (!config.mcpOnly) {
+        try {
+          provider = await loadProvider(config.provider, {
+            hostname: config.hostname,
+            chromeDevtoolsPort: config.chromeDevtoolsPort,
+            getWebPort: () => actualWebPort,
+            getProxyPort: () => actualProxyPort,
+            options: config as unknown as Record<string, unknown>,
+          });
+        } catch (e) {
+          // Provider 加载失败不拖垮 Vite dev server：记录失败状态，由客户端通过 SSE 展示错误
+          log.error("加载 Web Provider 失败", {
+            provider: config.provider,
+            error: e instanceof Error ? e.message : String(e),
+          });
+          service.currentTask = {
+            task: "provider_not_installed",
+            data: { error: e instanceof Error ? e.message : String(e) },
+          };
+          // 中间件已注册，SSE 端点会把该状态推送给客户端；跳过后续服务启动流程
+          timer.end("❌ Provider 加载失败");
+          return;
+        }
+        provider.applyConfig?.({ theme: config.theme });
+        service.setProvider(provider);
       }
-      provider.applyConfig?.({ theme: config.theme });
-      service.setProvider(provider);
 
       server.httpServer?.on("listening", async () => {
         log.debug("Vite server listening event fired");
@@ -267,6 +320,22 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
         try {
           // MCP 先就绪（用本地包，秒启动），warmup 依赖它
           await mcpProxy.start();
+
+          // Chrome MCP 预热：所有模式统一处理（warmupChromeMcp 关闭时跳过）。
+          // 非 mcpOnly 模式 service.start 内还会再 verify 一次（幂等，主要用于
+          // 向 UI 推送 chrome_mcp_failed 状态）；这里保证 mcpOnly 模式不遗漏预热，
+          // 且预热失败不阻塞启动（Chrome 未开调试端口属正常）。
+          if (config.warmupChromeMcp) {
+            const warmup = await mcpProxy.verify();
+            if (!warmup.ok) {
+              log.debug("Chrome MCP warmup failed", { error: warmup.error });
+            }
+          }
+
+          if (config.mcpOnly) {
+            // 纯净 MCP 模式：仅暴露 MCP 端点，不启动 provider Web 进程/代理。
+            return;
+          }
           await service.start(
             vitePort,
             [viteOrigin],
@@ -318,6 +387,42 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
     transformIndexHtml(html) {
       const timer = log.timer("transformIndexHtml");
 
+      // Vue DevTools 桥接脚本 — 通过 tags 注入，Vite 会处理 @id/ 前缀内部的 import。
+      // 纯净 MCP 模式也需注入：vue-devtools_* MCP 工具依赖 window.__aipanel_vue
+      const tags: HtmlTagDescriptor[] = [
+        {
+          tag: "script",
+          injectTo: "head-prepend",
+          attrs: {
+            type: "module",
+            src: `/@id/${DEVTOOLS_BRIDGE_IMPORTEE}`,
+          },
+        },
+      ];
+
+      // sessionStorage 注入唯一标识（同 Tab 刷新不变，新 Tab 重生成）
+      // 用 8 位随机字符，避免多 Tab 场景下标识碰撞；
+      // 纯净 MCP 模式也需注入：current_page 定位依赖 _aipanel_pk
+      const titleInject = `<script>
+        (function () {
+          var KEY = "_aipanel_pk";
+          if (!sessionStorage.getItem(KEY)) {
+            sessionStorage.setItem(KEY, "[" + Math.random().toString(36).slice(2, 10) + "]");
+          }
+        })();
+      </script>`;
+
+      // 纯净 MCP 模式：不注入悬浮挂件气泡，HTML 保持干净；
+      // 仍注入 titleInject（_aipanel_pk 标识）与静默上下文上报脚本，
+      // 使 current_page 等工具能感知当前浏览页面
+      if (config.mcpOnly) {
+        timer.end("✓ mcp-only (skip widget bubble, keep vue-devtools bridge + context report)");
+        return {
+          html: html.replace("</body>", `${titleInject}\n${SILENT_CONTEXT_SCRIPT}</body>`),
+          tags,
+        };
+      }
+
       const widget = injectWidget({
         theme: config.theme,
         open: config.open,
@@ -332,32 +437,10 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
         verbose: config.verbose,
       });
 
-      // Vue DevTools 桥接脚本 — 通过 tags 注入，Vite 会处理 @id/ 前缀内部的 import
-
-      // sessionStorage 注入唯一标识（同 Tab 刷新不变，新 Tab 重生成）
-      // 用 8 位随机字符，避免多 Tab 场景下标识碰撞
-      const titleInject = `<script>
-        (function () {
-          var KEY = "_aipanel_pk";
-          if (!sessionStorage.getItem(KEY)) {
-            sessionStorage.setItem(KEY, "[" + Math.random().toString(36).slice(2, 10) + "]");
-          }
-        })();
-      </script>`;
-
       timer.end();
       return {
         html: html.replace("</body>", `${titleInject}\n${widget}</body>`),
-        tags: [
-          {
-            tag: "script",
-            injectTo: "head-prepend",
-            attrs: {
-              type: "module",
-              src: `/@id/${DEVTOOLS_BRIDGE_IMPORTEE}`,
-            },
-          },
-        ],
+        tags,
       };
     },
   };

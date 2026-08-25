@@ -28,6 +28,8 @@ export interface PluginOptions<P extends Record<string, unknown> = Record<string
   open?: boolean;
   /** 是否输出详细日志，默认 false */
   verbose?: boolean;
+  /** 纯净 MCP 模式：只暴露 MCP 工具服务，不注入挂件、不启动 provider Web 进程，默认为 false */
+  mcpOnly?: boolean;
   /** 快捷键配置，默认 'ctrl+k' */
   hotkey?: string;
   /** 服务启动后是否立即预热 Chrome MCP，默认 true */
@@ -65,6 +67,7 @@ export const DEFAULT_PLUGIN_OPTIONS: Partial<PluginOptions> = {
   theme: "dark",
   open: false,
   verbose: false,
+  mcpOnly: false,
   hotkey: "ctrl+k",
   warmupChromeMcp: true,
   chromeDevtoolsPort: CHROME_DEVTOOLS_PORT,

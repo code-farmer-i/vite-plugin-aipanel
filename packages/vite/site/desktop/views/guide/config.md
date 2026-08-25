@@ -32,6 +32,7 @@ aipanelAssistant({
   proxyPort: 6097, // 代理端口，默认 6097
   hostname: "127.0.0.1", // 绑定地址
   verbose: false, // 详细日志
+  mcpOnly: false, // 纯净 MCP 模式：只暴露 MCP 工具服务，不注入挂件/不启动 Web provider
 
   // === 主题与行为 ===
   theme: "dark", // light | dark | auto，默认 dark
@@ -91,6 +92,7 @@ aipanelAssistant({
 | `theme`                              | `string`  | `"dark"`      | 主题              |
 | `hotkey`                             | `string`  | `"ctrl+k"`    | 快捷键            |
 | `verbose`                            | `boolean` | `false`       | 详细日志          |
+| `mcpOnly`                            | `boolean` | `false`       | 纯净 MCP 模式     |
 | `warmupChromeMcp`                    | `boolean` | `true`        | 预热 Chrome MCP   |
 | `chromeDevtoolsPort`                 | `number`  | `9222`        | Chrome 调试端口   |
 | `providerOptions.language`           | `string`  | -             | 界面语言          |
@@ -99,6 +101,29 @@ aipanelAssistant({
 | `providerOptions.enableBlockOnError` | `boolean` | `false`       | 编辑错误回滚      |
 | `providerOptions.enablePrettier`     | `boolean` | `true`        | 代码格式化        |
 | `logFiles`                           | `array`   | -             | 自定义日志文件    |
+
+### 纯净 MCP 模式（mcpOnly）
+
+`mcpOnly: true` 时插件只暴露 MCP 工具服务（Chrome DevTools 控制、Vue DevTools、日志读取等），
+不注入悬浮挂件、不启动 OpenCode/dsh Web 进程，适合作为独立 MCP server 供外部 Agent 消费。
+所有工具完整可用：`chrome-devtools_*`（页面操作/截图/网络/控制台）、`vue-devtools_*`（组件树/状态/路由）、
+`logs-devtools_*`（日志）。页面会静默注入上下文上报脚本（无 UI 副作用），
+因此 `chrome-devtools_current_page` 也能感知当前浏览页面。
+
+```ts
+aipanelAssistant({
+  mcpOnly: true,
+});
+```
+
+启动后 MCP 端点固定挂在 Vite dev server 上（需保持 `vite dev` 运行），外部 MCP 客户端配置
+Streamable HTTP 即可接入：
+
+```
+http://localhost:5173/__aipanel_mcp__
+```
+
+> 端口随 Vite dev server 变化（默认 5173），以实际输出日志中的 `MCP endpoint` 地址为准。
 
 ### logFiles 说明
 

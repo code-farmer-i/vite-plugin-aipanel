@@ -235,7 +235,7 @@ async function main() {
   });
   execSync("pnpm run package", { stdio: "inherit", cwd: vsixDir });
 
-  // 6. Publish packages
+  // 6. Publish packages（发布失败才回滚：此时包尚未发布，回滚合理）
   console.log("\n📤 Publishing packages...");
   try {
     execSync(
@@ -245,44 +245,52 @@ async function main() {
         cwd: rootDir,
       },
     );
-
-    // 7. Deploy docs
-    console.log("\n🌐 Deploying docs...");
-    await deployDocs();
-
-    // 发布已成功，标记完成，避免后续 git 操作失败时触发版本回滚
-    isCompleted = true;
-
-    // 8. 提交、推送代码并打 tag
-    console.log("\n📝 Committing, pushing and tagging...");
-    try {
-      const commitMessage = `chore: 发布版本 v${targetVersion}`;
-      const tagName = `v${targetVersion}`;
-      execSync("git add -A", { stdio: "inherit", cwd: rootDir });
-      execSync(`git commit -m "${commitMessage}"`, { stdio: "inherit", cwd: rootDir });
-      execSync(`git tag ${tagName}`, { stdio: "inherit", cwd: rootDir });
-      execSync("git push", { stdio: "inherit", cwd: rootDir });
-      execSync(`git push origin ${tagName}`, { stdio: "inherit", cwd: rootDir });
-      console.log(`   ✅ Committed, pushed and tagged ${tagName}`);
-    } catch (err) {
-      console.error(
-        "\n❌ Failed to commit, push or tag:",
-        err instanceof Error ? err.message : String(err),
-      );
-      console.error("   发布已成功，请手动执行 git 提交、推送和打 tag。");
-      process.exit(1);
-    }
-
-    console.log(`\n🎉 Release process for v${targetVersion} completed!\n`);
   } catch (err) {
     console.error(
-      "\n❌ Failed to publish or deploy:",
+      "\n❌ Failed to publish packages:",
       err instanceof Error ? err.message : String(err),
     );
     rollbackVersion(currentVersion);
     isCompleted = true; // Prevent double rollback in exit handler
     process.exit(1);
   }
+
+  // 7. 发布已成功：部署文档（失败仅告警，不回滚版本、不跳过 git 入库）
+  console.log("\n🌐 Deploying docs...");
+  let docsError;
+  try {
+    await deployDocs();
+  } catch (err) {
+    docsError = err instanceof Error ? err.message : String(err);
+    console.error("\n❌ Deploy docs failed (packages already published):", docsError);
+  }
+  // 发布与版本同步已完成，任何后续失败都不触发版本回滚
+  isCompleted = true;
+
+  // 8. 提交、推送代码并打 tag（发布已成功，代码版本必须入库）
+  console.log("\n📝 Committing, pushing and tagging...");
+  try {
+    const commitMessage = `chore: 发布版本 v${targetVersion}`;
+    const tagName = `v${targetVersion}`;
+    execSync("git add -A", { stdio: "inherit", cwd: rootDir });
+    execSync(`git commit -m "${commitMessage}"`, { stdio: "inherit", cwd: rootDir });
+    execSync(`git tag ${tagName}`, { stdio: "inherit", cwd: rootDir });
+    execSync("git push", { stdio: "inherit", cwd: rootDir });
+    execSync(`git push origin ${tagName}`, { stdio: "inherit", cwd: rootDir });
+    console.log(`   ✅ Committed, pushed and tagged ${tagName}`);
+  } catch (err) {
+    console.error(
+      "\n❌ Failed to commit, push or tag:",
+      err instanceof Error ? err.message : String(err),
+    );
+    console.error("   发布已成功，请手动执行 git 提交、推送和打 tag。");
+    process.exit(1);
+  }
+
+  if (docsError) {
+    console.error("\n⚠️ 文档部署失败，请手动部署文档。");
+  }
+  console.log(`\n🎉 Release process for v${targetVersion} completed!\n`);
 }
 
 main().catch((err) => {

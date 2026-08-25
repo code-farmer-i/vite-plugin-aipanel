@@ -1,7 +1,7 @@
 {
   "name": "aipanel-vscode",
   "displayName": "AIPanel Assistant",
-  "version": "1.1.69",
+  "version": "1.2.0-beta.0",
   "description": "为 AIPanel AI 提供 VS Code 原生格式化与诊断能力，通过 HTTP 桥接实现 formatOnSave、codeActionsOnSave 和 LSP 诊断的统一调度",
   "publisher": "vite-plugin-aipanel",
   "private": true,

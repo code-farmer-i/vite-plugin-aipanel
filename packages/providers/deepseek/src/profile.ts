@@ -70,9 +70,10 @@ export function buildDshOverlay(options: {
   return ["- insert:", rows.join("\n"), ""].join("\n");
 }
 
-/** 将 overlay 写入文件并返回路径（供 dsh web --patch 使用） */
+/** 将 overlay 写入项目缓存目录（node_modules/.cache/aipanel，参照 opencode 的
+ * node_modules/.cache/opencode 惯例），不污染用户项目根目录。 */
 export function writeDshOverlay(workspaceCwd: string, overlay: string): string {
-  const dir = path.join(workspaceCwd, ".aipanel");
+  const dir = path.join(workspaceCwd, "node_modules", ".cache", "aipanel");
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "dsh-overlay.cordis.yml");
   fs.writeFileSync(file, overlay, "utf-8");

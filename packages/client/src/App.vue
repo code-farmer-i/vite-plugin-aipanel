@@ -11,7 +11,7 @@ import { WIDGET_MSG, WARMUP_API_PATH, START_API_PATH, createLogger } from "@aipa
 import { useHotkey } from "./composables/useHotkey";
 import { useServerSSE } from "./composables/useServerSSE";
 import { useSessionEvents } from "./composables/useSessionEvents";
-import { useSessions } from "./composables/useSessions";
+import { useSessionsAndCapabilities } from "./composables/useSessionsAndCapabilities";
 import { useTheme } from "./composables/useTheme";
 import { useSelectedElements } from "./composables/useSelectedElements";
 import { useServiceStatus } from "./composables/useServiceStatus";
@@ -102,12 +102,13 @@ const {
   iframeSrc,
   iframeLoading,
   isDeepLink,
+  reviewPanelEnabled,
   loadSessions,
   createSession,
   deleteSession,
   selectSession,
   updateSessionInfo,
-} = useSessions({
+} = useSessionsAndCapabilities({
   showNotification,
   viteBaseUrl: viteBaseUrl.value,
   onFocusSession: (sessionId) => {
@@ -528,6 +529,7 @@ const handleFrameLoaded = () => {
     :current-session-id="currentSessionId"
     :sessions="sessions"
     :session-states="sessionStates"
+    :review-panel-enabled="reviewPanelEnabled"
     session-key="id"
     :hotkey-label="hotkey"
     :thinking="thinking"

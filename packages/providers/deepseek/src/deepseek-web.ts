@@ -12,6 +12,8 @@ export interface DeepSeekWebOptions {
   cwd: string;
   /** cordis overlay 文件路径（--patch 注入 MCP client / aipanel 插件） */
   patchPath?: string;
+  /** dsh 数据目录（透传 DSH_HOME；缺省跟随 $DSH_HOME / ~/.dsh） */
+  home?: string;
   /** 启用 verbose 模式 */
   verbose?: boolean;
 }
@@ -22,7 +24,7 @@ export interface DeepSeekWebOptions {
  * 也无需 API key 即可启动 UI 壳。
  */
 export function startDeepSeekWeb(options: DeepSeekWebOptions): ResultPromise {
-  const { port, hostname, cwd, patchPath, verbose } = options;
+  const { port, hostname, cwd, patchPath, home, verbose } = options;
 
   // dsh 0.1.x 的 --patch 是 launcher 级选项：必须放在 --profile web 之后、
   // 转发给 web app 的参数之前（`dsh web --patch` 会被 variadic args 吞进 app 参数，
@@ -40,14 +42,23 @@ export function startDeepSeekWeb(options: DeepSeekWebOptions): ResultPromise {
     "--no-open",
   );
 
-  log.debug("Spawning dsh web process", { command: "dsh", args: args.join(" "), cwd });
+  log.debug("Spawning dsh web process", {
+    command: "dsh",
+    args: args.join(" "),
+    cwd,
+    home: home ?? process.env.DSH_HOME,
+  });
 
   const proc = execa("dsh", args, {
     cwd,
     reject: false,
     cleanup: true,
     shell: true,
-    env: verbose ? { ...process.env, VERBOSE: "1" } : process.env,
+    env: {
+      ...process.env,
+      ...(home ? { DSH_HOME: home } : {}),
+      ...(verbose ? { VERBOSE: "1" } : {}),
+    },
   } as Parameters<typeof execa>[1]);
 
   // dsh 启动后若退出，记录退出码（崩溃排查关键：fail-loud 插件/CLI 错误都会在这里暴露）

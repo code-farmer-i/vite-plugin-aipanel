@@ -3,6 +3,12 @@
  * 所有与 DeepSeek Harness (dsh) 绑定的类型自包含于此，核心层不感知。
  */
 
+/** 权限预设（对应 dsh settings permission.defaultPreset） */
+export type DeepSeekPermissionPreset = "read-only" | "workspace-write" | "danger-full-access";
+
+/** 繁忙时 Enter 键行为（对应 dsh settings ui-conversation.busyEnter） */
+export type DeepSeekBusyEnter = "queue" | "steer";
+
 /**
  * DeepSeek Provider 专属配置（对应插件配置的 providerOptions 段）
  * 保留字符串索引签名，以赋给 PluginOptions 的 Record<string, unknown> 泛型约束。
@@ -10,6 +16,12 @@
 export type DeepSeekProviderOptions = {
   /** dsh 数据目录（$DSH_HOME），默认跟随系统（~/.dsh） */
   home?: string;
+  /** 默认 Agent 预设（dsh settings agent-presets.default，如 code/standard；新建会话的默认模式） */
+  agentPreset?: string;
+  /** 默认权限预设（dsh settings permission.defaultPreset） */
+  permissionPreset?: DeepSeekPermissionPreset;
+  /** 繁忙时 Enter 键行为（dsh settings ui-conversation.busyEnter） */
+  busyEnter?: DeepSeekBusyEnter;
   /**
    * Provider 允许自定义扩展字段
    * [key: string]: unknown;

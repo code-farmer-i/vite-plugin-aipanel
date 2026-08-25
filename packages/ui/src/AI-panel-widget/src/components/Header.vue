@@ -13,6 +13,7 @@ const {
   minimized,
   promptDockVisible,
   reviewPanelVisible,
+  reviewPanelEnabled,
   mode,
   displayMode,
   splitPosition,
@@ -383,6 +384,7 @@ const splitPositionIconLabel = computed(() => {
 
     <div class="aipanel-chat-header-actions">
       <button
+        v-if="reviewPanelEnabled"
         class="aipanel-header-btn review-panel"
         :class="{ active: reviewPanelVisible }"
         type="button"

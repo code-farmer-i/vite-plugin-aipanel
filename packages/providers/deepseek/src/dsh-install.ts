@@ -37,10 +37,10 @@ export function resolveDevDshClientSource(metaUrl: string): string | null {
   return null;
 }
 
-/** dsh web profile 目录（固定 --profile web） */
-export function dshProfileDir(): string {
-  const home = process.env.DSH_HOME || path.join(os.homedir(), ".dsh");
-  return path.join(home, "profiles", "web");
+/** dsh web profile 目录（固定 --profile web）；home 未指定时回退 $DSH_HOME / ~/.dsh */
+export function dshProfileDir(home?: string): string {
+  const resolved = home || process.env.DSH_HOME || path.join(os.homedir(), ".dsh");
+  return path.join(resolved, "profiles", "web");
 }
 
 /** @aipanel/dsh-client 在 profile 的 node_modules 中是否可解析 */
@@ -55,12 +55,20 @@ export function isDshClientInstalled(profileDir: string): boolean {
  * 每次启动都执行（不跳过已安装）：dev 本地目录每次重装保证改代码生效，
  * 生产 npm 包每次检查 registry 拉取最新版本。安装失败返回 false（不阻塞启动，仅 chip 高亮不可用）。
  */
-export async function ensureDshClient(profileDir: string, target: string): Promise<boolean> {
+export async function ensureDshClient(
+  profileDir: string,
+  target: string,
+  home?: string,
+): Promise<boolean> {
   try {
     log.debug(`installing ${target} into dsh profile via dsh plugin add`);
     await execa("dsh", ["plugin", "--profile", "web", "add", target], {
       reject: true,
       shell: true,
+      env: {
+        ...process.env,
+        ...(home ? { DSH_HOME: home } : {}),
+      },
     });
     if (!isDshClientInstalled(profileDir)) {
       log.warn(`dsh plugin add finished but ${DSH_CLIENT_PACKAGE} is not resolvable`, {

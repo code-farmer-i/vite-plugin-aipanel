@@ -267,6 +267,8 @@ export interface AIPanelWidgetProps {
   splitPanelWidth?: number;
   /** 隐藏悬浮气泡（浏览器扩展模式下使用） */
   hideBubble?: boolean;
+  /** 是否支持代码审查面板（右上角 </> 按钮）；由 Provider capabilities.reviewPanel 决定 */
+  reviewPanelEnabled?: boolean;
 }
 
 /**

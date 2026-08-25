@@ -56,16 +56,16 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
   // === 主题同步（UI 呈现；持久化交由 dsh settings「ui-theme.preference」，不在此写 localStorage）===
   // dsh 的暗色由 body[data-ds-dark-theme] + colorScheme 呈现。
   // 注意：bridge 可能被注入到 <head>，此时 document.body 尚不存在，须在 DOM ready 后再执行。
-  function applyTheme() {
+  // theme 参数："light" | "dark" | "auto"（auto 不干预，交给 dsh 原生主题处理）。
+  function applyTheme(theme) {
     if (!document.body) return;
-    if (THEME === "dark") {
+    if (theme === "dark") {
       document.body.setAttribute("data-ds-dark-theme", "");
       document.documentElement.style.colorScheme = "dark";
-    } else if (THEME === "light") {
+    } else if (theme === "light") {
       document.body.removeAttribute("data-ds-dark-theme");
       document.documentElement.style.colorScheme = "light";
     }
-    // auto → 不干预，交给 dsh 原生主题处理
   }
 
   // === 布局覆盖 ===
@@ -94,6 +94,11 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
   // === 消息监听 ===
   window.addEventListener("message", function(event) {
     if (!event.data) return;
+
+    // 核心层通知：切换主题（工具栏主题按钮/跟随系统变化）。动态应用，无需重载。
+    if (event.data.type === ${JSON.stringify(WIDGET_MSG.SET_THEME)}) {
+      applyTheme(event.data.theme);
+    }
 
     // 核心层通知：聚焦指定会话（无 deepLink 模式）。
     // dsh 的选中态持久化为 JSON.stringify({ sessionId, subagentAddress? })，SPA 启动时据此恢复。
@@ -140,7 +145,7 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
 
   // 主题同步/布局覆盖仍须在每次页面加载时生效（与就绪判定解耦，不参与 loading 放行）
   function init() {
-    applyTheme();
+    applyTheme(THEME);
     applyLayoutOverrides();
   }
   if (document.readyState === "loading") {

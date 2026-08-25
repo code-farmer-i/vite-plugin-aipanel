@@ -31,6 +31,8 @@ export interface AIPanelWidgetContext {
   minimized: Ref<boolean>;
   promptDockVisible: Ref<boolean>;
   reviewPanelVisible: Ref<boolean>;
+  /** 是否支持代码审查面板（右上角 </> 按钮）；由 Provider capabilities.reviewPanel 决定 */
+  reviewPanelEnabled: Ref<boolean>;
   bubbleOffset: Ref<FloatingBubbleOffset | undefined>;
   mode: Ref<"bubble" | "split">;
   displayMode: Ref<DisplayMode>;

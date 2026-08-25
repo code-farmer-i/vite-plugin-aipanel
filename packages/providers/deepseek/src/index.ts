@@ -25,6 +25,8 @@ export { checkDeepSeekInstalled, getDeepSeekVersion, killOrphanDeepSeekProcesses
 export { DEFAULT_DEEPSEEK_PROVIDER_OPTIONS, DSH_LOOPBACK_HOST, DSH_DEFAULT_PORT } from "./constants";
 export type {
   DeepSeekProviderOptions,
+  DeepSeekPermissionPreset,
+  DeepSeekBusyEnter,
   SessionSummary,
   WorkspaceView,
   SessionStreamEvent,

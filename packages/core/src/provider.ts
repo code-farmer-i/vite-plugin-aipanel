@@ -116,6 +116,12 @@ export interface ProviderCapabilities {
    * 切换会话通过 FOCUS_SESSION 消息完成。
    */
   deepLink?: boolean;
+  /**
+   * 是否支持代码审查面板（挂件右上角 </> 按钮）。
+   * true：点击按钮向 iframe 发送 REVIEW_PANEL_TOGGLE，由 Provider 渲染审查面板；
+   * 缺省/false：不支持，客户端隐藏该按钮，避免展示无功能的入口。
+   */
+  reviewPanel?: boolean;
 }
 
 /**

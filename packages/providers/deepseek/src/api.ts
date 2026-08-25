@@ -144,6 +144,40 @@ export class DeepSeekAPI {
     throw lastError;
   }
 
+  /**
+   * 通过 dsh settings.update 应用 providerOptions 指定的用户设置（逐命名空间幂等 patch）。
+   * dsh 启动初期 API 未就绪，整体带重试；单个命名空间不存在会导致该次调用失败重试。
+   */
+  async applySettings(
+    sections: Record<string, Record<string, unknown>>,
+    retries = DEFAULT_RETRIES,
+  ): Promise<void> {
+    const namespaces = Object.keys(sections);
+    if (namespaces.length === 0) return;
+    const timer = log.timer("applySettings", { namespaces });
+    let lastError: Error | null = null;
+
+    for (let i = 0; i < retries; i++) {
+      try {
+        log.debug(`Attempt ${i + 1}/${retries}`, { method: "settings.update", namespaces });
+        for (const [ns, patch] of Object.entries(sections)) {
+          await this.call("settings.update", { ns, patch });
+        }
+        timer.end(`Applied settings: ${namespaces.join(", ")}`);
+        return;
+      } catch (e) {
+        lastError = e instanceof Error ? e : new Error(String(e));
+        log.debug(`Attempt ${i + 1} failed: ${lastError.message}`, { method: "applySettings" });
+        if (i < retries - 1) {
+          await sleep(RETRY_DELAY);
+        }
+      }
+    }
+
+    timer.end("❌ All retries exhausted");
+    throw lastError;
+  }
+
   /** 归档会话（dsh 无硬删除，仅归档；幂等） */
   async archiveSession(sessionId: string, retries = DEFAULT_RETRIES): Promise<void> {
     const timer = log.timer("archiveSession", { sessionId, retries });

@@ -44,6 +44,7 @@ const props = withDefaults(defineProps<AIPanelWidgetProps>(), {
   splitMode: undefined,
   splitPanelWidth: 500,
   hideBubble: false,
+  reviewPanelEnabled: false,
 });
 
 const emit = defineEmits<AIPanelWidgetEmits>();
@@ -111,7 +112,10 @@ const syncStateToIframe = () => {
   if (!iframeLoaded.value || !iframeReady.value) return;
   sendMessageToIframe(WIDGET_MSG.PROMPT_DOCK_VISIBILITY, { visible: promptDockVisible.value });
   sendMessageToIframe(WIDGET_MSG.MINIMIZE_STATE, { minimized: minimized.value });
-  sendMessageToIframe(WIDGET_MSG.REVIEW_PANEL_TOGGLE, { visible: reviewPanelVisible.value });
+  // 审查面板仅当 Provider 声明支持时下发，避免向无此能力的 iframe 发无效消息
+  if (props.reviewPanelEnabled) {
+    sendMessageToIframe(WIDGET_MSG.REVIEW_PANEL_TOGGLE, { visible: reviewPanelVisible.value });
+  }
 };
 
 const handleFrameLoaded = () => {
@@ -549,6 +553,7 @@ provideAIPanelWidgetContext({
   minimized,
   promptDockVisible,
   reviewPanelVisible,
+  reviewPanelEnabled: toRef(props, "reviewPanelEnabled"),
   bubbleOffset,
   mode: effectiveMode,
   displayMode: localDisplayMode,

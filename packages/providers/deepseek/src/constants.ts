@@ -32,4 +32,6 @@ export const DSH_STORAGE_KEYS = {
 
 /** ==================== Provider 专属配置默认值 ==================== */
 
-export const DEFAULT_DEEPSEEK_PROVIDER_OPTIONS: DeepSeekProviderOptions = {};
+export const DEFAULT_DEEPSEEK_PROVIDER_OPTIONS: DeepSeekProviderOptions = {
+  agentPreset: "code",
+};

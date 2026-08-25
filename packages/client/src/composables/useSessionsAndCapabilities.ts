@@ -4,7 +4,7 @@ import type { ChatSession, AIPanelWidgetSession } from "@aipanel/core";
 
 const log = createLogger("AIPanel");
 
-export interface UseSessionsOptions {
+export interface UseSessionsAndCapabilitiesOptions {
   showNotification: (msg: string) => void;
   /** Vite 服务 base URL (如 http://127.0.0.1:5099) */
   viteBaseUrl?: string;
@@ -26,7 +26,12 @@ function toWidgetSession(s: ChatSession): AIPanelWidgetSession {
   };
 }
 
-export function useSessions(options: UseSessionsOptions) {
+/**
+ * 会话列表 + Provider 能力。
+ * 能力与会话列表同一次响应下发（原子快照，避免独立能力端点竞态），
+ * 因此本 composable 一并承接能力读取（deepLink / reviewPanelEnabled 等）。
+ */
+export function useSessionsAndCapabilities(options: UseSessionsAndCapabilitiesOptions) {
   const { showNotification, viteBaseUrl = "", onFocusSession } = options;
   const basePath = (path: string) => (viteBaseUrl ? `${viteBaseUrl}${path}` : path);
   const sessions = ref<AIPanelWidgetSession[]>([]);
@@ -36,6 +41,9 @@ export function useSessions(options: UseSessionsOptions) {
 
   /** Provider 是否支持会话 URL 深链（默认 true，随会话列表响应校正；会话展示能力由本会话自身数据源驱动） */
   const deepLink = ref(true);
+
+  /** Provider 是否支持代码审查面板（右上角 </> 按钮）；缺省不支持，随会话列表响应校正 */
+  const reviewPanelEnabled = ref(false);
 
   /** 是否支持会话 URL 深链（默认 true） */
   const isDeepLink = () => deepLink.value;
@@ -71,10 +79,11 @@ export function useSessions(options: UseSessionsOptions) {
       const response = await fetch(basePath(SESSIONS_API_PATH));
       const data = (await response.json()) as {
         sessions: ChatSession[];
-        capabilities?: { deepLink?: boolean };
+        capabilities?: { deepLink?: boolean; reviewPanel?: boolean };
       };
       // 先校正能力再赋值会话，保证 iframeSrc 计算时 deepLink 已就绪（能力随会话响应下发，无需独立 /capabilities 往返）
       deepLink.value = data.capabilities?.deepLink !== false;
+      reviewPanelEnabled.value = data.capabilities?.reviewPanel === true;
       sessions.value = data.sessions.map(toWidgetSession);
 
       if (!sessions.value.length) {
@@ -167,6 +176,7 @@ export function useSessions(options: UseSessionsOptions) {
     loadingSessionList,
     currentSessionId,
     deepLink,
+    reviewPanelEnabled,
     iframeSrc,
     iframeLoading,
     isDeepLink,

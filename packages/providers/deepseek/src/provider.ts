@@ -10,7 +10,13 @@ import type {
   WebProvider,
 } from "@aipanel/core";
 import { createLogger } from "@aipanel/core/node";
-import type { DeepSeekProviderOptions, ServerRequest, SessionSummary } from "./types";
+import type {
+  DeepSeekBusyEnter,
+  DeepSeekPermissionPreset,
+  DeepSeekProviderOptions,
+  ServerRequest,
+  SessionSummary,
+} from "./types";
 import { DEFAULT_DEEPSEEK_PROVIDER_OPTIONS } from "./constants";
 import { DSH_LOOPBACK_HOST, DSH_MUX_EVENTS_PATH, DSH_HOST_EVENTS_PATH } from "./constants";
 import { DeepSeekAPI } from "./api";
@@ -110,8 +116,9 @@ or run without installing:
     // 未就绪时 overlay 不注入/停用该行，避免 dsh 因无法解析而 fail-loud，仅失去 chip 高亮。
     const devClientDir = resolveDevDshClientSource(import.meta.url);
     const clientAvailable = await ensureDshClient(
-      dshProfileDir(),
+      dshProfileDir(this.opts.home),
       devClientDir ?? DSH_CLIENT_PACKAGE,
+      this.opts.home,
     );
     if (!clientAvailable) {
       log.warn("@aipanel/dsh-client unavailable; @ menu chip highlight disabled", {
@@ -133,11 +140,48 @@ or run without installing:
       hostname: DSH_LOOPBACK_HOST,
       cwd: options.cwd,
       patchPath,
+      home: this.opts.home,
       verbose: options.verbose,
     });
     this.process = proc;
 
+    // 应用 providerOptions 指定的 dsh 用户设置（agent 预设 / 权限 / 繁忙 Enter 行为）。
+    // 通过 settings.update 写用户层，需 dsh API 就绪后生效；失败仅告警，不阻塞启动。
+    const settings = this.buildSettingsToApply();
+    if (Object.keys(settings).length > 0) {
+      void this.api.applySettings(settings).catch((e) => {
+        log.warn("failed to apply provider settings to dsh", {
+          settings,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      });
+    }
+
     return { url: this.api.shellUrl, processHandle: proc };
+  }
+
+  /** 把 providerOptions 配置映射为 dsh settings 命名空间 patch（仅含用户显式配置项） */
+  private buildSettingsToApply(): Record<string, Record<string, unknown>> {
+    const sections: Record<string, Record<string, unknown>> = {};
+    if (this.opts.agentPreset !== undefined) {
+      // dsh settings agent-presets.default：新建会话的默认预设
+      sections["agent-presets"] = { ...sections["agent-presets"], default: this.opts.agentPreset };
+    }
+    if (this.opts.permissionPreset !== undefined) {
+      // dsh settings permission.defaultPreset：新会话默认权限预设
+      sections.permission = {
+        ...sections.permission,
+        defaultPreset: this.opts.permissionPreset,
+      };
+    }
+    if (this.opts.busyEnter !== undefined) {
+      // dsh settings ui-conversation.busyEnter：繁忙时 Enter 键行为
+      sections["ui-conversation"] = {
+        ...sections["ui-conversation"],
+        busyEnter: this.opts.busyEnter,
+      };
+    }
+    return sections;
   }
 
   /** 解析 aipanel dsh-plugin 的构建产物路径（存在才在 overlay 里注入插件行）。
@@ -338,5 +382,11 @@ function resolveDeepSeekOptions(options?: Record<string, unknown>): DeepSeekProv
   return {
     ...DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
     home: (po.home as string) ?? (options.home as string | undefined),
+    agentPreset: (po.agentPreset as string) ?? (options.agentPreset as string | undefined),
+    permissionPreset:
+      (po.permissionPreset as DeepSeekPermissionPreset) ??
+      (options.permissionPreset as DeepSeekPermissionPreset | undefined),
+    busyEnter:
+      (po.busyEnter as DeepSeekBusyEnter) ?? (options.busyEnter as DeepSeekBusyEnter | undefined),
   };
 }

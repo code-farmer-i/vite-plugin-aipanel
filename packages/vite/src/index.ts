@@ -17,6 +17,7 @@ import { setupMiddlewares, LOGS_API_PATH, VUE_DEVTOOLS_API_PATH } from "./endpoi
 import { injectWidget } from "./core/injector";
 import { loadProvider, type ProviderId } from "./core/provider-loader";
 import type { OpenCodeProviderOptions } from "@aipanel/provider-opencode";
+import type { DeepSeekProviderOptions } from "@aipanel/provider-deepseek";
 import { AIPanelService } from "./core/service";
 import { McpProxy } from "./core/mcp-proxy";
 import {
@@ -28,6 +29,7 @@ import { findGitRoot } from "./utils/system";
 
 export type { PluginOptions } from "@aipanel/core";
 export type { OpenCodeProviderOptions } from "@aipanel/provider-opencode";
+export type { DeepSeekProviderOptions } from "@aipanel/provider-deepseek";
 export type { ProviderId };
 
 /**
@@ -36,7 +38,9 @@ export type { ProviderId };
  */
 type ProviderOptionsSchema<ID extends ProviderId> = ID extends "default" | "opencode"
   ? OpenCodeProviderOptions
-  : Record<string, unknown>;
+  : ID extends "deepseek"
+    ? DeepSeekProviderOptions
+    : Record<string, unknown>;
 
 const DEVTOOLS_BRIDGE_IMPORTEE = "virtual:aipanel-vue-devtools-bridge";
 const DEVTOOLS_BRIDGE_QUERY = "aipanel_vue_devtools_bridge";

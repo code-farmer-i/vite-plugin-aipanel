@@ -2,7 +2,7 @@ export { useSSE } from "./useSSE";
 export { useServerSSE } from "./useServerSSE";
 export { useSessionEvents } from "./useSessionEvents";
 export { useHotkey } from "./useHotkey";
-export { useSessions } from "./useSessions";
+export { useSessionsAndCapabilities } from "./useSessionsAndCapabilities";
 export { useTheme } from "./useTheme";
 export { useSelectedElements } from "./useSelectedElements";
 export { useServiceStatus } from "./useServiceStatus";

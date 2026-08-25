@@ -312,7 +312,8 @@ function mapEvent(frame: Partial<ServerRequest>): ProviderEvent | null {
 function toChatSession(s: SessionSummary, url?: string): ChatSession {
   return {
     id: s.sessionId,
-    title: "",
+    // dsh 标题在 projections.values.title，不在顶层
+    title: s.projections?.values?.title ?? "",
     updatedAt: s.updatedAt,
     parentId: s.parentSessionId,
     url,

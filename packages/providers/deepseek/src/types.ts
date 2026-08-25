@@ -55,6 +55,14 @@ export interface SessionSummary {
   origin?: "subagent";
   cwd?: string;
   agentPreset?: string;
+  /** 会话投影（标题等派生值存在 projections.values.title） */
+  projections?: {
+    values?: {
+      title?: string | null;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
 }
 
 /** session.list 的 value：容器对象（不是数组），会话在 items 下 */

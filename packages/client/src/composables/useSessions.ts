@@ -79,6 +79,11 @@ export function useSessions(options: UseSessionsOptions) {
         createSession();
       }
       currentSessionId.value = sessions.value[0]?.id || null;
+      // 无 deepLink：iframe 加载应用壳后，dsh 需要从 localStorage 恢复会话/工作区选中态。
+      // 首次加载必须主动把当前会话同步进 iframe，否则 dsh 不会激活对应工作区和会话。
+      if (currentSessionId.value) {
+        focusSession(currentSessionId.value);
+      }
     } catch (e) {
       log.error("Failed to load sessions:", { error: e });
     } finally {

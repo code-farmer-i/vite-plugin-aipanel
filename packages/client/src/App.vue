@@ -300,6 +300,13 @@ const handleIframeMessage = (event: MessageEvent) => {
     }
     iframeLoading.value = false;
     sendThemeToIframe();
+    // 补发当前会话聚焦：首次 FOCUS_SESSION 可能在 iframe 就绪前发出而丢失，
+    // 就绪后重发确保 dsh 激活对应工作区/会话（无 deepLink 场景）
+    if (currentSessionId.value) {
+      widgetRef.value?.sendMessageToIframe(WIDGET_MSG.FOCUS_SESSION, {
+        sessionId: currentSessionId.value,
+      });
+    }
   }
   if (event.data?.type === WIDGET_MSG.KEYDOWN) {
     if (event.data.key === "Escape" && selectMode.value) {

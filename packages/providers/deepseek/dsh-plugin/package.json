@@ -1,6 +1,6 @@
 {
   "name": "@aipanel/dsh-plugin",
-  "version": "1.1.69",
+  "version": "1.2.0-beta.1",
   "type": "module",
   "private": true,
   "description": "AIPanel for DeepSeek Harness (dsh)：注入审查工具 run_diagnostics、编辑后自动诊断、元素选择上下文。",

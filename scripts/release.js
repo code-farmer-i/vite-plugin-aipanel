@@ -100,30 +100,28 @@ async function main() {
 
   // Define rollback function
   /**
-   * 收集所有 workspace 包的 package.json 路径（packages/* 与 packages/providers/*）
+   * 递归收集所有 workspace 包的 package.json 路径。
+   * 覆盖 packages 下各级子目录（含 providers 深层嵌套的 dsh-client、dsh-plugin），
+   * 保证发布时版本全量同步；跳过 node_modules 与隐藏目录。
    */
-  const collectPackageJsonPaths = () => {
-    const packagesDir = path.join(rootDir, "packages");
-    if (!fs.existsSync(packagesDir)) return [];
+  const collectPackageJsonPaths = (dir = path.join(rootDir, "packages")) => {
+    if (!fs.existsSync(dir)) return [];
     const result = [];
-    fs.readdirSync(packagesDir)
-      .filter((pkg) => fs.statSync(path.join(packagesDir, pkg)).isDirectory())
-      .forEach((pkg) => {
-        const pkgDir = path.join(packagesDir, pkg);
-        const pkgJsonPath = path.join(pkgDir, "package.json");
-        if (fs.existsSync(pkgJsonPath)) {
-          result.push(pkgJsonPath);
-        }
-        // 二级目录（如 packages/providers/opencode）
-        fs.readdirSync(pkgDir)
-          .filter((sub) => fs.statSync(path.join(pkgDir, sub)).isDirectory())
-          .forEach((sub) => {
-            const subPkgJsonPath = path.join(pkgDir, sub, "package.json");
-            if (fs.existsSync(subPkgJsonPath)) {
-              result.push(subPkgJsonPath);
-            }
-          });
-      });
+    for (const entry of fs.readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      let stat;
+      try {
+        stat = fs.statSync(full);
+      } catch {
+        continue;
+      }
+      if (stat.isDirectory()) {
+        if (entry === "node_modules" || entry.startsWith(".")) continue;
+        result.push(...collectPackageJsonPaths(full));
+      } else if (entry === "package.json") {
+        result.push(full);
+      }
+    }
     return result;
   };
 

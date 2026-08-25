@@ -268,10 +268,10 @@ async function main() {
   isCompleted = true;
 
   // 8. 提交、推送代码并打 tag（发布已成功，代码版本必须入库）
+  const commitMessage = `chore: 发布版本 v${targetVersion}`;
+  const tagName = `v${targetVersion}`;
   console.log("\n📝 Committing, pushing and tagging...");
   try {
-    const commitMessage = `chore: 发布版本 v${targetVersion}`;
-    const tagName = `v${targetVersion}`;
     execSync("git add -A", { stdio: "inherit", cwd: rootDir });
     execSync(`git commit -m "${commitMessage}"`, { stdio: "inherit", cwd: rootDir });
     execSync(`git tag ${tagName}`, { stdio: "inherit", cwd: rootDir });
@@ -283,12 +283,17 @@ async function main() {
       "\n❌ Failed to commit, push or tag:",
       err instanceof Error ? err.message : String(err),
     );
-    console.error("   发布已成功，请手动执行 git 提交、推送和打 tag。");
+    console.error("   发布已成功，请手动执行 git 提交、推送和打 tag：");
+    console.error(`   git add -A`);
+    console.error(`   git commit -m "${commitMessage}"`);
+    console.error(`   git tag ${tagName}`);
+    console.error("   git push");
+    console.error(`   git push origin ${tagName}`);
     process.exit(1);
   }
 
   if (docsError) {
-    console.error("\n⚠️ 文档部署失败，请手动部署文档。");
+    console.error("\n⚠️ 文档部署失败，请手动执行：pnpm run deploy:docs");
   }
   console.log(`\n🎉 Release process for v${targetVersion} completed!\n`);
 }

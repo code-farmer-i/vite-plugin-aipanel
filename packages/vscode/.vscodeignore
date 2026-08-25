@@ -2,5 +2,5 @@
 node_modules/**
 src/**
 tsconfig.json
-vite.config.ts
+vite.config.mts
 .gitignore

@@ -5,19 +5,24 @@
  *  1. run_diagnostics 审查工具（对标 opencode 质量门禁，手动触发 ESLint + tsc）
  *  2. tools/post-execute：编辑工具（write/edit）执行后自动追加诊断回报（不做回滚）
  *
+ * 依赖策略：本插件保持"零运行时 @deepseek-ai 依赖"（全部 type-only import），
+ * 只通过宿主注入的 ctx API + 纯数据对象（tool 定义 / 消息体）交互。
+ * 因此产物可被 dsh 以 file:// 或 npm 包 + profile 安装两种方式加载，
+ * 无需处理 @deepseek-ai/* 的 peer 依赖解析（profile 安装时 autoInstallPeers=false）。
  */
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import type { Context } from "@deepseek-ai/cordis";
-import {
-  defineTool,
-  type PostToolDecision,
-  type ToolExecution,
-  type ToolExecutionResult,
-  type ToolRunContext,
-  type ToolRuntime,
+import type {
+  PostToolDecision,
+  ToolDefinition,
+  ToolExecution,
+  ToolExecutionResult,
+  ToolRuntime,
+  ToolRunContext,
 } from "@deepseek-ai/dsh-tools";
-import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { SubprocessRuntime } from "@deepseek-ai/dsh-subprocess";
+import type { UserMessage } from "@deepseek-ai/dsh-llm";
 
 export const name = "aipanel";
 export const inject = ["tools", "subprocess"];
@@ -99,30 +104,34 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
   }
 
   // === 1) 审查工具：手动触发诊断 ===
-  tools.register(
-    defineTool({
-      name: "run_diagnostics",
-      description:
-        "Run ESLint and TypeScript type checks on filePath and report problems. " +
-        "Use after editing code to verify no lint/type errors before proceeding.",
-      parameters: {
+  // 手写 ToolDefinition（等价于 defineTool 产物），避免运行时依赖 @deepseek-ai/dsh-tools
+  const diagnosticsTool: ToolDefinition = {
+    name: "run_diagnostics",
+    description:
+      "Run ESLint and TypeScript type checks on filePath and report problems. " +
+      "Use after editing code to verify no lint/type errors before proceeding.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
         filePath: {
           type: "string",
-          required: true,
           description: "Absolute or cwd-relative file path to diagnose",
         },
       },
-      output: {
-        schema: { type: "string" },
-        render: (_args: unknown, value: string) => [{ type: "text", text: value }],
-      },
-      async execute(args: { filePath: string }, exec: ToolRunContext) {
-        return runDiagnostics(path.resolve(cwd, args.filePath), exec.signal).catch(
-          (e) => "diagnostics failed: " + String(e),
-        );
-      },
-    }),
-  );
+      required: ["filePath"],
+    },
+    output: {
+      schema: { type: "string" },
+      render: (_args: unknown, value: string) => [{ type: "text", text: value }],
+    },
+    async execute(args: unknown, exec: ToolRunContext) {
+      const filePath = (args as { filePath?: unknown } | undefined)?.filePath;
+      const target = typeof filePath === "string" ? path.resolve(cwd, filePath) : cwd;
+      return runDiagnostics(target, exec.signal).catch((e) => "diagnostics failed: " + String(e));
+    },
+  };
+  tools.register(diagnosticsTool);
 
   // === 2) 编辑后自动诊断（不做回滚） ===
   ctx.on(
@@ -146,12 +155,18 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
       const diag = await runDiagnostics(path.resolve(cwd, filePath), exec.signal).catch(
         () => "diagnostics unavailable",
       );
-      const message = createUserMessage({
+      // 手写 createUserMessage 等价对象（role/content/source/id），避免运行时依赖 @deepseek-ai/dsh-llm
+      const message = {
+        role: "user" as const,
+        id: randomUUID(),
         content: [
-          { type: "text", text: `Auto diagnostics after ${exec.name} (${filePath}):\n${diag}` },
+          {
+            type: "text" as const,
+            text: `Auto diagnostics after ${exec.name} (${filePath}):\n${diag}`,
+          },
         ],
-        source: { kind: "plugin", plugin: name },
-      });
+        source: { kind: "plugin" as const, plugin: name },
+      } as UserMessage;
       return { kind: "accept", additionalContexts: [message] };
     },
   );

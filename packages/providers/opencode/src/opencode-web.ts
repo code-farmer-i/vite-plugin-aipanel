@@ -4,8 +4,8 @@ import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 import type { WebOptions } from "./types";
-import { OPENCODE_CACHE_DIR } from "./constants";
 import {
+  AIPANEL_CACHE_DIR,
   MCP_API_PATH,
   VSCODE_EXTENSION_PORT,
   ENV_VSCODE_PORT,
@@ -26,7 +26,7 @@ export function prepareOpenCodeRuntime(
   enableLsp?: boolean,
   enablePrettier?: boolean,
 ): string {
-  const cacheDir = path.join(cwd, OPENCODE_CACHE_DIR);
+  const cacheDir = path.join(cwd, AIPANEL_CACHE_DIR, "opencode");
 
   log.debug("Setting up OpenCode runtime", { cacheDir, enableLsp });
 
@@ -149,7 +149,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
 }
 
 function createStateDirectory(cwd: string): string {
-  const stateDir = path.join(cwd, OPENCODE_CACHE_DIR);
+  const stateDir = path.join(cwd, AIPANEL_CACHE_DIR, "opencode");
 
   if (!fs.existsSync(stateDir)) {
     fs.mkdirSync(stateDir, { recursive: true });

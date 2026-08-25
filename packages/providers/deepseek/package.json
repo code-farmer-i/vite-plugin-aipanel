@@ -7,8 +7,7 @@
   "types": "es/index.d.ts",
   "files": [
     "es",
-    "lib",
-    "dsh-plugin/dist"
+    "lib"
   ],
   "exports": {
     ".": {
@@ -27,8 +26,6 @@
   },
   "dependencies": {
     "@aipanel/core": "workspace:*",
-    "@deepseek-ai/dsh-llm": "^0.1.1-rc.2",
-    "@deepseek-ai/dsh-tools": "^0.1.1-rc.2",
     "execa": "^9.6.1"
   },
   "devDependencies": {

@@ -8,7 +8,7 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     lib: {
-      entry: resolve(__dirname, "src/extension.ts"),
+      entry: resolve(import.meta.dirname, "src/extension.ts"),
       formats: ["cjs"],
       fileName: () => "extension.js",
     },

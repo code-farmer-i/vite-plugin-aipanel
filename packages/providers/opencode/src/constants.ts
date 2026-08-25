@@ -29,11 +29,6 @@ export const DEFAULT_OPENCODE_SETTINGS = {
   },
 };
 
-/** ==================== 运行环境 ==================== */
-
-/** OpenCode 缓存目录（相对于项目根目录，存放 opencode.json 等运行状态） */
-export const OPENCODE_CACHE_DIR = "node_modules/.cache/opencode";
-
 /** ==================== Provider 专属配置默认值 ==================== */
 
 /** OpenCode Provider 专属配置默认值（插件组装 config 时使用） */

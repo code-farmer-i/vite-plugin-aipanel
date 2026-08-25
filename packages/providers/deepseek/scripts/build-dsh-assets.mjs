@@ -15,6 +15,9 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 async function main() {
   // 1) 宿主插件（Node ESM）
+  // @deepseek-ai/* 保持 external：插件源码已零运行时依赖（全部 type-only import），
+  // 仅 node:* 内置模块被实际引用。npm 包方案下插件经 dsh plugin add 装进 profile，
+  // 按官方姿势加载（overlay 用包名 @aipanel/dsh-plugin）。
   await build({
     entryPoints: [path.join(root, "dsh-plugin/src/index.ts")],
     outfile: path.join(root, "dsh-plugin/dist/index.js"),

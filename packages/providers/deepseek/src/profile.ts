@@ -6,8 +6,7 @@
  */
 import fs from "fs";
 import path from "path";
-import { pathToFileURL } from "url";
-import { MCP_API_PATH, createLogger } from "@aipanel/core/node";
+import { AIPANEL_CACHE_DIR, MCP_API_PATH, createLogger } from "@aipanel/core/node";
 
 const log = createLogger("DeepSeekProfile");
 
@@ -15,11 +14,12 @@ const log = createLogger("DeepSeekProfile");
 export function buildDshOverlay(options: {
   vitePort: number;
   cwd: string;
-  pluginDistPath?: string;
-  /** client 插件是否可被 dsh 解析（provider 已同步到 dsh profile）；false 时停用该行，避免 fail-loud */
+  /** host 插件（@aipanel/dsh-plugin）是否已被同步到 dsh profile；false 时停用该行，避免 fail-loud */
+  pluginAvailable?: boolean;
+  /** client 插件（@aipanel/dsh-client）是否可被 dsh 解析（provider 已同步到 dsh profile）；false 时停用该行，避免 fail-loud */
   clientAvailable?: boolean;
 }): string {
-  const { vitePort, cwd, pluginDistPath, clientAvailable = true } = options;
+  const { vitePort, cwd, pluginAvailable = true, clientAvailable = true } = options;
   const mcpUrl = `http://127.0.0.1:${vitePort}${MCP_API_PATH}`;
 
   const rows: string[] = [];
@@ -37,27 +37,24 @@ export function buildDshOverlay(options: {
     ].join("\n"),
   );
 
-  // 2) aipanel 宿主插件（dev 下直接用构建产物路径，file:// 引用）
-  if (pluginDistPath && fs.existsSync(pluginDistPath)) {
-    const pluginSpec = pathToFileURL(pluginDistPath).href;
-    log.debug("injecting aipanel host plugin row", { pluginDistPath, pluginSpec });
-    rows.push(
-      [
-        "    - id: aipanel",
-        `      name: '${pluginSpec}'`,
-        "      inject: [tools, subprocess]",
-        "      config:",
-        `        cwd: ${JSON.stringify(cwd)}`,
-        "        autoDiagnose: true",
-      ].join("\n"),
-    );
-  } else {
-    log.debug("aipanel dsh-plugin dist not found, skipping host plugin row", { pluginDistPath });
-  }
+  // 2) aipanel 宿主插件：以 npm 包名引用（官方姿势），由 provider.start() 的
+  // ensureDshPackage 同步进 dsh profile node_modules（dev 本地目录 / 生产 npm 包）。
+  // 同步失败时停用该行（disabled 不触发解析），避免 dsh 因无法解析而 fail-loud 崩溃。
+  rows.push(
+    [
+      "    - id: aipanel",
+      "      name: '@aipanel/dsh-plugin'",
+      ...(pluginAvailable ? [] : ["      disabled: true"]),
+      "      inject: [tools, subprocess]",
+      "      config:",
+      `        cwd: ${JSON.stringify(cwd)}`,
+      "        autoDiagnose: true",
+    ].join("\n"),
+  );
 
   // 3) aipanel 浏览器 client 插件（正式 @aipanel reference：file chip 高亮）
   // 注意：client 包的 name 须能被 dsh config-tree require.resolve 解析（不能 file://），
-  // 可解析性由 provider.start() 的 ensureDshClientInstalled 保证（同步进 dsh profile node_modules）。
+  // 可解析性由 provider.start() 的 ensureDshPackage 保证（同步进 dsh profile node_modules）。
   // 同步失败时停用该行（disabled 不触发解析），避免 dsh 因无法解析而 fail-loud 崩溃。
   rows.push(
     [
@@ -70,10 +67,9 @@ export function buildDshOverlay(options: {
   return ["- insert:", rows.join("\n"), ""].join("\n");
 }
 
-/** 将 overlay 写入项目缓存目录（node_modules/.cache/aipanel，参照 opencode 的
- * node_modules/.cache/opencode 惯例），不污染用户项目根目录。 */
+/** 将 overlay 写入项目缓存目录（AIPANEL_CACHE_DIR 下按 provider 分二级目录），不污染用户项目根目录。 */
 export function writeDshOverlay(workspaceCwd: string, overlay: string): string {
-  const dir = path.join(workspaceCwd, "node_modules", ".cache", "aipanel");
+  const dir = path.join(workspaceCwd, AIPANEL_CACHE_DIR, "dsh");
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "dsh-overlay.cordis.yml");
   fs.writeFileSync(file, overlay, "utf-8");

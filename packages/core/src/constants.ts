@@ -84,6 +84,14 @@ export const INIT_MARKER = "__AIPANEL_INITIALIZED__";
 /** 选中元素存储键 */
 export const SELECTED_ELEMENTS_KEY = "__aipanel_selected_elements__";
 
+/** ==================== 缓存目录 ==================== */
+
+/**
+ * AIPanel 项目级资源/缓存目录（相对于项目根目录，各 Provider 统一使用）。
+ * 存放 opencode.json、dsh overlay 等运行时状态，不污染项目根目录。
+ */
+export const AIPANEL_CACHE_DIR = "node_modules/.cache/aipanel";
+
 /** ==================== Chrome DevTools ==================== */
 
 /** Chrome DevTools Protocol 默认端口 */

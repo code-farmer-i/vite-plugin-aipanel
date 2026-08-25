@@ -1,4 +1,3 @@
-import { fileURLToPath } from "node:url";
 import type { ResultPromise } from "execa";
 import type {
   ChatSession,
@@ -25,10 +24,11 @@ import { startDeepSeekWeb } from "./deepseek-web";
 import { buildDshOverlay, writeDshOverlay } from "./profile";
 import { checkDeepSeekInstalled, getDeepSeekVersion, killOrphanDeepSeekProcesses } from "./system";
 import {
-  dshProfileDir,
-  ensureDshClient,
-  resolveDevDshClientSource,
   DSH_CLIENT_PACKAGE,
+  DSH_PLUGIN_PACKAGE,
+  dshProfileDir,
+  ensureDshPackage,
+  resolveDevDshPackageSource,
 } from "./dsh-install";
 
 const log = createLogger("DeepSeekWebProvider");
@@ -111,12 +111,17 @@ or run without installing:
       cwd: options.cwd,
       vitePort: options.vitePort,
     });
-    // 统一官方方案安装 dsh-client 浏览器插件：dsh plugin --profile web add <target>。
-    // dev 装本地目录（改代码 → 重建 → 重启生效）；生产装 npm 包 @aipanel/dsh-client。
-    // 未就绪时 overlay 不注入/停用该行，避免 dsh 因无法解析而 fail-loud，仅失去 chip 高亮。
-    const devClientDir = resolveDevDshClientSource(import.meta.url);
-    const clientAvailable = await ensureDshClient(
-      dshProfileDir(this.opts.home),
+    // 统一官方方案安装 dsh 侧插件（dsh plugin --profile web add）：
+    //   - dsh-client 浏览器插件（@ 菜单 chip 高亮）
+    //   - dsh-plugin 宿主插件（审查工具 / 编辑后自动诊断）
+    // dev 装本地目录（改代码 → 重建 → 重启生效）；生产装 npm 包。
+    // 未就绪时 overlay 停用对应行，避免 dsh 因无法解析而 fail-loud，仅失去该能力。
+    const profileDir = dshProfileDir(this.opts.home);
+
+    const devClientDir = resolveDevDshPackageSource(import.meta.url, "dsh-client", "lib/client.js");
+    const clientAvailable = await ensureDshPackage(
+      profileDir,
+      DSH_CLIENT_PACKAGE,
       devClientDir ?? DSH_CLIENT_PACKAGE,
       this.opts.home,
     );
@@ -125,11 +130,25 @@ or run without installing:
         metaUrl: import.meta.url,
       });
     }
-    // 生成 cordis overlay：接入 AIPanel MCP（浏览器控制/Debug 等）+ 审查工具/元素选择插件
+
+    const devPluginDir = resolveDevDshPackageSource(import.meta.url, "dsh-plugin", "dist/index.js");
+    const pluginAvailable = await ensureDshPackage(
+      profileDir,
+      DSH_PLUGIN_PACKAGE,
+      devPluginDir ?? DSH_PLUGIN_PACKAGE,
+      this.opts.home,
+    );
+    if (!pluginAvailable) {
+      log.warn("@aipanel/dsh-plugin unavailable; run_diagnostics & auto-diagnose disabled", {
+        metaUrl: import.meta.url,
+      });
+    }
+
+    // 生成 cordis overlay：接入 AIPanel MCP（浏览器控制/Debug 等）+ 审查工具插件（包名引用）
     const overlay = buildDshOverlay({
       vitePort: options.vitePort,
       cwd: options.cwd,
-      pluginDistPath: this.resolvePluginDist(),
+      pluginAvailable,
       clientAvailable,
     });
     const patchPath = writeDshOverlay(options.cwd, overlay);
@@ -182,13 +201,6 @@ or run without installing:
       };
     }
     return sections;
-  }
-
-  /** 解析 aipanel dsh-plugin 的构建产物路径（存在才在 overlay 里注入插件行）。
-   * 注意用 fileURLToPath：URL.pathname 是 percent-encoded，中文路径下 existsSync 会误判不存在。 */
-  private resolvePluginDist(): string | undefined {
-    const fromHere = new URL("../dsh-plugin/dist/index.js", import.meta.url);
-    return fileURLToPath(fromHere);
   }
 
   async stop(): Promise<void> {

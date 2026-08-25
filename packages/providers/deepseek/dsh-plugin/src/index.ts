@@ -4,7 +4,6 @@
  * 运行在 dsh 宿主进程（Cordis 插件），向 dsh agent 提供 AIPanel 能力：
  *  1. run_diagnostics 审查工具（对标 opencode 质量门禁，手动触发 ESLint + tsc）
  *  2. tools/post-execute：编辑工具（write/edit）执行后自动追加诊断回报（不做回滚）
- *  3. agent/pre-step：把最近一次"页面选中元素"上下文注入 agent（经 contextEndpoint 回连读取）
  *
  */
 import path from "node:path";
@@ -17,22 +16,14 @@ import {
   type ToolRunContext,
   type ToolRuntime,
 } from "@deepseek-ai/dsh-tools";
-import {
-  createUserMessage,
-  type ContentBlock,
-  type MessageSource,
-  type UserMessage,
-} from "@deepseek-ai/dsh-llm";
-import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
+import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { SubprocessRuntime } from "@deepseek-ai/dsh-subprocess";
 
 export const name = "aipanel";
-export const inject = ["tools", "subprocess", "agents"];
+export const inject = ["tools", "subprocess"];
 
 /** 来自 provider.start() 生成的 cordis overlay 注入的 config */
 export interface AipanelPluginConfig {
-  /** AIPanel 进程回连地址（bridge 上传/读取选中元素与上下文） */
-  contextEndpoint?: string;
   /** 宿主工作目录（用于诊断的默认 cwd） */
   cwd?: string;
   /** 编辑后是否自动补跑诊断 */
@@ -58,15 +49,6 @@ const STDOUT_MAX_BYTES = 200_000;
 const STDOUT_SPILL_MAX_BYTES = 2_000_000;
 const STDERR_MAX_BYTES = 100_000;
 const GRACE_MS = 30_000;
-
-/** agent/pre-step 事件载荷（dsh-agent 声明，这里显式标注便于无包环境下自读） */
-type PreStepPayload = {
-  agent: Agent;
-  messages: UserMessage[];
-  turn: number;
-  step: number;
-  signal: AbortSignal;
-};
 
 export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
   const cwd = config.cwd ?? process.cwd();
@@ -173,51 +155,4 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
       return { kind: "accept", additionalContexts: [message] };
     },
   );
-
-  // === 3) 元素选择上下文注入 ===
-  const contextEndpoint = config.contextEndpoint;
-  if (contextEndpoint) {
-    ctx.on(
-      "agent/pre-step",
-      async ({ signal }: PreStepPayload, next: () => Promise<PreStepDecision>) => {
-        const decision = await next();
-        if (decision.kind === "reject" || signal.aborted) return decision;
-        try {
-          const res = await fetch(contextEndpoint, { signal, cache: "no-store" });
-          if (res.ok) {
-            const selected = await res.json();
-            const text: string = formatSelection(selected);
-            if (text) {
-              const content: ContentBlock[] = [{ type: "text", text }];
-              const source: MessageSource = {
-                kind: "plugin",
-                plugin: name,
-                form: "snapshot",
-                sections: [{ name, text }],
-              };
-              return {
-                kind: "enter",
-                messages: [...decision.messages, createUserMessage({ content, source })],
-              };
-            }
-          }
-        } catch {
-          // 回连不可用时静默，不阻塞 agent
-        }
-        return decision;
-      },
-      { prepend: true },
-    );
-  }
-}
-
-function formatSelection(sel: Record<string, unknown>): string {
-  if (!sel || typeof sel !== "object") return "";
-  const parts: string[] = [];
-  if (sel.filePath) parts.push(`file: ${sel.filePath}`);
-  if (sel.line != null) parts.push(`line: ${sel.line}`);
-  if (sel.description) parts.push(`selector: ${sel.description}`);
-  if (sel.previewPageTitle) parts.push(`page: ${sel.previewPageTitle}`);
-  if (parts.length === 0) return "";
-  return `[AIPanel] 用户当前选中的页面元素：\n- ${parts.join("\n- ")}`;
 }

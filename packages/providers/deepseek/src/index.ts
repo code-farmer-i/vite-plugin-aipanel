@@ -19,7 +19,7 @@ export function createProvider(ctx: ProviderInitContext): WebProvider {
 export { DeepSeekAPI } from "./api";
 export type { DeepSeekWebProviderConfig, DeepSeekWebProviderDeps } from "./provider";
 export { startDeepSeekWeb, type DeepSeekWebOptions } from "./deepseek-web";
-export { buildDshOverlay, writeDshOverlay, AIPANEL_SELECTED_API_PATH } from "./profile";
+export { buildDshOverlay, writeDshOverlay } from "./profile";
 export { generateBridgeScript, type BridgeScriptOptions } from "./bridge-script";
 export { checkDeepSeekInstalled, getDeepSeekVersion, killOrphanDeepSeekProcesses } from "./system";
 export { DEFAULT_DEEPSEEK_PROVIDER_OPTIONS, DSH_LOOPBACK_HOST, DSH_DEFAULT_PORT } from "./constants";

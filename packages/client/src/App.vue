@@ -310,7 +310,9 @@ const handleIframeMessage = (event: MessageEvent) => {
     }
     // iframe 激活的是其它/无会话（如首次 FOCUS_SESSION 在 iframe 就绪前丢失）：
     // 补发聚焦目标会话，待其激活后收到匹配的 SESSION_READY 再放行。
-    if (currentSessionId.value) {
+    // 但仅当仍在等待目标会话（loading 未放行）时才补发：页面已渲染稳定后，dsh 内部
+    // current 的短暂变动也会派发失配 ready，此时补发聚焦会触发 bridge reload 造成多余刷新。
+    if (iframeLoading.value && currentSessionId.value) {
       widgetRef.value?.sendMessageToIframe(WIDGET_MSG.FOCUS_SESSION, {
         sessionId: currentSessionId.value,
       });

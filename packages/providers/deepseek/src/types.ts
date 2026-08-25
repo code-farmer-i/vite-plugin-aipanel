@@ -86,6 +86,12 @@ export interface WorkspaceListResult {
   archivedSessionIds: string[];
 }
 
+/** workspace.create 的 value（幂等：已存在则返回既有 workspace，created=false） */
+export interface WorkspaceCreateResult {
+  workspace: WorkspaceView;
+  created: boolean;
+}
+
 /** 会话流式事件（session/event 的 event 字段） */
 export interface SessionStreamEvent {
   type: string;

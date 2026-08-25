@@ -27,8 +27,12 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
   const SELECTION_KEY = ${JSON.stringify(DSH_STORAGE_KEYS.SELECTION)};
   const THEME = ${JSON.stringify(theme)};
 
+  // 桥接层通知 dsh-client 的选中元素插入事件（与 opencode 一致：选中即追加到对话框）
+  const INSERT_ELEMENT_EVENT = "aipanel:insert-element";
+
   // === 记录最近选中元素 ===
-  // 供 dsh-client 的 @aipanel source 作为候选读取（可多选，最多保留 20 个）
+  // 供 dsh-client 的 @aipanel source 作为候选读取（可多选，最多保留 20 个），并派发
+  // aipanel:insert-element 让 dsh-client 立即把元素追加到当前会话输入框。
   function pushSelection(element) {
     if (!element) return;
     try {
@@ -42,6 +46,10 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
       if (!exists) list.unshift(element);
       if (list.length > 20) list.length = 20;
       localStorage.setItem(SELECTION_KEY, JSON.stringify(list));
+      // 通知 dsh-client 追加到对话框（选中即插入，无需再输入 @）
+      window.dispatchEvent(new CustomEvent(INSERT_ELEMENT_EVENT, {
+        detail: { element: element }
+      }));
     } catch (e) { /* ignore */ }
   }
 
@@ -58,6 +66,29 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
       document.documentElement.style.colorScheme = "light";
     }
     // auto → 不干预，交给 dsh 原生主题处理
+  }
+
+  // === 布局覆盖 ===
+  // 隐藏 dsh 的侧边栏列，避免与 AIPanel 自带会话列表重复。
+  // 稳定锚点：AppFrame 根网格在侧边栏折叠时带 data-sidebar-collapsed（AIPanel 窄 iframe 下恒存在），
+  // 侧边栏列是根网格的首个子元素。
+  // 注意不能只 display:none 元素：显式 gridTemplateColumns（内联样式）轨道不会因子项
+  // 隐藏而消失，会留一条空白列，须把首列轨道改成 auto（子项隐藏后坍缩为 0）。
+  function applyLayoutOverrides() {
+    try {
+      if (document.getElementById("aipanel-layout-overrides")) return;
+      var style = document.createElement("style");
+      style.id = "aipanel-layout-overrides";
+      style.textContent = [
+        "[data-sidebar-collapsed] {",
+        "  grid-template-columns: auto !important;",
+        "}",
+        "[data-sidebar-collapsed] > :first-child {",
+        "  display: none !important;",
+        "}",
+      ].join("\\n");
+      document.head.appendChild(style);
+    } catch (e) { /* ignore */ }
   }
 
   // === 消息监听 ===
@@ -107,9 +138,10 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
     sendSessionReady(sessionId);
   });
 
-  // 主题同步仍须在每次页面加载时生效（与就绪判定解耦，不参与 loading 放行）
+  // 主题同步/布局覆盖仍须在每次页面加载时生效（与就绪判定解耦，不参与 loading 放行）
   function init() {
     applyTheme();
+    applyLayoutOverrides();
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

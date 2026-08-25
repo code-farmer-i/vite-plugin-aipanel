@@ -8,6 +8,7 @@ import type {
   ServerResponse,
   SessionListResult,
   SessionSummary,
+  WorkspaceCreateResult,
   WorkspaceListResult,
 } from "./types";
 
@@ -74,6 +75,8 @@ export class DeepSeekAPI {
         const workspaces = await this.call<WorkspaceListResult>("workspace.list");
         const matchedWorkspace = workspaces.items.find((w) => w.path === projectDir);
         const ownedByWorkspace = new Set(matchedWorkspace?.sessionIds ?? []);
+        // dsh 归档会话仍留在 workspace.sessionIds 账户里（只有分组 UI 才隐藏），这里按全局归档集显式排除
+        const archived = new Set(workspaces.archivedSessionIds);
 
         // 2) session.list：全量 + 按 cwd 过滤做兜底（value 同样是 {items:[...]} 容器）
         const sessions = await this.call<SessionListResult>("session.list");
@@ -81,6 +84,7 @@ export class DeepSeekAPI {
 
         const filtered = all.filter((s) => {
           if (s.blank) return false; // 尚未开过 turn 的冷会话，列表通常隐藏
+          if (archived.has(s.sessionId)) return false; // 已归档会话不展示
           if (ownedByWorkspace.has(s.sessionId)) return true;
           if (s.cwd && s.cwd === projectDir) return true;
           return false;
@@ -102,8 +106,14 @@ export class DeepSeekAPI {
     throw lastError;
   }
 
-  /** 在当前目录下创建会话 */
-  async createSession(projectDir: string, retries = DEFAULT_RETRIES): Promise<SessionSummary> {
+  /** 在当前目录下创建会话（dsh 仅返回 { sessionId, agentPreset? }，非完整 SessionSummary）。
+   * 关键：必须先确保 projectDir 对应的 workspace 存在（workspace.create 幂等 get-or-create），
+   * 再用 workspaceId 调 session.create。若只传 cwd，dsh 侧不会把会话挂到任何 workspace，
+   * 新会话会落到侧边栏"未分组"。 */
+  async createSession(
+    projectDir: string,
+    retries = DEFAULT_RETRIES,
+  ): Promise<{ sessionId: string }> {
     const timer = log.timer("createSession", { projectDir, retries });
     let lastError: Error | null = null;
 
@@ -113,7 +123,12 @@ export class DeepSeekAPI {
           method: "session.create",
           projectDir,
         });
-        const session = await this.call<SessionSummary>("session.create", { cwd: projectDir });
+        const { workspace } = await this.call<WorkspaceCreateResult>("workspace.create", {
+          path: projectDir,
+        });
+        const session = await this.call<{ sessionId: string }>("session.create", {
+          workspaceId: workspace.workspaceId,
+        });
         timer.end(`Created session: ${session.sessionId}`);
         return session;
       } catch (e) {

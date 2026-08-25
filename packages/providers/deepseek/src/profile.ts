@@ -2,7 +2,7 @@
  * 生成 dsh web 的 cordis overlay（用 --patch 传入，避免改动用户 profile）。
  * 注入：
  *  1. @deepseek-ai/dsh-mcp-client：把 AIPanel 的 MCP server 作为 dsh 工具来源（Streamable HTTP）
- *  2. aipanel 插件（审查工具 + 元素选择上下文注入）
+ *  2. aipanel 插件（审查工具 + 编辑后自动诊断）
  */
 import fs from "fs";
 import path from "path";
@@ -10,10 +10,6 @@ import { pathToFileURL } from "url";
 import { MCP_API_PATH, createLogger } from "@aipanel/core/node";
 
 const log = createLogger("DeepSeekProfile");
-
-/** AIPanel 提供"最近选中元素"上下文的回连端点（供 bridge 上传 / dsh 插件读取）。
- * 该端点需宿主(vite)侧提供，缺失时元素选择注入静默降级（不阻塞 agent）。 */
-export const AIPANEL_SELECTED_API_PATH = "/__aipanel_selected__";
 
 /** 组装 overlay YAML */
 export function buildDshOverlay(options: {
@@ -25,7 +21,6 @@ export function buildDshOverlay(options: {
 }): string {
   const { vitePort, cwd, pluginDistPath, clientAvailable = true } = options;
   const mcpUrl = `http://127.0.0.1:${vitePort}${MCP_API_PATH}`;
-  const contextEndpoint = `http://127.0.0.1:${vitePort}${AIPANEL_SELECTED_API_PATH}`;
 
   const rows: string[] = [];
 
@@ -50,10 +45,9 @@ export function buildDshOverlay(options: {
       [
         "    - id: aipanel",
         `      name: '${pluginSpec}'`,
-        "      inject: [tools, subprocess, agents]",
+        "      inject: [tools, subprocess]",
         "      config:",
         `        cwd: ${JSON.stringify(cwd)}`,
-        `        contextEndpoint: ${JSON.stringify(contextEndpoint)}`,
         "        autoDiagnose: true",
       ].join("\n"),
     );

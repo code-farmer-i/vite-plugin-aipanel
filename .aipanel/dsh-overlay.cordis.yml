@@ -8,10 +8,9 @@
         headers: {}
     - id: aipanel
       name: 'file:///Users/ksen/%E9%A1%B9%E7%9B%AE/%E4%B8%AA%E4%BA%BA%E9%A1%B9%E7%9B%AE/vite-plugin-opencode-assistant/packages/providers/deepseek/dsh-plugin/dist/index.js'
-      inject: [tools, subprocess, agents]
+      inject: [tools, subprocess]
       config:
         cwd: "/Users/ksen/项目/个人项目/vite-plugin-opencode-assistant"
-        contextEndpoint: "http://127.0.0.1:5173/__aipanel_selected__"
         autoDiagnose: true
     - id: aipanel-client
       name: '@aipanel/dsh-client'

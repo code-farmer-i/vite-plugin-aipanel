@@ -167,14 +167,22 @@ or run without installing:
   }
 
   async createSession(projectDir: string, title?: string): Promise<ChatSession> {
-    // dsh session.create 不支持标题，忽略 title
-    void title;
+    // dsh session.create 仅返回 { sessionId }，不含标题/时间；title 由 dsh 侧自动生成前先用空
     const url = this.buildSessionUrl(projectDir, "");
-    return toChatSession(await this.api.createSession(projectDir), url);
+    const created = await this.api.createSession(projectDir);
+    return {
+      id: created.sessionId,
+      title: title ?? "",
+      updatedAt: Date.now(),
+      url,
+    };
   }
 
-  // 无 deleteSession：dsh 只支持归档（workspace.archiveSession），无硬删除语义。
-  // core 检测到本接口未实现时自动隐藏删除入口。
+  // 删除走归档：dsh 无硬删除语义（workspace.archiveSession），
+  // 归档后 listSessions 按 archivedSessionIds 过滤即从列表消失。
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.api.archiveSession(sessionId);
+  }
 
   buildSessionUrl(projectDir: string, sessionId: string): string {
     void projectDir;

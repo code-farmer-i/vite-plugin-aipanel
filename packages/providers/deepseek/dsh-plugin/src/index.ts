@@ -6,9 +6,6 @@
  *  2. tools/post-execute：编辑工具（write/edit）执行后自动追加诊断回报（不做回滚）
  *  3. agent/pre-step：把最近一次"页面选中元素"上下文注入 agent（经 contextEndpoint 回连读取）
  *
- * 类型全部来自官方已发布 seam 包（0.1.1-rc.2，与 `npx @deepseek-ai/dsh` 运行时同线）：
- *   @deepseek-ai/dsh-tools、dsh-llm、dsh-subprocess、dsh-agent、cordis。
- * 本仓库不安装这些包，构建由 esbuild --external 保留引用，类型在真实 dsh 环境解析。
  */
 import path from "node:path";
 import type { Context } from "@deepseek-ai/cordis";

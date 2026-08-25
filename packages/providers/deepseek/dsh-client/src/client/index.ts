@@ -6,18 +6,23 @@
  *   - onPick 铸造 appearance:'file' 的 ReferenceInsert（输入框高亮）
  *   - codec.serialize 决定模型最终看到的文本（让 agent 自行解析）
  *
- * 类型全部来自官方已发布包 @deepseek-ai/dsh-client-ui-input-trigger 的 /client 子路径
- * （0.1.1-rc.2，与 `npx @deepseek-ai/dsh` 运行时同线）。本包仅 esbuild 打包、不在本项目
- * typecheck，类型在 dsh Web Client 运行时解析。
  */
 import type {
   InputTriggerCandidate,
-  InputTriggerServiceContract,
   InputTriggerSource,
 } from "@deepseek-ai/dsh-client-ui-input-trigger/client";
 import type { Context } from "@deepseek-ai/cordis";
 
 const SELECTION_STORAGE_KEY = "dsh.bridge.selection";
+
+/** 桥接层监听的自定义事件：确认目标会话已激活且渲染稳定（detail.sessionId 为当前会话） */
+export const SESSION_READY_EVENT = "aipanel:session-ready";
+
+/**
+ * 会话就绪确认所需的最小稳态时长（毫秒）。
+ * current 在该窗口期内保持不变即视为"已稳定"，此时才通知桥接层放行 loading。
+ */
+const SESSION_SETTLE_MS = 400;
 
 /** bridge 写入 localStorage 的最近选中元素 */
 interface SelectedElement {
@@ -61,7 +66,7 @@ function readSelectionCandidates(): InputTriggerCandidate[] {
 }
 
 export function apply(ctx: Context) {
-  const inputTriggers = ctx.get("inputTriggers") as InputTriggerServiceContract | undefined;
+  const inputTriggers = ctx.get("inputTriggers");
   if (!inputTriggers) return;
 
   const source: InputTriggerSource = {
@@ -101,4 +106,50 @@ export function apply(ctx: Context) {
   };
 
   ctx.effect(() => inputTriggers.registerSource(source), "aipanel: @ source");
+
+  // === 会话就绪确认：下游 loading 只在目标会话激活且渲染稳定后放行 ===
+  // dsh 的选中态随 sessions.list.current（持久化于 dsh.sessions.current）在启动
+  // / 切会话后恢复；等 current 落到某个会话并稳定一个窗口期，再通知桥接层上报
+  // SESSION_READY，由客户端决定何时隐藏"加载会话"蒙层。
+  const sessions = ctx.get("sessions");
+  if (sessions && sessions.list) {
+    let lastCurrent: string | undefined;
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const notifyBridge = (sessionId: string) => {
+      try {
+        window.dispatchEvent(new CustomEvent(SESSION_READY_EVENT, { detail: { sessionId } }));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const probe = () => {
+      const snapshot = sessions.list.getSnapshot();
+      const current = snapshot?.current;
+      // current 变空（列表刷新 / 会话被移除）→ 取消未确认的稳态计时
+      if (!current) {
+        lastCurrent = undefined;
+        if (settleTimer) {
+          clearTimeout(settleTimer);
+          settleTimer = null;
+        }
+        return;
+      }
+      if (current === lastCurrent) return; // 未变化，等待既有计时到期
+      lastCurrent = current;
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        settleTimer = null;
+        // 到期时再核对一次，确认 current 在整个窗口期内未再变化
+        if (sessions.list.getSnapshot()?.current === current) {
+          notifyBridge(current);
+        }
+      }, SESSION_SETTLE_MS);
+    };
+
+    probe();
+    const dispose = sessions.list.subscribe(probe);
+    ctx.effect(() => dispose, "aipanel: session-ready watcher");
+  }
 }

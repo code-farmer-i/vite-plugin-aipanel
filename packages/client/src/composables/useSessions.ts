@@ -1,4 +1,4 @@
-import { ref, computed, type Ref } from "vue";
+import { ref, computed, nextTick, type Ref } from "vue";
 import { SESSIONS_API_PATH, createLogger } from "@aipanel/core";
 import type { ChatSession, AIPanelWidgetSession } from "@aipanel/core";
 
@@ -52,8 +52,10 @@ export function useSessions(options: UseSessionsOptions) {
 
   /** 无深链能力时切换会话：通过消息聚焦，而非重载 iframe */
   const focusSession = (sessionId: string) => {
+    // 无论深链与否都先展示加载蒙层；无深链场景下放行交由 iframe 的 SESSION_READY 确认
+    iframeLoading.value = true;
     if (isDeepLink()) {
-      iframeLoading.value = true;
+      // deepLink：iframe src 变化触发 @frame-loaded，待 READY 后关闭蒙层
     } else {
       onFocusSession?.(sessionId);
     }
@@ -118,6 +120,9 @@ export function useSessions(options: UseSessionsOptions) {
       const response = await fetch(basePath(SESSIONS_API_PATH), { method: "POST" });
       const newSession: ChatSession = await response.json();
       sessions.value.unshift(toWidgetSession(newSession));
+      // 先显示 loading 蒙层并等其渲染覆盖后，再切换当前会话/下发聚焦，避免 iframe 内容闪动
+      iframeLoading.value = true;
+      await nextTick();
       currentSessionId.value = newSession.id;
       focusSession(newSession.id);
     } catch {
@@ -133,9 +138,13 @@ export function useSessions(options: UseSessionsOptions) {
       if (currentSessionId.value === session.id) {
         if (sessions.value.length > 0) {
           const nextSession = sessions.value[0];
+          // 先显示 loading 蒙层再切换，避免 iframe 内容闪动
+          iframeLoading.value = true;
+          await nextTick();
           currentSessionId.value = nextSession.id;
           focusSession(nextSession.id);
         } else {
+          iframeLoading.value = false;
           currentSessionId.value = null;
         }
       }
@@ -144,8 +153,11 @@ export function useSessions(options: UseSessionsOptions) {
     }
   };
 
-  const selectSession = (session: AIPanelWidgetSession) => {
+  const selectSession = async (session: AIPanelWidgetSession) => {
     if (currentSessionId.value === session.id) return;
+    // 先显示 loading 蒙层并等其渲染覆盖后，再切换当前会话/下发聚焦，避免 iframe 内容闪动
+    iframeLoading.value = true;
+    await nextTick();
     currentSessionId.value = session.id;
     focusSession(session.id);
   };
@@ -157,6 +169,7 @@ export function useSessions(options: UseSessionsOptions) {
     deepLink,
     iframeSrc,
     iframeLoading,
+    isDeepLink,
     loadSessions,
     createSession,
     deleteSession,

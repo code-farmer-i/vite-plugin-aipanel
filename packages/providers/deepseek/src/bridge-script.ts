@@ -85,16 +85,31 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
   });
 
   // === 就绪通知 ===
-  function sendReady() {
+  // 不再用 MutationObserver 每帧发 READY（那会在 dsh 刚渲染、目标会话尚未激活时就
+  // 提前放行 loading）。改为监听 dsh-client 插件在"目标会话激活且渲染稳定"后派发的
+  // aipanel:session-ready 事件，收到后上报 SESSION_READY{sessionId}。
+  // 只发 SESSION_READY 而不发 READY：客户端已能凭 sessionId 匹配当前会话决定何时
+  // 放行 loading / 补发聚焦；避免与"FOCUS_SESSION → reload → 再就绪"构成刷新死循环。
+  const SESSION_READY_EVENT = "aipanel:session-ready";
+
+  function sendSessionReady(sessionId) {
     if (window.parent !== window) {
-      window.parent.postMessage({ type: ${JSON.stringify(WIDGET_MSG.READY)} }, "*");
+      window.parent.postMessage({
+        type: ${JSON.stringify(WIDGET_MSG.SESSION_READY)},
+        sessionId
+      }, "*");
     }
   }
+
+  window.addEventListener(SESSION_READY_EVENT, function(e) {
+    const sessionId = e && e.detail && e.detail.sessionId;
+    if (!sessionId) return;
+    sendSessionReady(sessionId);
+  });
+
+  // 主题同步仍须在每次页面加载时生效（与就绪判定解耦，不参与 loading 放行）
   function init() {
     applyTheme();
-    sendReady();
-    const observer = new MutationObserver(function() { sendReady(); });
-    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

@@ -132,6 +132,8 @@ export const WIDGET_MSG = {
   REVIEW_PANEL_TOGGLE: "REVIEW_PANEL_TOGGLE",
   /** 无 deepLink 能力的 Provider：通知 iframe 聚焦指定会话 */
   FOCUS_SESSION: "AIPANEL_FOCUS_SESSION",
+  /** 无 deepLink 能力的 Provider：iframe 确认目标会话已激活且渲染稳定（携带 sessionId） */
+  SESSION_READY: "AIPANEL_SESSION_READY",
 } as const;
 
 /** ==================== API 路径补充 ==================== */

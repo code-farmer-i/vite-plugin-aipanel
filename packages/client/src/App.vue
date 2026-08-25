@@ -101,6 +101,7 @@ const {
   currentSessionId,
   iframeSrc,
   iframeLoading,
+  isDeepLink,
   loadSessions,
   createSession,
   deleteSession,
@@ -292,20 +293,46 @@ watch(serviceStatus, (status, oldStatus) => {
 const iframeLoadTimeout = ref<ReturnType<typeof setTimeout> | null>(null);
 
 const handleIframeMessage = (event: MessageEvent) => {
-  if (event.data?.type === WIDGET_MSG.READY) {
-    // iframe 内 React 应用就绪，关闭加载蒙层
-    if (iframeLoadTimeout.value) {
-      clearTimeout(iframeLoadTimeout.value);
-      iframeLoadTimeout.value = null;
-    }
-    iframeLoading.value = false;
+  // SESSION_READY：无 deepLink 能力 Provider（如 dsh）确认"目标会话已激活且渲染稳定"
+  // 后才放行 loading。仅当上报 sessionId 与当前目标会话一致时生效，避免串会话误放行。
+  if (event.data?.type === WIDGET_MSG.SESSION_READY) {
+    const readySessionId = event.data.sessionId;
     sendThemeToIframe();
-    // 补发当前会话聚焦：首次 FOCUS_SESSION 可能在 iframe 就绪前发出而丢失，
-    // 就绪后重发确保 dsh 激活对应工作区/会话（无 deepLink 场景）
+    // 已确认目标会话激活且稳定 → 放行 loading，且不再重复聚焦（否则 FOCUS_SESSION
+    // → bridge reload → 再 SESSION_READY 会刷新死循环）
+    if (readySessionId && readySessionId === currentSessionId.value) {
+      if (iframeLoadTimeout.value) {
+        clearTimeout(iframeLoadTimeout.value);
+        iframeLoadTimeout.value = null;
+      }
+      iframeLoading.value = false;
+      return;
+    }
+    // iframe 激活的是其它/无会话（如首次 FOCUS_SESSION 在 iframe 就绪前丢失）：
+    // 补发聚焦目标会话，待其激活后收到匹配的 SESSION_READY 再放行。
     if (currentSessionId.value) {
       widgetRef.value?.sendMessageToIframe(WIDGET_MSG.FOCUS_SESSION, {
         sessionId: currentSessionId.value,
       });
+    }
+    return;
+  }
+  if (event.data?.type === WIDGET_MSG.READY) {
+    // deepLink（如 opencode）：应用就绪即代表稳定，可关闭蒙层；
+    // 无 deepLink（如 dsh）：放行与补发聚焦均由 SESSION_READY 负责，这里只同步主题
+    if (isDeepLink()) {
+      if (iframeLoadTimeout.value) {
+        clearTimeout(iframeLoadTimeout.value);
+        iframeLoadTimeout.value = null;
+      }
+      iframeLoading.value = false;
+      sendThemeToIframe();
+      // 补发当前会话聚焦：首次 FOCUS_SESSION 可能在 iframe 就绪前发出而丢失（deepLink 场景）
+      if (currentSessionId.value) {
+        widgetRef.value?.sendMessageToIframe(WIDGET_MSG.FOCUS_SESSION, {
+          sessionId: currentSessionId.value,
+        });
+      }
     }
   }
   if (event.data?.type === WIDGET_MSG.KEYDOWN) {
@@ -473,12 +500,14 @@ const handleRemoveSelectedNode = ({ index }: { index: number; }) => {
 };
 
 const handleFrameLoaded = () => {
-  // iframe HTML 加载完成，但 React 应用可能还未初始化
-  // 等待 WIDGET_MSG.READY 消息来关闭蒙层，10s 兜底以防消息丢失
+  // deepLink：iframe HTML 加载完成但应用可能未初始化，待 READY 关闭蒙层；10s 兜底。
+  // 无 deepLink：放行只认 SESSION_READY（确认目标会话已激活且稳定），此处仅做较长兜底防止卡死，
+  // 不参与提前隐藏 loading。
+  const hangMs = isDeepLink() ? 10000 : 30000;
   iframeLoadTimeout.value = setTimeout(() => {
     iframeLoading.value = false;
     iframeLoadTimeout.value = null;
-  }, 10000);
+  }, hangMs);
 };
 </script>
 

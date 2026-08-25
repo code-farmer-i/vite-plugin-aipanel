@@ -114,7 +114,7 @@ defineExpose({
   display: flex;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
+  /* 无过渡：loading 出现/消失立即生效，避免切换时透过半透明盖层看到内容闪动 */
 }
 
 .aipanel-loading-overlay.visible {
@@ -223,10 +223,13 @@ defineExpose({
   height: 100%;
   border: none;
   opacity: 0;
-  transition: opacity 0.3s ease;
+  /* 隐藏方向无过渡：切会话/加载开始时 iframe 立即不可见，避免旧内容淡出时闪一下 */
+  transition: none;
 }
 
 .aipanel-iframe.loaded {
   opacity: 1;
+  /* 显示方向平滑淡入 */
+  transition: opacity 0.3s ease;
 }
 </style>

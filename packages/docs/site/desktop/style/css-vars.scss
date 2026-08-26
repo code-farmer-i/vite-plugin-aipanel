@@ -168,7 +168,7 @@
 .pagoda-doc-header__nav-item a::after {
   display: none !important;
 }
-.pagoda-doc-header__nav-item a:hover {
+.pagoda-doc-header__nav-item a:not(.active):hover {
   color: var(--pd-doc-md-h3-color) !important;
   background: var(--pd-doc-nav-hover-bg) !important;
 }

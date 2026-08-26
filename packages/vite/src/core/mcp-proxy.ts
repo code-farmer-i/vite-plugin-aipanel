@@ -37,6 +37,10 @@ export class McpProxy {
   #pending = new Map<number, (msg: unknown) => void>();
   #args: string[];
   #startPromise: Promise<void> | null = null;
+  /** 最近一次进程退出信息，用于生成精确错误（无退出记录时为 null） */
+  #lastExit: { code: number | null; signal: string | null; stderrTail: string } | null = null;
+  /** 捕获的 stderr 最近若干行，进程异常退出时作为诊断信息 */
+  #stderrTail: string[] = [];
   #idleTimer: ReturnType<typeof setTimeout> | null = null;
   #idleTimeout: number;
   readonly sessionId: string;
@@ -58,8 +62,14 @@ export class McpProxy {
   async start(): Promise<void> {
     if (this.isRunning) return;
     if (this.#startPromise) return this.#startPromise;
-    this.#startPromise = this.#doStart();
-    return this.#startPromise;
+    const p = this.#doStart();
+    this.#startPromise = p;
+    try {
+      await p;
+    } finally {
+      // 无论成功失败都清除，避免失败被永久缓存（否则后续请求会一直复用同一个已失败的结果）
+      this.#startPromise = null;
+    }
   }
 
   async #doStart(): Promise<void> {
@@ -68,6 +78,8 @@ export class McpProxy {
     // 优先用本地安装的 chrome-devtools-mcp，使用 process.execPath 确保跨平台兼容
     try {
       const binPath = resolveChromeDevToolsMcpBin();
+      this.#lastExit = null;
+      this.#stderrTail = [];
       this.#proc = spawn(process.execPath, [binPath, ...this.#args], {
         stdio: ["pipe", "pipe", "pipe"],
       });
@@ -106,14 +118,31 @@ export class McpProxy {
       const text = d.toString().trim();
       // 过滤 chrome-devtools-mcp 的良性噪音（未注册 issue code 处理器的提示，无排查价值）
       if (!text || /No handler registered for issue code \w+/i.test(text)) return;
+      // 保留最近 20 行 stderr，进程异常退出时用于精确报错
+      this.#stderrTail.push(...text.split("\n"));
+      if (this.#stderrTail.length > 20) this.#stderrTail.splice(0, this.#stderrTail.length - 20);
       log.debug("[MCP stderr]", { text: text.substring(0, 200) });
     });
 
-    this.#proc.on("close", (code) => {
-      log.debug("MCP process closed", { code });
+    this.#proc.on("close", (code, signal) => {
+      const exitDesc = `code ${code ?? "null"}${signal ? ` (signal ${signal})` : ""}`;
+      // 区分主动停止（idle timeout/stop() 主动 SIGTERM）与异常退出（崩溃、启动失败退出）
+      const abnormalExit = (code !== null && code !== 0) || (signal !== null && signal !== "SIGTERM");
+      if (abnormalExit) {
+        // 服务级故障：进程异常退出，用户需要知道
+        log.warn("MCP process exited abnormally", {
+          code,
+          signal,
+          stderrTail: this.#stderrTail.join("\n").slice(0, 500),
+        });
+      } else {
+        log.debug("MCP process closed", { code, signal });
+      }
+      // 记录退出信息，供后续 "MCP process not available" 精确报错
+      this.#lastExit = { code, signal, stderrTail: this.#stderrTail.join("\n") };
       // 拒绝所有等待中的请求
       for (const resolve of this.#pending.values()) {
-        resolve({ error: { code: -32000, message: `MCP process exited with code ${code}` } });
+        resolve({ error: { code: -32000, message: `MCP process exited with ${exitDesc}` } });
       }
       this.#pending.clear();
       this.#proc = null;
@@ -122,21 +151,40 @@ export class McpProxy {
     });
 
     // 初始化 MCP 协议
-    await this.call("initialize", {
+    const initResult = (await this.call("initialize", {
       protocolVersion: "2024-11-05",
       capabilities: {},
       clientInfo: { name: "vite-plugin-aipanel", version: "1.0.0" },
-    });
+    })) as { error?: { message?: string } };
+
+    // 进程在握手期间退出（close 回调已把 #proc 置空），给出精确错误
+    if (!this.#proc) {
+      throw new Error(this.#formatNotAvailable());
+    }
+    if (initResult?.error) {
+      throw new Error(
+        `MCP initialize failed: ${initResult.error.message ?? JSON.stringify(initResult.error)}`,
+      );
+    }
 
     log.debug("MCP proxy ready");
     this.#startPromise = null;
+  }
+
+  /** 生成 "MCP process not available" 的精确错误信息（包含最近一次退出原因与 stderr） */
+  #formatNotAvailable(): string {
+    const exit = this.#lastExit;
+    if (!exit) return "MCP process not available";
+    const exitDesc = `code ${exit.code ?? "null"}${exit.signal ? ` (signal ${exit.signal})` : ""}`;
+    const tail = exit.stderrTail ? `\n  stderr: ${exit.stderrTail}` : "";
+    return `MCP process not available (last exit ${exitDesc})${tail}`;
   }
 
   /** 转发原始 JSON-RPC 请求，保留客户端 ID */
   async forward(rawRequest: string): Promise<string> {
     await this.start();
     if (!this.#proc || !this.#proc.stdin) {
-      throw new Error("MCP process not available");
+      throw new Error(this.#formatNotAvailable());
     }
 
     this.#resetIdleTimer();
@@ -167,7 +215,7 @@ export class McpProxy {
   async call(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
     await this.start();
     if (!this.#proc || !this.#proc.stdin) {
-      throw new Error("MCP process not available");
+      throw new Error(this.#formatNotAvailable());
     }
 
     this.#resetIdleTimer();

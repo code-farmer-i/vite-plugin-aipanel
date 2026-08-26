@@ -73,7 +73,7 @@ AI 收到这些信息后可以直接定位到对应代码，精准修改。
 | `Ctrl/Cmd + P` | 进入 / 退出元素选择模式 |
 | `ESC`          | 退出选择模式            |
 
-快捷键 `Ctrl/Cmd + K` 可在 Vite 插件配置中自定义，详见 <PagodaDocLinkToView view="guide/config">配置项</PagodaDocLinkToView>。
+快捷键 `Ctrl/Cmd + K` 可在 Vite 插件配置中自定义，详见配置项。
 
 ## 多项目支持
 

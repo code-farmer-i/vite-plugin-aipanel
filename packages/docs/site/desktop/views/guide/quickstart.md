@@ -81,5 +81,3 @@ Vite 插件会在启动时自动：
 - 浏览器扩展检测到 `localhost` 页面后自动连接该服务
 - 实时同步页面 URL、标题等上下文给 AI
 - 多标签页自动切换对应项目的会话
-
-<PagodaDocLinkToView view="guide/usage">查看使用指南 →</PagodaDocLinkToView>

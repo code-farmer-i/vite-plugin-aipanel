@@ -27,7 +27,7 @@ export default defineConfig({
           config.plugins = config.plugins || [];
           config.plugins.push(
             ...opencode({
-              mcpOnly: true,
+              // mcpOnly: true,
               provider: "deepseek",
               // warmupChromeMcp: false,
               verbose: true,

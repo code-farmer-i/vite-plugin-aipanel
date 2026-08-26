@@ -86,6 +86,9 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
         "[data-sidebar-collapsed] > :first-child {",
         "  display: none !important;",
         "}",
+        '[aria-label="\\u9009\\u62E9\\u5DE5\\u4F5C\\u533A"] {',
+        "  display: none !important;",
+        "}",
       ].join("\\n");
       document.head.appendChild(style);
     } catch (e) { /* ignore */ }

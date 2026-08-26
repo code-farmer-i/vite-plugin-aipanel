@@ -1,5 +1,29 @@
 # 更新日志
 
+## v1.2.0
+
+`2026-08-26`
+
+### ✨ 新增
+
+- 支持 **DeepSeek Harness (dsh)** AI 引擎，可与 OpenCode 自由切换（需额外安装 `@aipanel/provider-deepseek`）
+- 新增 **纯净 MCP 模式**（`mcpOnly`）：只提供 AI 工具能力，不启动对话界面，方便外部 Agent 调用
+
+### 🐛 修复
+
+- 优化会话加载体验，修复对话过程中的加载闪动与卡住问题
+- 修复会话标题显示与自动切换不同步的问题
+
+### ⚡ 优化
+
+- 完善 DeepSeek 引擎的会话管理与界面交互
+- 隐藏 DeepSeek 界面中无用的「选择工作区」按钮
+- 插件整体更名为 AIPanel 品牌，入口更统一
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.0/packages/extension/aipanel-assistant.zip)
+
 ## v1.1.69
 
 `2026-08-21`

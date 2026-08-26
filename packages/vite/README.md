@@ -36,7 +36,7 @@ Vite 插件会自动启动 AIPanel Web 服务并创建当前项目的 AI 会话�
 
 ### 4. 安装浏览器扩展
 
-1. [下载扩展包](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/main/packages/extension/opencode-assistant.zip)
+1. [下载扩展包](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/main/packages/extension/aipanel-assistant.zip)
 2. 打开 Chrome，地址栏输入 `chrome://extensions/`
 3. 打开右上角**「开发者模式」**开关
 4. 解压下载的 `.zip`，点击**「加载已解压的扩展程序」**，选择解压后的文件夹

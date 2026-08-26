@@ -1,5 +1,23 @@
 # 更新日志
 
+## v1.2.1
+
+`2026-08-26`
+
+### 🐛 修复
+
+- 修复 MCP 进程异常退出（崩溃/启动即退）时错误信息不明确的问题，现在会输出包含退出码、信号与 stderr 的精确原因
+- 修复 MCP 启动失败后错误被永久缓存的问题，失败后允许重新拉起进程
+
+### ⚡ 优化
+
+- 升级 `chrome-devtools-mcp` 依赖到 1.8.0
+- MCP 进程异常退出时默认在控制台输出 warn 级告警日志，方便定位 Chrome 未启动、CDP 连接失败等问题
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.1/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.0
 
 `2026-08-26`

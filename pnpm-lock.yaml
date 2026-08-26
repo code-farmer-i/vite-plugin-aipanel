@@ -238,8 +238,8 @@ importers:
         specifier: ^3.3.7
         version: 3.3.9(typescript@6.0.3)
       chrome-devtools-mcp:
-        specifier: 1.7.0
-        version: 1.7.0
+        specifier: ^1.8.0
+        version: 1.8.0
       execa:
         specifier: ^9.6.1
         version: 9.6.1
@@ -3438,13 +3438,13 @@ packages:
   chownr@1.1.4:
     resolution: {integrity: sha512-jJ0bqzaylmJtVnNgzTeSOs8DPavpbYgEr/b0YL8/2GO3xJEhInFmhKMUnEJQjZumK7KXGFhUy89PrsJWlakBVg==}
 
-  chrome-devtools-mcp@1.7.0:
-    resolution: {integrity: sha512-6xFW7oiUxTxZuHcfyYBkKQtmttjCbfifKZMSEk5CV8H2FucvKweYiJr8CblddYHtYjA4C14K9VAs1r49906RBA==}
+  chrome-devtools-mcp@1.8.0:
+    resolution: {integrity: sha512-Wrm9z0/5WbVs778apjWgYRkpe9bvYQWjK2zVRwqoPAtz1IHQ5+GvotM07UGXJcfrA0rj6Gt1Pnn5+w/Tf1nU4w==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=23}
     hasBin: true
     peerDependencies:
       '@blackwell-systems/gcf': ^2.2.2
-      '@toon-format/toon': ^2.2.0
+      '@toon-format/toon': ^4.1.0
     peerDependenciesMeta:
       '@blackwell-systems/gcf':
         optional: true
@@ -10535,7 +10535,7 @@ snapshots:
   chownr@1.1.4:
     optional: true
 
-  chrome-devtools-mcp@1.7.0: {}
+  chrome-devtools-mcp@1.8.0: {}
 
   class-utils@0.3.6:
     dependencies:

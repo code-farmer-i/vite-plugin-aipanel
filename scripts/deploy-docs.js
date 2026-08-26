@@ -10,12 +10,12 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 
 export async function deployDocs() {
-  const viteDir = path.join(rootDir, "packages", "vite");
+  const docsDir = path.join(rootDir, "packages", "docs");
 
   console.log("\n🔨 Building site...");
-  execSync("pnpm run build:site", { stdio: "inherit", cwd: viteDir });
+  execSync("pnpm run build", { stdio: "inherit", cwd: docsDir });
 
-  const siteDist = path.join(viteDir, "site-dist");
+  const siteDist = path.join(docsDir, "site-dist");
   if (!fs.existsSync(siteDist)) {
     throw new Error(`site-dist not found at ${siteDist}`);
   }

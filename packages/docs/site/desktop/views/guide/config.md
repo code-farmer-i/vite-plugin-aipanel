@@ -27,7 +27,7 @@ import aipanelAssistant from "vite-plugin-aipanel";
 aipanelAssistant({
   // === 基础配置 ===
   enabled: true, // 是否启用，默认 true
-  provider: "opencode", // Web Provider 标识，默认 "default"（当前仅内置 opencode）
+  provider: "opencode", // AI 引擎，默认 "default"（别名，解析到 opencode），可选 "deepseek"
   webPort: 5097, // AIPanel Web 端口，默认 5097
   proxyPort: 6097, // 代理端口，默认 6097
   hostname: "127.0.0.1", // 绑定地址
@@ -85,7 +85,7 @@ aipanelAssistant({
 | 配置项                               | 类型      | 默认值        | 说明              |
 | ------------------------------------ | --------- | ------------- | ----------------- |
 | `enabled`                            | `boolean` | `true`        | 是否启用          |
-| `provider`                           | `string`  | `"default"`   | Web Provider 标识 |
+| `provider`                           | `string`  | `"default"`   | AI 引擎（"default"→opencode，另可选 "deepseek"） |
 | `webPort`                            | `number`  | `5097`        | AIPanel Web 端口  |
 | `proxyPort`                          | `number`  | `6097`        | 代理端口          |
 | `hostname`                           | `string`  | `"127.0.0.1"` | 服务地址          |
@@ -140,3 +140,41 @@ logFiles: [
 ```
 
 > 详见 [Vite 插件配置完整参考](https://github.com/code-farmer-i/vite-plugin-aipanel) 获取 `settings` 全部子配置项。
+
+### 选择 AI 引擎
+
+`provider` 字段用于选择 AI 引擎，当前内置两套：
+
+| provider   | 引擎                   | 额外依赖                        |
+| ---------- | ---------------------- | ------------------------------- |
+| `opencode` | OpenCode CLI（默认）   | 无（插件内置）                  |
+| `deepseek` | DeepSeek Harness (dsh) | 需另装 `@aipanel/provider-deepseek` |
+
+使用 **OpenCode** 引擎无需额外操作（插件已内置）。若要用 **dsh** 引擎，需先安装其 provider 包：
+
+```bash
+npm install -D @aipanel/provider-deepseek
+```
+
+`providerOptions` 段承载各引擎专属配置。**OpenCode** 引擎的配置见上方「完整配置」。切换到 **dsh** 引擎：
+
+```ts
+aipanelAssistant({
+  provider: "deepseek",
+  providerOptions: {
+    home: "~/.dsh",                 // dsh 数据目录（$DSH_HOME），默认跟随系统 ~/.dsh
+    agentPreset: "standard",        // 新建会话的默认 Agent 预设
+    permissionPreset: "read-only",  // 默认权限预设：read-only | workspace-write | danger-full-access
+    busyEnter: "queue",             // 繁忙时 Enter 行为：queue | steer
+  },
+});
+```
+
+#### DeepSeek (dsh) 配置项速查
+
+| 配置项                              | 类型     | 默认值     | 说明                                        |
+| ----------------------------------- | -------- | ---------- | ------------------------------------------- |
+| `providerOptions.home`              | `string` | `~/.dsh`   | dsh 数据目录（`$DSH_HOME`）                 |
+| `providerOptions.agentPreset`       | `string` | -          | 新建会话的默认 Agent 预设                   |
+| `providerOptions.permissionPreset`  | `string` | -          | 默认权限预设                                |
+| `providerOptions.busyEnter`         | `string` | -          | 繁忙时 Enter 行为（`queue` / `steer`）      |

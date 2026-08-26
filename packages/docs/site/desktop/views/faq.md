@@ -1,5 +1,22 @@
 # 常见问题
 
+## 支持哪些 AI 引擎？
+
+默认使用 **OpenCode CLI**，插件已内置、无需额外安装依赖。从 v1.2.0 起新增 **DeepSeek Harness (dsh)** 引擎支持，通过插件配置的 `provider` 字段切换：
+
+```ts
+aipanelAssistant({
+  provider: "deepseek",
+});
+```
+
+使用 **DeepSeek** 引擎需要额外安装：
+
+- `npm install -D @aipanel/provider-deepseek`（插件可选依赖，不随主包自动安装）
+- `npm install -g @deepseek-ai/dsh`（dsh CLI）
+
+> 部分功能会因引擎而异。例如代码审查面板（Header 的 `</>` 按钮）仅 OpenCode 引擎支持，切换为 dsh 时该按钮自动隐藏。
+
 ## 浏览器扩展和 Vite 插件是什么关系？
 
 两个组件缺一不可：

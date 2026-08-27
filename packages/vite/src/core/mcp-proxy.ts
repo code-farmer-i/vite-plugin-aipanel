@@ -50,6 +50,9 @@ export class McpProxy {
       "--auto-connect",
       "--no-usage-statistics",
       "--no-performance-crux",
+      // chrome-devtools-mcp >=1.8.0 的 pageIdRouting 按 pageId 路由页面级工具，默认开启。
+      // 显式声明强制开启，代理层校验 pageId 后原样转发，由底层工具按 pageId 路由目标页面。
+      "--page-id-routing",
     ];
     this.#idleTimeout = options.idleTimeout ?? 0;
     this.sessionId = crypto.randomUUID();
@@ -127,7 +130,8 @@ export class McpProxy {
     this.#proc.on("close", (code, signal) => {
       const exitDesc = `code ${code ?? "null"}${signal ? ` (signal ${signal})` : ""}`;
       // 区分主动停止（idle timeout/stop() 主动 SIGTERM）与异常退出（崩溃、启动失败退出）
-      const abnormalExit = (code !== null && code !== 0) || (signal !== null && signal !== "SIGTERM");
+      const abnormalExit =
+        (code !== null && code !== 0) || (signal !== null && signal !== "SIGTERM");
       if (abnormalExit) {
         // 服务级故障：进程异常退出，用户需要知道
         log.warn("MCP process exited abnormally", {

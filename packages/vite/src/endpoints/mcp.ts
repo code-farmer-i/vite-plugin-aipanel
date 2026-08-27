@@ -516,17 +516,13 @@ async function handleDevTool(
       }
     }
 
-    // 选中目标页面再转发
-    await mcp.callChromeDevTool("select_page", { pageId, bringToFront: false });
-
-    // 转发到 chrome-devtools-mcp（剥离 pageId，底层工具不认识此参数）
-    const forwardArgs = { ...args };
-    delete forwardArgs["pageId"];
+    // 转发到 chrome-devtools-mcp，pageIdRouting 模式下底层工具按 pageId 路由目标页面，
+    // 且其 schema 强制要求 pageId，故原样透传（不再剥离）
     const forwardBody = JSON.stringify({
       jsonrpc: "2.0",
       id,
       method: "tools/call",
-      params: { name: mapped, arguments: forwardArgs },
+      params: { name: mapped, arguments: args },
     });
 
     const responseText = await mcp.forward(forwardBody);

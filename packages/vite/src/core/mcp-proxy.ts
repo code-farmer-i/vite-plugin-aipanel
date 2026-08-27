@@ -50,9 +50,10 @@ export class McpProxy {
       "--auto-connect",
       "--no-usage-statistics",
       "--no-performance-crux",
-      // chrome-devtools-mcp >=1.8.0 的 pageIdRouting 按 pageId 路由页面级工具，默认开启。
-      // 显式声明强制开启，代理层校验 pageId 后原样转发，由底层工具按 pageId 路由目标页面。
-      "--page-id-routing",
+      // chrome-devtools-mcp >=1.8.0 默认开启 pageIdRouting（要求每个页面级工具都传 pageId）。
+      // 代理层已自行校验 pageId 并用 select_page 选中目标页面后再转发，故显式关闭，
+      // 避免底层工具 schema 强制必填 pageId 导致转发时的参数校验失败。
+      "--no-page-id-routing",
     ];
     this.#idleTimeout = options.idleTimeout ?? 0;
     this.sessionId = crypto.randomUUID();

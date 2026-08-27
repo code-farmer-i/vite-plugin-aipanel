@@ -60,18 +60,16 @@ function serializeElement(ref: string): string {
   try {
     const e = JSON.parse(ref) as SelectedElement;
     if (!e || typeof e !== "object") throw new Error("not an element payload");
-    // dsh 会话 chip 按字符类 [\\/] 切分取 basename；把 / 和 \ 换成全角等价字符，
-    // 避免标签里有斜杠时被截断只剩最后一段（普通反斜杠转义对它无效）
-    const selector = (e.description || "element").replace(/[\\/]/g, (m) =>
-      m === "/" ? "／" : "＼",
-    );
+    // 高亮 token 语法（@/[^\s]+/）遇空白即断开、按 [\\/] 取 basename。用 dsh 引号形式
+    // @"..."（/[@"[^"\n]+"/）包裹：既保留类选择器里的空格（后代选择器语义），又能整条高亮。
+    // 引号内不允许出现 " 和换行，需一并清洗；/ 和 \ 换成全角等价字符，避免被当路径切分。
+    const safe = (s: string) =>
+      s.replace(/[\\/]/g, (m) => (m === "/" ? "／" : "＼")).replace(/["\n\r]+/g, " ");
+    const selector = safe(e.description || "element");
     const text = e.innerText?.trim();
-    const textPreview = text
-      ? (text.length > 5 ? text.slice(0, 5) + "..." : text).replace(/[\\/]/g, (m) =>
-          m === "/" ? "／" : "＼",
-        )
-      : "";
-    return `@选中元素:${selector}${textPreview ? `(${textPreview})` : ""}`;
+    const textPreview = text ? (text.length > 5 ? text.slice(0, 5) + "..." : text) : "";
+    const body = `选中元素:${selector}${textPreview ? `(${safe(textPreview)})` : ""}`;
+    return `@"${body}"`;
   } catch {
     return `@${ref}`;
   }

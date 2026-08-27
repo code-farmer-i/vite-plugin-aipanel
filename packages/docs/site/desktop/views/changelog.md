@@ -1,5 +1,17 @@
 # 更新日志
 
+## v1.2.4
+
+`2026-08-27`
+
+### 🐛 修复
+
+- 回退 MCP 代理的 pageId 路由处理：关闭 `chrome-devtools-mcp` 的 `pageIdRouting`，在转发工具调用前先通过 `select_page` 选中目标页面并剥离 `pageId` 参数，规避底层 schema 强制必填 `pageId` 导致的参数校验失败
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.4/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.3
 
 `2026-08-27`

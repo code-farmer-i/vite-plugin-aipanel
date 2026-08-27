@@ -1,5 +1,17 @@
 # 更新日志
 
+## v1.2.3
+
+`2026-08-27`
+
+### 🐛 修复
+
+- 适配 `chrome-devtools-mcp` 1.8+ 的 `pageIdRouting` 模式：强制开启并按 pageId 原样透传目标参数，由底层工具路由，解决页面级工具调用报「缺失 pageId」校验错误的问题
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.3/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.2
 
 `2026-08-27`

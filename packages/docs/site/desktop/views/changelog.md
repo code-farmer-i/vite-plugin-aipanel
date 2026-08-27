@@ -1,5 +1,17 @@
 # 更新日志
 
+## v1.2.2
+
+`2026-08-27`
+
+### ⚡ 优化
+
+- 优化 DeepSeek 引擎选中元素的序列化格式，统一特殊字符转义规则，使用带引号的格式以完整保留类选择器空格并支持整条高亮
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.2/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.1
 
 `2026-08-26`

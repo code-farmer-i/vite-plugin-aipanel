@@ -1,5 +1,26 @@
 # 更新日志
 
+## v1.2.5
+
+`2026-08-28`
+
+### deepseek
+
+#### ✨ 新增
+
+- 实现选中元素上下文精准注入：为选中元素分配稳定的节点 ID（`ensureNodeId`），引用以 `@节点[n<id>]` 标记序列化进会话文本，host 端（dsh-plugin）在 agent/pre-step 按 ID 从核心层 context 端点精确反查并注入用户实际引用的节点上下文，注入后清空已消费元素，避免残留与重复
+- 选中元素交互优化：引用以节点标记插入输入框光标处（自动补齐前后空格保证气泡高亮），同一节点（filePath+line）重复选中时复用已分配 ID，保持会话标记与上下文注入一致
+
+### ui
+
+#### 🐛 修复
+
+- 修复元素选择时文本提取不完整的问题：不再只取直接文本节点，改用 `innerText` 获取整棵子树的完整可见文本（SVG 等无 `innerText` 时回退到 `textContent`），避免行内子元素（如 `<span>`/`<b>`）文本丢失
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.5/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.4
 
 `2026-08-27`

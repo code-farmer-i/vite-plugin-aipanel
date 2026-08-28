@@ -50,13 +50,11 @@ const KEY_PROPS_DATA = "__v_inspector";
 const KEY_DATA = "data-v-inspector";
 
 function getDirectText(element: Element): string {
-  let text = "";
-  for (let i = 0; i < element.childNodes.length; i++) {
-    const child = element.childNodes[i];
-    if (child.nodeType === Node.TEXT_NODE) {
-      text += child.textContent || "";
-    }
-  }
+  // 不能只取直接文本节点：选中元素常含行内子元素（<span>/<b> 等），
+  // 只取直接文本会丢掉子元素里的文本（"让 <b>AI</b> 成为" → "让 成为"）。
+  // 改为读取整棵子树的可见文本；SVG 等无 innerText 时回退到 textContent。
+  const el = element as HTMLElement;
+  const text = el.innerText || element.textContent || "";
   return text.trim();
 }
 

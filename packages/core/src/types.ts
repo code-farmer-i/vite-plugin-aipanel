@@ -77,6 +77,8 @@ export interface LogFileConfig {
  * 选中的元素信息
  */
 export interface SelectedElement {
+  /** 节点唯一 id（`@节点[n<id>]` 引用标记与上下文注入共用；由 ensureNodeId 分配） */
+  id?: string;
   /** 文件路径 */
   filePath: string | null;
   /** 行号 */
@@ -190,6 +192,8 @@ export interface AIPanelWidgetSession {
  * 挂件选中的元素
  */
 export interface AIPanelSelectedElement {
+  /** 节点唯一 id（与 SelectedElement.id 同源，`@节点[n<id>]` 标记与上下文注入共用） */
+  id?: string;
   filePath: string | null;
   line: number | null;
   column: number | null;

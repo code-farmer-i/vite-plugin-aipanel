@@ -1,11 +1,12 @@
 /**
  * AIPanel 浏览器侧插件（dsh Web Client bundle）
  *
- * 经 dsh 的 dsh.client 契约被 __DSH_BOOT__ 自动激活。注册 `@aipanel` 文件引用 source：
+ * 经 dsh 的 dsh.client 契约被 __DSH_BOOT__ 自动激活。注册 `@aipanel` 引用 source：
  *   - candidates 读取 bridge 写入的 localStorage('dsh.bridge.selection') —— 最近选中元素
  *   - onPick 铸造 appearance:'file' 的 ReferenceInsert（输入框高亮）
- *   - codec.serialize 决定模型最终看到的文本（让 agent 自行解析）
- *
+ *   - codec.serialize 输出 `@节点[n<id>]` 标记（无空格无斜杠，天然满足高亮 token 语法）；
+ *     完整节点上下文不进会话文本，由 host 端 dsh-plugin 在 agent/pre-step 按 id
+ *     从核心层 context 端点反查后注入（plugin source）。
  */
 import type {
   InputTriggerCandidate,
@@ -30,12 +31,29 @@ const SESSION_SETTLE_MS = 400;
 
 /** bridge 写入 localStorage 的最近选中元素 */
 interface SelectedElement {
+  /** 插件生成的节点唯一 id（插入引用时赋值，随 ref 持久化；serialize 标记与注入上下文共用） */
+  id?: string;
   filePath?: string;
   line?: number;
   description?: string;
   innerText?: string;
   previewPageUrl?: string;
   previewPageTitle?: string;
+}
+
+/**
+ * 取（或生成）元素的节点唯一 id：优先复用已赋值的 id（client 侧 App.vue 分配后随
+ * bridge 写入 localStorage），否则兜底生成随机 id 并写回元素。id 与核心层
+ * selectedElements 里的一致，host 端 dsh-plugin 据此反查并注入上下文。
+ */
+function ensureNodeId(e: SelectedElement): string {
+  if (e.id) return e.id;
+  const random =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID().replace(/-/g, "").slice(0, 8)
+      : Math.random().toString(36).slice(2, 10);
+  e.id = `n${random}`;
+  return e.id;
 }
 
 /** 短标签（chip / @ 菜单展示，不含完整的 filePath:line 长尾） */
@@ -52,38 +70,35 @@ function elementContextRef(e: SelectedElement): string {
 }
 
 /**
- * 构造 model 可见的引用文本。与 opencode 的文件引用标签一致：`@选择器(文本预览)`。
- * dsh 会话显示文本 = 模型收到的序列化文本（同一份），所以这里用短单行，
- * 避免把完整路径/上下文块直接铺进会话。ref 仍是元素上下文 JSON，供此项解析出标签。
+ * 构造 model 可见的引用文本：只带节点 id（`@节点[n<id>]`）。
+ * 标记无空格无斜杠，天然满足高亮 token 语法（@/[^\s]+/），无需格式化转义；
+ * id 可区分同 selector 的多个实例。完整节点上下文不进会话文本，由 host 端
+ * dsh-plugin 在 agent/pre-step 按 id 反查核心层 context 端点后注入（plugin source）。
  */
 function serializeElement(ref: string): string {
   try {
     const e = JSON.parse(ref) as SelectedElement;
     if (!e || typeof e !== "object") throw new Error("not an element payload");
-    // 高亮 token 语法（@/[^\s]+/）遇空白即断开、按 [\\/] 取 basename。用 dsh 引号形式
-    // @"..."（/[@"[^"\n]+"/）包裹：既保留类选择器里的空格（后代选择器语义），又能整条高亮。
-    // 引号内不允许出现 " 和换行，需一并清洗；/ 和 \ 换成全角等价字符，避免被当路径切分。
-    const safe = (s: string) =>
-      s.replace(/[\\/]/g, (m) => (m === "/" ? "／" : "＼")).replace(/["\n\r]+/g, " ");
-    const selector = safe(e.description || "element");
-    const text = e.innerText?.trim();
-    const textPreview = text ? (text.length > 5 ? text.slice(0, 5) + "..." : text) : "";
-    const body = `选中元素:${selector}${textPreview ? `(${safe(textPreview)})` : ""}`;
-    return `@"${body}"`;
+    return `@节点[${ensureNodeId(e)}]`;
   } catch {
     return `@${ref}`;
   }
 }
 
-/** 把选中元素铸成 ReferenceInsert：label/clipboard 用短标签，ref 携带完整元素上下文 */
+/**
+ * 把选中元素铸成 ReferenceInsert。
+ * label 不带 @（chip 的 title / 完整标签）；clipboardText 必须以 @ 开头——
+ * dsh 输入框 backdrop 用 clipboardText[0] 作为 chip 的触发字符 glyph、slice(1) 作为名字，
+ * 去掉 @ 会导致 glyph 错乱（显示成"节"字）。
+ */
 function toReference(e: SelectedElement): ReferenceInsert {
-  const label = elementLabel(e);
+  const mark = `节点[${ensureNodeId(e)}]`;
   return {
     source: "aipanel",
     ref: elementContextRef(e),
-    label,
+    label: mark,
     appearance: "file",
-    clipboardText: label,
+    clipboardText: `@${mark}`,
   };
 }
 
@@ -134,16 +149,36 @@ export function apply(ctx: Context) {
       );
     },
 
-    // 选定 → 铸造 file 引用：ref/label 分离（label 短，ref 携完整上下文）
-    onPick: (pick) => ({
-      insert: {
-        source: "aipanel",
-        ref: pick.candidate.value ?? pick.candidate.name,
-        label: pick.candidate.name,
-        appearance: "file",
-        clipboardText: pick.candidate.name,
-      },
-    }),
+    // 选定 → 铸造 file 引用：ref/label 分离（label 短，ref 携带完整元素 + 节点 id）
+    onPick: (pick) => {
+      try {
+        const parsed = JSON.parse(pick.candidate.value ?? "null") as SelectedElement | null;
+        if (parsed) {
+          ensureNodeId(parsed);
+          return {
+            insert: {
+              source: "aipanel",
+              ref: JSON.stringify(parsed),
+              label: pick.candidate.name,
+              appearance: "file",
+              // clipboardText 以 @ 开头（dsh backdrop 取首字符作 chip 触发 glyph）
+              clipboardText: `@${pick.candidate.name}`,
+            },
+          };
+        }
+      } catch {
+        /* ignore */
+      }
+      return {
+        insert: {
+          source: "aipanel",
+          ref: pick.candidate.value ?? pick.candidate.name,
+          label: pick.candidate.name,
+          appearance: "file",
+          clipboardText: `@${pick.candidate.name}`,
+        },
+      };
+    },
 
     // 模型投影
     codec: {
@@ -200,10 +235,10 @@ export function apply(ctx: Context) {
     ctx.effect(() => dispose, "aipanel: session-ready watcher");
   }
 
-  // === 选中元素 → 立即追加到当前会话对话框 ===
+  // === 选中元素 → 立即插入当前会话输入框 ===
   // 与 opencode 交互一致：用户选中元素（AIPanel 选择模式）后，bridge 派发
-  // aipanel:insert-element，这里把元素以 file chip 追加到当前会话的输入框末尾。
-  // 走官方 input-trigger 的 insertReference（span 取 draft 末尾 + 当前 draftRev CAS），
+  // aipanel:insert-element，这里把元素以 file chip 插入当前会话输入框（光标处，
+  // 必要时前置空格保证气泡高亮），并把焦点与光标移回 chip 之后。
   // 提交时由 @aipanel source 的 codec 序列化为模型可见文本。
   const conversation = ctx.get("conversation");
   const insertElementListener = (event: Event) => {
@@ -218,11 +253,59 @@ export function apply(ctx: Context) {
       if (!input || typeof input.insertReference !== "function") return;
       const snapshot = input.state?.getSnapshot?.();
       if (!snapshot) return;
-      const at = snapshot.draft.length;
-      input.insertReference(toReference(element), {
-        start: at,
-        end: at,
-        draftRev: snapshot.draftRev,
+      // dsh（文本机器实现）的 InputState.draft 是纯文本：chip 展开为 `@节点[n<id>]` 完整文本，
+      // occurrence.offset/length 与 insertReference 的 span 都直接按该文本坐标切片。
+      // 输入框 textarea 的 value 即 draft 投影，selectionStart/End 可直接用作插入位置。
+      // 不依赖 activeElement：选中页面元素时输入框会失焦，但 textarea 的 selectionStart
+      // 仍保留上次光标位置；用 value 与 draft 一致来确认是当前会话的输入框。
+      let start = snapshot.draft.length;
+      let end = snapshot.draft.length;
+      try {
+        const el = document.querySelector("textarea[data-phase]") as HTMLTextAreaElement | null;
+        if (el && el.value === snapshot.draft) {
+          const s = el.selectionStart ?? 0;
+          const e = el.selectionEnd ?? s;
+          start = Math.min(s, snapshot.draft.length);
+          end = Math.min(e, snapshot.draft.length);
+        }
+      } catch {
+        /* ignore */
+      }
+      const reference = toReference(element);
+      // 插入后新 chip 的文本长度 = clipboardText（`@节点[n<id>]`）+ 分隔空格（尾部已有空格则无）
+      const gap = snapshot.draft.slice(end)[0] === " " ? 0 : 1;
+      const insertedLen = reference.clipboardText.length + gap;
+      // 前置空格：dsh 气泡高亮要求 @ 标记前是行首或空白（/(^|\s)@[^\s]+/），
+      // 紧贴文字（如"的@节点[n...]"）不会高亮；插入点前一个字符非空白时先补一个空格。
+      let leadingSpace = 0;
+      let rev = snapshot.draftRev;
+      if (start > 0 && !/\s/.test(snapshot.draft[start - 1])) {
+        try {
+          if (input.insertText?.(" ", { start, end, draftRev: rev })) {
+            const next = input.state?.getSnapshot?.();
+            if (next) {
+              leadingSpace = 1;
+              start += 1;
+              end += 1;
+              rev = next.draftRev;
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      input.insertReference(reference, { start, end, draftRev: rev });
+      // 把焦点放回输入框，并把光标定位到新插入 chip 之后（等渲染提交后再设置 selection）
+      requestAnimationFrame(() => {
+        try {
+          const el = document.querySelector("textarea[data-phase]") as HTMLTextAreaElement | null;
+          if (!el) return;
+          const caret = Math.min(start + insertedLen + leadingSpace, el.value.length);
+          el.focus();
+          el.setSelectionRange(caret, caret);
+        } catch {
+          /* ignore */
+        }
       });
     } catch {
       // 注入失败静默：仍可从 @aipanel 菜单手动插入

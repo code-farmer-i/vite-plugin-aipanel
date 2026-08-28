@@ -6,7 +6,7 @@ import type {
   AIPanelSelectedElement,
 } from "@aipanel/core";
 import type { WidgetOptions } from "@aipanel/core";
-import { WIDGET_MSG, WARMUP_API_PATH, START_API_PATH, createLogger } from "@aipanel/core";
+import { WIDGET_MSG, WARMUP_API_PATH, START_API_PATH, ensureNodeId, createLogger } from "@aipanel/core";
 
 import { useHotkey } from "./composables/useHotkey";
 import { useServerSSE } from "./composables/useServerSSE";
@@ -91,7 +91,7 @@ const {
   setStarting,
 } = useServiceStatus();
 
-const { selectedElements, removeElement, clearElements } = useSelectedElements(serviceInstanceId);
+const { selectedElements, addElement, removeElement, clearElements } = useSelectedElements(serviceInstanceId);
 
 const { theme, sendThemeToIframe } = useTheme(widgetTheme, widgetRef);
 
@@ -420,11 +420,23 @@ const handleSelectNode = async (element: AIPanelSelectedElement, pageUrl?: strin
     return;
   }
 
+  // 同一节点（filePath+line）重复选中时复用已分配 id，保证会话标记与上下文注入一致
+  const existing = selectedElements.value.find(
+    (el) => el.filePath === element.filePath && el.line === element.line,
+  );
+  const id = existing?.id ?? ensureNodeId(element);
+
   const elementWithContext = {
     ...element,
+    id,
     previewPageUrl: isExtensionMode && pageUrl ? pageUrl : window.location.href,
     previewPageTitle: isExtensionMode && pageTitle ? pageTitle : document.title,
   };
+
+  // 写入选中元素列表并同步到核心层 context 端点（携带 id），供 host 端按 @节点[id] 反查注入
+  if (addElement(elementWithContext)) {
+    updateContext(true);
+  }
 
   widgetRef.value?.sendMessageToIframe(WIDGET_MSG.INSERT_FILE_PART, {
     element: elementWithContext,

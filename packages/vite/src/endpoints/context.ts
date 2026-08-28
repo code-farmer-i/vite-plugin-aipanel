@@ -2,6 +2,7 @@ import type { ViteDevServer } from "vite";
 import { CONTEXT_API_PATH } from "@aipanel/core";
 import type { PageContext } from "@aipanel/core";
 import { RequestContext, createLogger } from "@aipanel/core/node";
+import { ensureNodeId } from "@aipanel/core";
 import type { EndpointContext } from "./types";
 
 const log = createLogger("Endpoints:Context");
@@ -67,13 +68,18 @@ export function setupContextEndpoint(server: ViteDevServer, ctx: EndpointContext
           const tabId = data.tabId != null ? String(data.tabId) : "default";
 
           const existing = ctx.getPageContext();
+          const selectedElements = (data.selectedElements as PageContext["selectedElements"]) || [];
+          // 为缺少 id 的元素兜底分配节点 id（保证 @节点[id] 标记与上下文注入一致）
+          selectedElements.forEach((el) => {
+            if (el && typeof el === "object") ensureNodeId(el);
+          });
           const newCtx: PageContext = {
             url: data.url || "",
             title: data.title || "",
             sessionId: data.sessionId,
             tabId: data.tabId ?? existing.tabId,
             tabIndex: data.tabIndex ?? existing.tabIndex,
-            selectedElements: data.selectedElements || [],
+            selectedElements,
           };
 
           ctx.setPageContext(tabId, newCtx);

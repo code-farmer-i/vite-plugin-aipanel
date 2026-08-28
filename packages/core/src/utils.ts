@@ -3,6 +3,23 @@
  */
 
 /**
+ * 取（或生成）元素的节点唯一 id：优先复用已赋值的 id，否则生成随机 id 并写回元素。
+ * 同一引用在会话标记（`@节点[n<id>]`）与上下文注入里使用同一个 id；
+ * 不同包（client / dsh-client / context 端点）共用此实现，保证 id 体系一致。
+ * @param element - 携带可选 id 的元素对象（会被写回生成的 id）
+ * @returns 该元素最终使用的节点 id
+ */
+export function ensureNodeId(element: { id?: string }): string {
+  if (element.id) return element.id;
+  const random =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID().replace(/-/g, "").slice(0, 8)
+      : Math.random().toString(36).slice(2, 10);
+  element.id = `n${random}`;
+  return element.id;
+}
+
+/**
  * 截断字符串到指定长度
  * @param value - 要截断的字符串
  * @param maxLength - 最大长度

@@ -6,7 +6,12 @@
  */
 import fs from "fs";
 import path from "path";
-import { AIPANEL_CACHE_DIR, MCP_API_PATH, createLogger } from "@aipanel/core/node";
+import {
+  AIPANEL_CACHE_DIR,
+  MCP_API_PATH,
+  CONTEXT_API_PATH,
+  createLogger,
+} from "@aipanel/core/node";
 
 const log = createLogger("DeepSeekProfile");
 
@@ -48,6 +53,8 @@ export function buildDshOverlay(options: {
       "      inject: [tools, subprocess]",
       "      config:",
       `        cwd: ${JSON.stringify(cwd)}`,
+      `        vitePort: ${vitePort}`,
+      `        contextApiPath: ${JSON.stringify(CONTEXT_API_PATH)}`,
       "        autoDiagnose: true",
     ].join("\n"),
   );

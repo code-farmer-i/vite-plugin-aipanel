@@ -31,6 +31,10 @@ export const inject = ["tools", "subprocess"];
 export interface AipanelPluginConfig {
   /** 宿主工作目录（用于诊断的默认 cwd） */
   cwd?: string;
+  /** 核心层 Vite 端口：用于访问 context 端点反查选中元素（与 MCP 同一地址体系） */
+  vitePort?: number;
+  /** 核心层 context 端点路径（由 overlay 从 @aipanel/core 的 CONTEXT_API_PATH 常量注入） */
+  contextApiPath?: string;
   /** 编辑后是否自动补跑诊断 */
   autoDiagnose?: boolean;
 }
@@ -49,6 +53,44 @@ const JS_EXTENSIONS = new Set([
 ]);
 const MUTATING_TOOLS = new Set(["write", "edit", "apply_patch"]);
 
+/** 核心层 context 端点路径的兜底默认值（与 @aipanel/core 的 CONTEXT_API_PATH 保持一致；优先取 config 注入值） */
+const DEFAULT_CONTEXT_API_PATH = "/__aipanel_context__";
+
+/** 核心层 context 端点返回的选中元素（字段与 @aipanel/core SelectedElement 对应） */
+interface ContextElement {
+  /** 节点唯一 id（`@节点[n<id>]` 引用标记与上下文注入共用） */
+  id?: string;
+  filePath?: string | null;
+  line?: number | null;
+  column?: number | null;
+  innerText?: string;
+  description?: string;
+  previewPageUrl?: string;
+  previewPageTitle?: string;
+}
+
+/** 提取文本中的全部节点 id（`@节点[n<id>]` 标记） */
+function collectNodeIds(text: string): string[] {
+  const ids: string[] = [];
+  const re = new RegExp("@节点\\[(n[0-9a-z]+)\\]", "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) ids.push(m[1]);
+  return ids;
+}
+
+/** 把单个选中元素组织成注入给 agent 的上下文文本块；开头带节点 id 供 agent 与消息标记关联 */
+function buildNodeContext(e: ContextElement): string {
+  const lines: string[] = [`节点 ID：${e.id ?? ""}`];
+  if (e.filePath) lines.push(`源码文件路径：${e.filePath}${e.line ? `:${e.line}` : ""}`);
+  if (e.line) lines.push(`代码所在行号：${e.line}`);
+  if (e.column) lines.push(`代码所在列号：${e.column}`);
+  if (e.description) lines.push(`DOM 元素选择器：${e.description}`);
+  if (e.innerText) lines.push(`DOM 元素内部文本：${e.innerText.slice(0, 200)}`);
+  if (e.previewPageUrl) lines.push(`用户选中节点时的页面 URL：${e.previewPageUrl}`);
+  if (e.previewPageTitle) lines.push(`页面标题：${e.previewPageTitle}`);
+  return lines.join("\n");
+}
+
 /** 诊断子进程的输出上限与宽限时间（避免大仓库输出撑爆上下文） */
 const STDOUT_MAX_BYTES = 200_000;
 const STDOUT_SPILL_MAX_BYTES = 2_000_000;
@@ -58,6 +100,8 @@ const GRACE_MS = 30_000;
 export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
   const cwd = config.cwd ?? process.cwd();
   const autoDiagnose = config.autoDiagnose ?? true;
+  const vitePort = config.vitePort ?? 0;
+  const contextApiPath = config.contextApiPath ?? DEFAULT_CONTEXT_API_PATH;
 
   const tools: ToolRuntime = ctx.tools;
   const subprocess: SubprocessRuntime = ctx.subprocess;
@@ -170,4 +214,80 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
       return { kind: "accept", additionalContexts: [message] };
     },
   );
+
+  // === 3) 选中元素上下文注入（按用户消息中的 @节点[id] 标记精确反查） ===
+  // 用户在 AIPanel 页面选中元素后，client 侧把元素（带节点 id）写入核心层 context 端点，
+  // dsh-client 把引用序列化为 `@节点[n<id>]` 标记铺进会话文本。这里在 agent/pre-step
+  // 解析本次 step 用户消息中的标记，从核心层 context 端点按 id 反查对应元素，
+  // 只注入用户实际引用的节点上下文（plugin source），并移除已注入 id 防止后续 step 重复。
+  // 注入姿势与官方 session-reference 一致：改写 decision.messages，在引用后追加上下文消息。
+  if (vitePort > 0) {
+    const contextBase = `http://127.0.0.1:${vitePort}${contextApiPath}`;
+
+    ctx.on(
+      "agent/pre-step",
+      async ({ signal }, next) => {
+        const decision = await next();
+        if (decision.kind === "reject") return decision;
+
+        // 收集本次 step 用户消息中的节点 id（只处理 user source）
+        const ids = new Set<string>();
+        for (const message of decision.messages) {
+          if (message.source.kind !== "user") continue;
+          for (const block of message.content) {
+            if (block.type !== "text") continue;
+            for (const id of collectNodeIds(block.text)) ids.add(id);
+          }
+        }
+        if (ids.size === 0) return decision;
+
+        // 从核心层 context 端点拉取选中元素，按 id 反查（端点不可达时不注入，不阻塞会话）
+        let elements: ContextElement[] = [];
+        try {
+          const res = await fetch(contextBase, { signal });
+          if (res.ok) {
+            const pc = (await res.json()) as { selectedElements?: ContextElement[] };
+            elements = pc.selectedElements ?? [];
+          }
+        } catch {
+          /* ignore */
+        }
+        const byId = new Map<string, ContextElement>();
+        for (const el of elements) {
+          if (el.id) byId.set(el.id, el);
+        }
+        const injected = [...ids]
+          .map((id) => byId.get(id))
+          .filter((el): el is ContextElement => el !== undefined);
+        if (injected.length === 0) return decision;
+
+        // 保留消息中的 `@节点[id]` 标记：durable user/message 以 decision.messages 持久化
+        // （agent-loop 在 pre-step 后逐条 append），移除会导致用户气泡空白；标记 + 注入的
+        // 上下文（含节点 ID）足以让模型理解引用指向哪个节点。
+
+        const contextText = injected.map(buildNodeContext).join("\n\n---\n\n");
+        const contextMessage = {
+          role: "user" as const,
+          id: randomUUID(),
+          content: [
+            {
+              type: "text" as const,
+              text: `以下是用户引用节点的完整上下文（节点 ID 与消息中的 @节点[id] 标记对应）：\n\n${contextText}`,
+            },
+          ],
+          source: { kind: "plugin" as const, plugin: name },
+        } as UserMessage;
+
+        // 注入后清空端点 selectedElements：消息已消费这批节点上下文，防止残留/重复注入。
+        try {
+          await fetch(contextBase, { method: "DELETE", signal });
+        } catch {
+          /* ignore */
+        }
+
+        return { ...decision, messages: [...decision.messages, contextMessage] };
+      },
+      { prepend: true },
+    );
+  }
 }

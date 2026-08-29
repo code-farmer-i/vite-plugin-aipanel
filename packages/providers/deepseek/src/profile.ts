@@ -23,8 +23,25 @@ export function buildDshOverlay(options: {
   pluginAvailable?: boolean;
   /** client 插件（@aipanel/dsh-client）是否可被 dsh 解析（provider 已同步到 dsh profile）；false 时停用该行，避免 fail-loud */
   clientAvailable?: boolean;
+  /**
+   * 编辑后自动诊断开关（provider option autoDiagnose）。
+   * undefined 时不写入 overlay，由 dsh-plugin 回退到 OPENCODE_ENABLE_LINT=1（与 opencode 一致）。
+   */
+  autoDiagnose?: boolean;
+  /**
+   * 诊断功能总开关（provider option enableDiagnostics）。
+   * false（默认）时 host 插件不注册 run_diagnostics 工具与自动诊断逻辑。
+   */
+  enableDiagnostics?: boolean;
 }): string {
-  const { vitePort, cwd, pluginAvailable = true, clientAvailable = true } = options;
+  const {
+    vitePort,
+    cwd,
+    pluginAvailable = true,
+    clientAvailable = true,
+    autoDiagnose,
+    enableDiagnostics = false,
+  } = options;
   const mcpUrl = `http://127.0.0.1:${vitePort}${MCP_API_PATH}`;
 
   const rows: string[] = [];
@@ -50,12 +67,15 @@ export function buildDshOverlay(options: {
       "    - id: aipanel",
       "      name: '@aipanel/dsh-plugin'",
       ...(pluginAvailable ? [] : ["      disabled: true"]),
-      "      inject: [tools, subprocess]",
+      "      inject: [tools]",
       "      config:",
       `        cwd: ${JSON.stringify(cwd)}`,
       `        vitePort: ${vitePort}`,
       `        contextApiPath: ${JSON.stringify(CONTEXT_API_PATH)}`,
-      "        autoDiagnose: true",
+      `        enableDiagnostics: ${enableDiagnostics ? "true" : "false"}`,
+      ...(autoDiagnose !== undefined
+        ? [`        autoDiagnose: ${autoDiagnose ? "true" : "false"}`]
+        : []),
     ].join("\n"),
   );
 

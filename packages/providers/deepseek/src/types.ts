@@ -23,6 +23,19 @@ export type DeepSeekProviderOptions = {
   /** 繁忙时 Enter 键行为（dsh settings ui-conversation.busyEnter） */
   busyEnter?: DeepSeekBusyEnter;
   /**
+   * 编辑后自动诊断（对应 opencode providerOptions.enableLsp 的质量门禁语义）：
+   * write/edit/apply_patch 执行后自动补跑 ESLint + vue-tsc 并把结果并入工具输出。
+   * 仅当 enableDiagnostics 开启时生效；默认关闭；未配置时回退到环境变量
+   * OPENCODE_ENABLE_LINT=1（与 opencode 一致）。
+   */
+  autoDiagnose?: boolean;
+  /**
+   * 诊断功能总开关：关闭（默认）时不注入任何诊断相关插件逻辑——
+   * run_diagnostics 审查工具、编辑后自动诊断、会话诊断卡片视图都不注册。
+   * 开启后上述能力按各自配置生效。
+   */
+  enableDiagnostics?: boolean;
+  /**
    * Provider 允许自定义扩展字段
    * [key: string]: unknown;
    */

@@ -28,6 +28,8 @@ export const DSH_STORAGE_KEYS = {
   CURRENT_SESSION: "dsh.sessions.current",
   /** 选中的页面元素（bridge 写入，dsh-client 的 @aipanel source 读取） */
   SELECTION: "dsh.bridge.selection",
+  /** 诊断功能开关标记（bridge 按 provider 配置写入，dsh-client 据此决定是否注册诊断视图） */
+  DIAGNOSTICS_ENABLED: "dsh.bridge.diagnostics.enabled",
 } as const;
 
 /** ==================== Provider 专属配置默认值 ==================== */

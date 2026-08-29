@@ -12,14 +12,17 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --target=node18 --external:@deepseek-ai/* --external:node:*",
+    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --target=node18 --external:@deepseek-ai/* --external:node:* --external:vue-tsc",
     "typecheck": "tsc -p tsconfig.json"
   },
+  "dependencies": {
+    "vue-tsc": "^3.3.9"
+  },
   "devDependencies": {
+    "@aipanel/core": "workspace:*",
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-agent": "^0.1.1-rc.2",
     "@deepseek-ai/dsh-llm": "^0.1.1-rc.2",
-    "@deepseek-ai/dsh-subprocess": "^0.1.1-rc.2",
     "@deepseek-ai/dsh-tools": "^0.1.1-rc.2",
     "esbuild": "^0.25.0"
   }

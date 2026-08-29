@@ -11,6 +11,8 @@ import { DSH_STORAGE_KEYS } from "./constants";
 export interface BridgeScriptOptions {
   /** 主题模式 */
   theme?: "light" | "dark" | "auto";
+  /** 诊断功能开关（provider option enableDiagnostics；写入 localStorage 供 dsh-client 决定是否注册诊断视图） */
+  diagnosticsEnabled?: boolean;
 }
 
 /**
@@ -20,12 +22,25 @@ export interface BridgeScriptOptions {
  * 若 dsh 后续暴露正式切会话接口，可替换以下 FOCUS_SESSION 分支。
  */
 export function generateBridgeScript(options: BridgeScriptOptions = {}): string {
-  const { theme = "auto" } = options;
+  const { theme = "auto", diagnosticsEnabled = false } = options;
   return `
 (function() {
   const CURRENT_SESSION_KEY = ${JSON.stringify(DSH_STORAGE_KEYS.CURRENT_SESSION)};
   const SELECTION_KEY = ${JSON.stringify(DSH_STORAGE_KEYS.SELECTION)};
+  const DIAGNOSTICS_KEY = ${JSON.stringify(DSH_STORAGE_KEYS.DIAGNOSTICS_ENABLED)};
+  const DIAGNOSTICS_ENABLED = ${JSON.stringify(diagnosticsEnabled)};
   const THEME = ${JSON.stringify(theme)};
+
+  // 诊断功能开关：同步写入（不依赖 DOM），保证 dsh-client apply 时即可读到标记。
+  // bridge 脚本注入于 <head>，dsh-client 插件在页面脚本/React 初始化后才 apply，
+  // 若等 DOMContentLoaded 再写则存在时序竞争，视图可能漏注册。
+  try {
+    if (DIAGNOSTICS_ENABLED) {
+      localStorage.setItem(DIAGNOSTICS_KEY, "1");
+    } else {
+      localStorage.removeItem(DIAGNOSTICS_KEY);
+    }
+  } catch (e) { /* ignore */ }
 
   // 桥接层通知 dsh-client 的选中元素插入事件（与 opencode 一致：选中即追加到对话框）
   const INSERT_ELEMENT_EVENT = "aipanel:insert-element";

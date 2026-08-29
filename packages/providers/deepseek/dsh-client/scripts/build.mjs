@@ -19,7 +19,15 @@ export async function buildClient() {
     platform: "browser",
     format: "cjs",
     target: "es2020",
-    external: ["react", "react-dom", "@deepseek-ai/*", "ui-slots", "ui-primitives"],
+    jsx: "automatic",
+    external: [
+      "react",
+      "react-dom",
+      "react/jsx-runtime",
+      "@deepseek-ai/*",
+      "ui-slots",
+      "ui-primitives",
+    ],
     bundle: true,
     banner: {
       js: [

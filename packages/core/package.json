@@ -30,5 +30,8 @@
     "build": "pagoda-cli build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.declaration.json --noEmit"
+  },
+  "dependencies": {
+    "vue-tsc": "^3.3.9"
   }
 }

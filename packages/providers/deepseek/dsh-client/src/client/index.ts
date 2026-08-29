@@ -14,6 +14,7 @@ import type {
   ReferenceInsert,
 } from "@deepseek-ai/dsh-client-ui-input-trigger/client";
 import type { Context } from "@deepseek-ai/cordis";
+import { registerDiagnosticsView } from "./diagnostics-view";
 
 const SELECTION_STORAGE_KEY = "dsh.bridge.selection";
 
@@ -128,6 +129,9 @@ function readSelectionCandidates(): InputTriggerCandidate[] {
 }
 
 export function apply(ctx: Context) {
+  // 注册 run_diagnostics 诊断卡片视图（host 端 presentationMeta 持久化的结构化诊断）
+  registerDiagnosticsView(ctx);
+
   const inputTriggers = ctx.get("inputTriggers");
   if (!inputTriggers) return;
 
@@ -248,7 +252,8 @@ export function apply(ctx: Context) {
     const current = sessions?.list?.getSnapshot()?.current;
     if (!current) return;
     try {
-      const actx = sessions.scope?.(current);
+      const actx = sessions?.scope?.(current);
+      if (!actx) return;
       const input = conversation?.input?.for?.(actx);
       if (!input || typeof input.insertReference !== "function") return;
       const snapshot = input.state?.getSnapshot?.();
@@ -279,9 +284,16 @@ export function apply(ctx: Context) {
       // 紧贴文字（如"的@节点[n...]"）不会高亮；插入点前一个字符非空白时先补一个空格。
       let leadingSpace = 0;
       let rev = snapshot.draftRev;
+      // rc.2 类型未含 insertText（运行时存在），按运行态形状收窄
+      const insertable = input as unknown as {
+        insertText?: (
+          text: string,
+          opts: { start: number; end: number; draftRev: unknown },
+        ) => boolean;
+      };
       if (start > 0 && !/\s/.test(snapshot.draft[start - 1])) {
         try {
-          if (input.insertText?.(" ", { start, end, draftRev: rev })) {
+          if (insertable.insertText?.(" ", { start, end, draftRev: rev })) {
             const next = input.state?.getSnapshot?.();
             if (next) {
               leadingSpace = 1;

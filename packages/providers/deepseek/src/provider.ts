@@ -79,9 +79,12 @@ export class DeepSeekWebProvider implements WebProvider {
     return generateBridgeScript(this.bridgeOptions);
   }
 
-  /** 初始化桥接配置（主题等） */
+  /** 初始化桥接配置（主题、诊断开关等） */
   applyConfig(config: ProviderConfig): void {
-    this.bridgeOptions = { theme: config.theme ?? "auto" };
+    this.bridgeOptions = {
+      theme: config.theme ?? "auto",
+      diagnosticsEnabled: this.opts.enableDiagnostics ?? false,
+    };
   }
 
   async checkEnvironment(): Promise<ProviderEnvironmentInfo> {
@@ -150,6 +153,8 @@ or run without installing:
       cwd: options.cwd,
       pluginAvailable,
       clientAvailable,
+      autoDiagnose: this.opts.autoDiagnose,
+      enableDiagnostics: this.opts.enableDiagnostics,
     });
     const patchPath = writeDshOverlay(options.cwd, overlay);
 
@@ -400,5 +405,8 @@ function resolveDeepSeekOptions(options?: Record<string, unknown>): DeepSeekProv
       (options.permissionPreset as DeepSeekPermissionPreset | undefined),
     busyEnter:
       (po.busyEnter as DeepSeekBusyEnter) ?? (options.busyEnter as DeepSeekBusyEnter | undefined),
+    autoDiagnose: (po.autoDiagnose as boolean) ?? (options.autoDiagnose as boolean | undefined),
+    enableDiagnostics:
+      (po.enableDiagnostics as boolean) ?? (options.enableDiagnostics as boolean | undefined),
   };
 }

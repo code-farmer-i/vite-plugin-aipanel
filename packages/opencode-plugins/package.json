@@ -26,7 +26,6 @@
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.18.0",
-    "@aipanel/core": "workspace:*",
-    "vue-tsc": "^3.3.9"
+    "@aipanel/core": "workspace:*"
   }
 }

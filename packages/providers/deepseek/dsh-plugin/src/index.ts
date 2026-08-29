@@ -2,14 +2,19 @@
  * AIPanel × DeepSeek Harness 插件
  *
  * 运行在 dsh 宿主进程（Cordis 插件），向 dsh agent 提供 AIPanel 能力：
- *  1. run_diagnostics 审查工具（对标 opencode 质量门禁，手动触发 ESLint + tsc）
- *  2. tools/post-execute：编辑工具（write/edit）执行后自动追加诊断回报（不做回滚）
+ *  1. run_diagnostics 审查工具（对标 opencode 质量门禁，手动触发 ESLint + vue-tsc）
+ *  2. tools/post-execute：编辑工具（write/edit）执行后自动把诊断并入工具结果（不做回滚）
+ *
+ * 诊断引擎（ESLint/vue-tsc/格式化/全量诊断）统一由 @aipanel/core/node 提供，
+ * 与 opencode 侧质量门禁共用同一实现，保证行为一致。
  *
  * 依赖策略：本插件保持"零运行时 @deepseek-ai 依赖"（全部 type-only import），
  * 只通过宿主注入的 ctx API + 纯数据对象（tool 定义 / 消息体）交互。
  * 因此产物可被 dsh 以 file:// 或 npm 包 + profile 安装两种方式加载，
  * 无需处理 @deepseek-ai/* 的 peer 依赖解析（profile 安装时 autoInstallPeers=false）。
+ * @aipanel/core 在构建期被 esbuild bundle 进产物，运行时自包含。
  */
+import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Context } from "@deepseek-ai/cordis";
@@ -19,13 +24,21 @@ import type {
   ToolExecution,
   ToolExecutionResult,
   ToolRuntime,
-  ToolRunContext,
 } from "@deepseek-ai/dsh-tools";
-import type { SubprocessRuntime } from "@deepseek-ai/dsh-subprocess";
 import type { UserMessage } from "@deepseek-ai/dsh-llm";
+import type { JsonValue } from "@deepseek-ai/dsh-tools";
+import {
+  runAllChecks,
+  runProjectDiagnostics,
+  isJsFile,
+  SEVERITY_ERROR,
+  type DiagnosticItem,
+  type EslintOutput,
+  type TscResult,
+} from "@aipanel/core/node";
 
 export const name = "aipanel";
-export const inject = ["tools", "subprocess"];
+export const inject = ["tools"];
 
 /** 来自 provider.start() 生成的 cordis overlay 注入的 config */
 export interface AipanelPluginConfig {
@@ -35,22 +48,19 @@ export interface AipanelPluginConfig {
   vitePort?: number;
   /** 核心层 context 端点路径（由 overlay 从 @aipanel/core 的 CONTEXT_API_PATH 常量注入） */
   contextApiPath?: string;
-  /** 编辑后是否自动补跑诊断 */
+  /**
+   * 编辑后是否自动补跑诊断。
+   * 与 opencode 对齐：默认关闭，仅当显式配置为 true 或环境变量
+   * OPENCODE_ENABLE_LINT=1 时开启。
+   */
   autoDiagnose?: boolean;
+  /**
+   * 诊断功能总开关（provider option enableDiagnostics）。
+   * false（默认）时不注册 run_diagnostics 工具与编辑后自动诊断逻辑。
+   */
+  enableDiagnostics?: boolean;
 }
 
-/** 常见被诊断的源码扩展名 */
-const JS_EXTENSIONS = new Set([
-  ".js",
-  ".jsx",
-  ".ts",
-  ".tsx",
-  ".mjs",
-  ".cjs",
-  ".mts",
-  ".cts",
-  ".vue",
-]);
 const MUTATING_TOOLS = new Set(["write", "edit", "apply_patch"]);
 
 /** 核心层 context 端点路径的兜底默认值（与 @aipanel/core 的 CONTEXT_API_PATH 保持一致；优先取 config 注入值） */
@@ -91,129 +101,217 @@ function buildNodeContext(e: ContextElement): string {
   return lines.join("\n");
 }
 
-/** 诊断子进程的输出上限与宽限时间（避免大仓库输出撑爆上下文） */
-const STDOUT_MAX_BYTES = 200_000;
-const STDOUT_SPILL_MAX_BYTES = 2_000_000;
-const STDERR_MAX_BYTES = 100_000;
-const GRACE_MS = 30_000;
+/** 归一化后的单条诊断（canonical 输出 / presentationMeta 持久化 / client 渲染共用） */
+interface DiagnosticEntry {
+  /** 所属文件（绝对路径，由诊断引擎解析） */
+  file: string;
+  /** 1-based 行号 */
+  line: number;
+  /** 1-based 列号 */
+  column: number;
+  severity: "error" | "warning";
+  message: string;
+}
+
+/** 单条诊断分区（ESLint / vue-tsc） */
+interface DiagnosticsSection {
+  title: string;
+  text: string;
+}
+
+/** run_diagnostics 的结构化 canonical 输出 */
+interface DiagnosticsCanonical {
+  title: string;
+  sections: DiagnosticsSection[];
+  diagnostics: DiagnosticEntry[];
+}
+
+/** 把诊断引擎的结构化诊断项归一化为可展示/持久化条目（LSP 零基坐标 → 1-based） */
+function toDiagnosticEntries(items: DiagnosticItem[]): DiagnosticEntry[] {
+  return items.map((d) => ({
+    file: d.file ?? "",
+    line: d.range.start.line + 1,
+    column: d.range.start.character + 1,
+    severity: d.severity === SEVERITY_ERROR ? "error" : "warning",
+    message: d.message,
+  }));
+}
+
+/** 由诊断引擎结果组装 run_diagnostics 的 canonical 值（文本分区 + 结构化诊断） */
+function buildDiagnosticsCanonical(
+  title: string,
+  eslintOutput: EslintOutput,
+  tscOutput: TscResult,
+): DiagnosticsCanonical {
+  return {
+    title,
+    sections: [
+      { title: "ESLint", text: eslintOutput.text || "没有发现问题" },
+      { title: "vue-tsc", text: tscOutput.rawOutput.trim() || "没有发现类型错误" },
+    ],
+    diagnostics: [
+      ...toDiagnosticEntries(eslintOutput.diagnostics ?? []),
+      ...toDiagnosticEntries(tscOutput.diagnostics ?? []),
+    ],
+  };
+}
+
+/** 从 canonical 值重组模型可见文本（与 formatDiagnosticsSections 分区格式一致） */
+function renderDiagnosticsText(value: DiagnosticsCanonical): string {
+  const body = value.sections.map((s) => `## ${s.title}\n\n${s.text}`).join("\n\n");
+  return body ? `${value.title}\n\n${body}` : value.title;
+}
 
 export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
   const cwd = config.cwd ?? process.cwd();
-  const autoDiagnose = config.autoDiagnose ?? true;
+  // 诊断功能总开关：关闭时不注入 run_diagnostics 工具与自动诊断逻辑
+  const enableDiagnostics = config.enableDiagnostics ?? false;
+  // 与 opencode 对齐：默认关闭自动诊断，OPENCODE_ENABLE_LINT=1（或显式配置）开启
+  const autoDiagnose = config.autoDiagnose ?? process.env.OPENCODE_ENABLE_LINT === "1";
   const vitePort = config.vitePort ?? 0;
   const contextApiPath = config.contextApiPath ?? DEFAULT_CONTEXT_API_PATH;
 
   const tools: ToolRuntime = ctx.tools;
-  const subprocess: SubprocessRuntime = ctx.subprocess;
 
-  /** 以 npx 执行命令并收集 stdout；失败时返回错误信息（由调用方决定如何回报） */
-  async function collectOutput(
-    argv: string[],
-    signal: AbortSignal,
-  ): Promise<{ text: string; error?: string }> {
-    try {
-      const exe = await subprocess.resolveExecutable("npx", undefined, signal);
-      const proc = subprocess.spawn({
-        argv: [exe, ...argv],
-        cwd,
-        stdio: {
-          stdin: "ignore",
-          stdout: { maxBytes: STDOUT_MAX_BYTES, spill: { maxBytes: STDOUT_SPILL_MAX_BYTES } },
-          stderr: { maxBytes: STDERR_MAX_BYTES },
-        },
-        graceMs: GRACE_MS,
-        signal,
-      });
-      await proc.done;
-      return { text: proc.collected.stdout?.readFrom(0)?.text ?? "" };
-    } catch (e) {
-      return { text: "", error: String(e) };
-    }
-  }
-
-  /** 在目标目录运行 tsc/eslint，汇总诊断文本（collect 模式，带输出上限） */
-  async function runDiagnostics(filePath: string, signal: AbortSignal): Promise<string> {
-    const parts: string[] = [];
-
-    // tsc：失败时注明跳过原因，便于排查宿主侧 npx 环境问题
-    const tsc = await collectOutput(["tsc", "--noEmit", "--pretty", "false"], signal);
-    if (tsc.error) parts.push("## tsc\n\n(diagnostics skipped: " + tsc.error + ")");
-    else if (tsc.text.trim()) parts.push("## tsc\n\n" + tsc.text.trim());
-
-    // eslint：未配置时静默忽略
-    const eslint = await collectOutput(["eslint", filePath, "--format", "compact"], signal);
-    if (eslint.text.trim()) parts.push("## eslint\n\n" + eslint.text.trim());
-
-    return parts.join("\n\n");
-  }
-
-  // === 1) 审查工具：手动触发诊断 ===
-  // 手写 ToolDefinition（等价于 defineTool 产物），避免运行时依赖 @deepseek-ai/dsh-tools
-  const diagnosticsTool: ToolDefinition = {
-    name: "run_diagnostics",
-    description:
-      "Run ESLint and TypeScript type checks on filePath and report problems. " +
-      "Use after editing code to verify no lint/type errors before proceeding.",
-    parameters: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        filePath: {
-          type: "string",
-          description: "Absolute or cwd-relative file path to diagnose",
+  // === 1) 审查工具：手动触发诊断（仅在 enableDiagnostics 开启时注册） ===
+  if (enableDiagnostics) {
+    // 手写 ToolDefinition（等价于 defineTool 产物），避免运行时依赖 @deepseek-ai/dsh-tools
+    const diagnosticsTool: ToolDefinition = {
+      name: "run_diagnostics",
+      description:
+        "运行 ESLint 和 vue-tsc 类型检查，返回诊断结果。\n\n" +
+        "**何时使用此工具**：\n" +
+        "- 刚完成代码修改，想验证是否有 ESLint 错误或类型错误\n" +
+        "- 在提交代码前进行质量检查\n" +
+        "- 排查编辑器未显示但实际存在的类型问题\n" +
+        "- 不传参数可全量诊断整个项目\n\n" +
+        "**诊断内容**：\n" +
+        "- ESLint 规则检查（error 和 warning）\n" +
+        "- vue-tsc 类型检查（TypeScript 类型错误和警告）",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          filePath: {
+            type: "string",
+            description: "要诊断的文件路径（绝对路径或相对路径），不传则全量诊断整个项目",
+          },
         },
       },
-      required: ["filePath"],
-    },
-    output: {
-      schema: { type: "string" },
-      render: (_args: unknown, value: string) => [{ type: "text", text: value }],
-    },
-    async execute(args: unknown, exec: ToolRunContext) {
-      const filePath = (args as { filePath?: unknown } | undefined)?.filePath;
-      const target = typeof filePath === "string" ? path.resolve(cwd, filePath) : cwd;
-      return runDiagnostics(target, exec.signal).catch((e) => "diagnostics failed: " + String(e));
-    },
-  };
-  tools.register(diagnosticsTool);
-
-  // === 2) 编辑后自动诊断（不做回滚） ===
-  ctx.on(
-    "tools/post-execute",
-    async (
-      exec: ToolExecution,
-      result: Readonly<ToolExecutionResult>,
-      next: () => Promise<PostToolDecision>,
-    ) => {
-      const decision = await next();
-      if (!autoDiagnose) return decision;
-      if (!MUTATING_TOOLS.has(exec.name)) return decision;
-      if (result.isError) return decision;
-      if (decision.kind !== "accept") return decision;
-
-      // exec.arguments 是 unknown，写工具自行校验；这里只取用到的字段
-      const filePath = (exec.arguments as { filePath?: unknown } | undefined)?.filePath;
-      if (typeof filePath !== "string" || !filePath) return decision;
-      if (!JS_EXTENSIONS.has(path.extname(filePath))) return decision;
-
-      const diag = await runDiagnostics(path.resolve(cwd, filePath), exec.signal).catch(
-        () => "diagnostics unavailable",
-      );
-      // 手写 createUserMessage 等价对象（role/content/source/id），避免运行时依赖 @deepseek-ai/dsh-llm
-      const message = {
-        role: "user" as const,
-        id: randomUUID(),
-        content: [
-          {
-            type: "text" as const,
-            text: `Auto diagnostics after ${exec.name} (${filePath}):\n${diag}`,
+      output: {
+        // 结构化 canonical 输出：文本分区（模型可见）+ 诊断数组（持久化供 client 渲染）
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            title: { type: "string" },
+            sections: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  title: { type: "string" },
+                  text: { type: "string" },
+                },
+                required: ["title", "text"],
+              },
+            },
+            diagnostics: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  file: { type: "string" },
+                  line: { type: "integer" },
+                  column: { type: "integer" },
+                  severity: { type: "string", enum: ["error", "warning"] },
+                  message: { type: "string" },
+                },
+                required: ["file", "line", "column", "severity", "message"],
+              },
+            },
           },
+          required: ["title", "sections", "diagnostics"],
+        },
+        // canonical → 模型可见文本（## ESLint / ## vue-tsc 分区，与 formatDiagnosticsSections 一致）
+        render: (_args: unknown, value) => [
+          { type: "text", text: renderDiagnosticsText(value as unknown as DiagnosticsCanonical) },
         ],
-        source: { kind: "plugin" as const, plugin: name },
-      } as UserMessage;
-      return { kind: "accept", additionalContexts: [message] };
-    },
-  );
+        // 结构化诊断投影进持久化 meta（tool/result.meta），client 侧 dsh-client 据此渲染诊断卡片
+        presentationMeta: (_args: unknown, value) =>
+          ({
+            diagnostics: (value as unknown as DiagnosticsCanonical).diagnostics,
+          }) as unknown as JsonValue,
+      },
+      async execute(args: unknown) {
+        const filePath = (args as { filePath?: unknown } | undefined)?.filePath;
+        if (typeof filePath === "string" && filePath) {
+          // 单文件诊断（与 opencode 一致：先校验文件存在）
+          const resolved = path.resolve(cwd, filePath);
+          if (!fs.existsSync(resolved)) throw new Error(`文件不存在: ${resolved}`);
+          const { eslintOutput, tscOutput } = await runAllChecks(resolved, cwd);
+          return buildDiagnosticsCanonical(
+            `诊断结果: ${path.relative(cwd, resolved)}`,
+            eslintOutput,
+            tscOutput,
+          );
+        }
+        // 全量诊断（与 opencode 一致：根 tsconfig 优先，否则逐子目录）
+        const { eslintOutput, tscOutput } = await runProjectDiagnostics(cwd);
+        return buildDiagnosticsCanonical("全量诊断结果", eslintOutput, tscOutput);
+      },
+    };
+    tools.register(diagnosticsTool);
+
+    // === 2) 编辑后自动诊断（不做回滚） ===
+    ctx.on(
+      "tools/post-execute",
+      async (
+        exec: ToolExecution,
+        result: Readonly<ToolExecutionResult>,
+        next: () => Promise<PostToolDecision>,
+      ) => {
+        const decision = await next();
+        if (!autoDiagnose) return decision;
+        if (!MUTATING_TOOLS.has(exec.name)) return decision;
+        if (result.isError) return decision;
+        if (decision.kind !== "accept") return decision;
+
+        // exec.arguments 是 unknown，写工具自行校验；这里只取用到的字段
+        const filePath = (exec.arguments as { filePath?: unknown } | undefined)?.filePath;
+        if (typeof filePath !== "string" || !filePath) return decision;
+        if (!isJsFile(filePath)) return decision;
+
+        const { eslintOutput, tscOutput } = await runAllChecks(
+          path.resolve(cwd, filePath),
+          cwd,
+        ).catch((): { eslintOutput: EslintOutput; tscOutput: TscResult } => ({
+          eslintOutput: {},
+          tscOutput: { rawOutput: "", exitCode: 0 },
+        }));
+
+        // 与 opencode tool.execute.after 相同的诊断拼装；空结果不改动工具输出
+        const parts: string[] = [];
+        if (tscOutput.rawOutput.trim()) parts.push("## vue-tsc\n\n" + tscOutput.rawOutput.trim());
+        if (eslintOutput.text) parts.push("## ESLint\n\n" + eslintOutput.text);
+        const diagText = parts.join("\n\n");
+        if (!diagText) return decision;
+
+        // 诊断并入编辑工具的结果 content（对齐 opencode tool.execute.after 的
+        // `output.output += diagText` 行为）：不新增 user 消息，UI 展示为工具结果卡片的一部分，
+        // 模型在同一个 tool/result 里看到诊断，会话流不被额外消息污染。
+        // 注意：post-execute 默认决策是 { kind: "accept" }（无 content），decision.content 可能为
+        // undefined，必须基于工具原始结果 result.content 追加，否则会覆盖 write/edit 的渲染内容。
+        const existing = (decision.kind === "accept" && decision.content) || result.content;
+        return {
+          kind: "accept" as const,
+          content: [...existing, { type: "text", text: `\n\n${diagText}` }],
+        };
+      },
+    );
+  } // 诊断功能（run_diagnostics + 自动诊断）注册结束
 
   // === 3) 选中元素上下文注入（按用户消息中的 @节点[id] 标记精确反查） ===
   // 用户在 AIPanel 页面选中元素后，client 侧把元素（带节点 id）写入核心层 context 端点，

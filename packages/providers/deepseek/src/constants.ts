@@ -36,4 +36,8 @@ export const DSH_STORAGE_KEYS = {
 
 export const DEFAULT_DEEPSEEK_PROVIDER_OPTIONS: DeepSeekProviderOptions = {
   agentPreset: "code",
+  // 对齐 opencode 的 enableLsp（默认 true）：诊断功能默认开启
+  enableDiagnostics: true,
+  // 对齐 opencode：自动诊断默认开启
+  autoDiagnose: true,
 };

@@ -30,7 +30,7 @@ export function buildDshOverlay(options: {
   autoDiagnose?: boolean;
   /**
    * 诊断功能总开关（provider option enableDiagnostics）。
-   * false（默认）时 host 插件不注册 run_diagnostics 工具与自动诊断逻辑。
+   * true（默认，对齐 opencode enableLsp）时 host 插件注册 run_diagnostics 工具与自动诊断逻辑。
    */
   enableDiagnostics?: boolean;
 }): string {
@@ -40,7 +40,7 @@ export function buildDshOverlay(options: {
     pluginAvailable = true,
     clientAvailable = true,
     autoDiagnose,
-    enableDiagnostics = false,
+    enableDiagnostics = true,
   } = options;
   const mcpUrl = `http://127.0.0.1:${vitePort}${MCP_API_PATH}`;
 

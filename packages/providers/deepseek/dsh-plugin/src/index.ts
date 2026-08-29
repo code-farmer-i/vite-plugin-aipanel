@@ -55,8 +55,9 @@ export interface AipanelPluginConfig {
    */
   autoDiagnose?: boolean;
   /**
-   * 诊断功能总开关（provider option enableDiagnostics）。
-   * false（默认）时不注册 run_diagnostics 工具与编辑后自动诊断逻辑。
+   * 诊断功能总开关（provider option enableDiagnostics，默认开启，对齐 opencode enableLsp）。
+   * false 时不注册 run_diagnostics 工具与编辑后自动诊断逻辑。
+   * overlay 始终显式注入；缺失配置时按 fail-closed 处理（不注入）。
    */
   enableDiagnostics?: boolean;
 }

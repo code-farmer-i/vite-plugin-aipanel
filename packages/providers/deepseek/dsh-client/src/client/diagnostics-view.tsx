@@ -103,9 +103,8 @@ function relativize(path: string, cwd?: string): string {
 }
 
 const styles = {
-  count: { color: "var(--dsw-alias-label-tertiary, #9ca3af)", fontWeight: 500, fontSize: 12 },
   sep: {
-    background: "var(--dsw-alias-label-caption, #555)",
+    background: "var(--dsw-alias-label-caption)",
     borderRadius: 1,
     flex: "none",
     width: 2,
@@ -116,7 +115,7 @@ const styles = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     minWidth: 0,
-    color: "var(--dsw-alias-label-tertiary, #9ca3af)",
+    color: "var(--dsw-alias-label-tertiary)",
     flex: "auto",
     fontSize: 12,
     lineHeight: 24,
@@ -126,7 +125,63 @@ const styles = {
     display: "flex",
     alignItems: "flex-start",
     gap: 8,
-    padding: "4px 0 4px 22px",
+    padding: "5px 0 5px 4px",
+  },
+  card: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    margin: "4px 0 4px 4px",
+    padding: "8px 12px",
+    borderRadius: 12,
+    background: "var(--dsw-alias-markdown-code-block)",
+  },
+  cardHead: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    paddingBottom: 6,
+    marginBottom: 4,
+    borderBottom: "1px solid var(--dsw-alias-border-l1)",
+  },
+  cardTitle: {
+    color: "var(--dsw-alias-label-primary)",
+    fontWeight: 600,
+    fontSize: 12,
+    lineHeight: 1.4,
+  },
+  scopeBadge: {
+    color: "var(--dsw-alias-label-secondary)",
+    fontSize: 11,
+    lineHeight: 1,
+    padding: "3px 8px",
+    borderRadius: 999,
+    border: "1px solid var(--dsw-alias-border-l2)",
+  },
+  target: {
+    display: "block",
+    width: "100%",
+    textAlign: "left",
+    border: "none",
+    background: "none",
+    padding: "0 0 4px 0",
+    margin: "0 0 4px 0",
+    color: "var(--dsw-alias-label-secondary)",
+    fontSize: 12,
+    fontFamily:
+      "var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace)",
+    cursor: "pointer",
+    textDecoration: "underline",
+  },
+  targetText: {
+    display: "block",
+    padding: "0 0 4px 0",
+    margin: "0 0 4px 0",
+    color: "var(--dsw-alias-label-secondary)",
+    fontSize: 12,
+    fontFamily:
+      "var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace)",
   },
   marker: { flex: "0 0 auto", width: 14, textAlign: "center", fontSize: 12, lineHeight: 1.6 },
   diagBody: {
@@ -137,20 +192,25 @@ const styles = {
     gap: 3,
   },
   loc: {
-    color: "var(--dsw-alias-label-tertiary, #9ca3af)",
+    color: "var(--dsw-alias-label-tertiary)",
     fontSize: 12,
     lineHeight: 1.4,
   },
   msg: {
-    color: "var(--dsw-alias-label-primary, #f0f0f0)",
+    color: "var(--dsw-alias-label-primary)",
     fontSize: 12,
     lineHeight: 1.6,
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
   },
+  successMsg: {
+    color: "var(--dsw-alias-state-success-primary)",
+    fontSize: 12,
+    lineHeight: 1.6,
+  },
 } as const;
 
-function DiagnosticsRow({ block, cwd, toolName }: ToolCallOwnerProps) {
+function DiagnosticsRow({ block, cwd, toolName, openFile }: ToolCallOwnerProps) {
   const diagnostics = readDiagnostics(block);
   const [expanded, setExpanded] = useState(false);
 
@@ -159,8 +219,28 @@ function DiagnosticsRow({ block, cwd, toolName }: ToolCallOwnerProps) {
   const errors = (diagnostics ?? []).filter((d) => d.severity === "error");
   const warnings = (diagnostics ?? []).filter((d) => d.severity === "warning");
 
-  const errColor = "var(--dsw-alias-state-error-primary, #ef4444)";
-  const warnColor = "var(--dsw-alias-state-warn-primary, #f59e0b)";
+  // 从模型可见文本首行区分单文件（"诊断结果: <文件>"）与全量（"全量诊断结果"）审查
+  const contentText = extractBlockText(block);
+  const firstLine = (contentText.split("\n")[0] || "").trim();
+  const isFullProject = /^全量诊断结果/.test(firstLine);
+  const scope = isFullProject ? "project" : "file";
+  const scopeLabel = isFullProject ? "全量" : "单文件";
+  const cardTitle = "诊断结果";
+  // 目标文件：单文件优先取结构化诊断的绝对文件（可点击），否则取标题行相对路径（仅展示）
+  const titleFileMatch = /^诊断结果:\s*(.+)$/.exec(firstLine);
+  const targetFile =
+    scope === "file" && diagnostics && diagnostics.length > 0 ? diagnostics[0].file : null;
+  const targetDisplay =
+    scope === "file"
+      ? targetFile
+        ? relativize(targetFile, cwd)
+        : titleFileMatch
+          ? titleFileMatch[1].trim()
+          : null
+      : null;
+
+  const errColor = "var(--dsw-alias-state-error-primary)";
+  const warnColor = "var(--dsw-alias-state-warn-primary)";
 
   const state = !isSettled
     ? "ongoing"
@@ -169,7 +249,7 @@ function DiagnosticsRow({ block, cwd, toolName }: ToolCallOwnerProps) {
       : warnings.length > 0
         ? "warning"
         : "done";
-  const expandable = hasDiagnostics;
+  const expandable = isSettled;
 
   let collapsed: ReactNode;
   if (hasDiagnostics) {
@@ -177,6 +257,8 @@ function DiagnosticsRow({ block, cwd, toolName }: ToolCallOwnerProps) {
       <>
         <span style={styles.sep} aria-hidden />
         <span style={styles.summary}>
+          <span style={{ color: "var(--dsw-alias-label-tertiary)" }}>{scopeLabel}</span>
+          <span aria-hidden> · </span>
           <span style={{ color: errColor }}>{errors.length} 错误</span> ·{" "}
           <span style={{ color: warnColor }}>{warnings.length} 警告</span>
         </span>
@@ -193,8 +275,10 @@ function DiagnosticsRow({ block, cwd, toolName }: ToolCallOwnerProps) {
     collapsed = (
       <>
         <span style={styles.sep} aria-hidden />
-        <span style={{ ...styles.summary, color: "var(--dsw-alias-state-success-primary, #34d399)" }}>
-          未发现问题
+        <span style={styles.summary}>
+          <span style={{ color: "var(--dsw-alias-label-tertiary)" }}>{scopeLabel}</span>
+          <span aria-hidden> · </span>
+          <span style={{ color: "var(--dsw-alias-state-success-primary)" }}>未发现问题</span>
         </span>
       </>
     );
@@ -214,29 +298,48 @@ function DiagnosticsRow({ block, cwd, toolName }: ToolCallOwnerProps) {
       open={expanded}
       expandable={expandable}
       expandOnRowClick={expandable}
-      keepContentWhenOpen={false}
+      keepContentWhenOpen={true}
       onToggle={() => setExpanded((v) => !v)}
       collapsedContent={collapsed}
     >
-      {expandable && expanded && hasDiagnostics ? (
-        diagnostics.map((d, i) => (
-          <div key={i} style={styles.diagnostic}>
-            <span
-              style={{
-                ...styles.marker,
-                color: d.severity === "error" ? errColor : warnColor,
-              }}
-            >
-              {d.severity === "error" ? "✖" : "⚠"}
-            </span>
-            <div style={styles.diagBody}>
-              <span style={styles.loc}>
-                {relativize(d.file, cwd)}:{d.line}:{d.column}
-              </span>
-              <span style={styles.msg}>{d.message}</span>
-            </div>
+      {expandable && expanded ? (
+        <div style={styles.card}>
+          <div style={styles.cardHead}>
+            <span style={styles.cardTitle}>{cardTitle}</span>
+            <span style={styles.scopeBadge}>{scopeLabel}</span>
           </div>
-        ))
+          {scope === "file" && targetDisplay ? (
+            targetFile && typeof openFile === "function" ? (
+              <button type="button" style={styles.target} onClick={() => openFile(targetFile)}>
+                {targetDisplay}
+              </button>
+            ) : (
+              <span style={styles.targetText}>{targetDisplay}</span>
+            )
+          ) : null}
+          {hasDiagnostics ? (
+            diagnostics.map((d, i) => (
+              <div key={i} style={styles.diagnostic}>
+                <span
+                  style={{
+                    ...styles.marker,
+                    color: d.severity === "error" ? errColor : warnColor,
+                  }}
+                >
+                  {d.severity === "error" ? "✖" : "⚠"}
+                </span>
+                <div style={styles.diagBody}>
+                  <span style={styles.loc}>
+                    {relativize(d.file, cwd)}:{d.line}:{d.column}
+                  </span>
+                  <span style={styles.msg}>{d.message}</span>
+                </div>
+              </div>
+            ))
+          ) : (
+            <span style={styles.successMsg}>未发现问题</span>
+          )}
+        </div>
       ) : null}
     </DisclosureRow>
   );

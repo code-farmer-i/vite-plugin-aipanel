@@ -375,6 +375,7 @@ export async function runProjectDiagnostics(workspace: string): Promise<Diagnost
       .filter(Boolean)
       .join("\n"),
     exitCode: tscOutputs.reduce((max, o) => Math.max(max, o.exitCode), 0),
+    diagnostics: tscOutputs.flatMap((o) => o.diagnostics ?? []),
   };
 
   return { eslintOutput, tscOutput: mergedTsc };

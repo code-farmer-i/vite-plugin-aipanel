@@ -276,12 +276,20 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
       ) => {
         const decision = await next();
         if (!autoDiagnose) return decision;
+        // PTC 子调度（run_code 程序内调 edit/write）：程序拿到的是 canonical value，
+        // 看不到 content 通道的追加文本，自动检查结果对程序与模型都不可见——
+        // 不白跑检查，程序需要诊断时主动调用 run_diagnostics 获取结构化结果。
+        if (exec.parent !== undefined) return decision;
         if (!MUTATING_TOOLS.has(exec.name)) return decision;
         if (result.isError) return decision;
         if (decision.kind !== "accept") return decision;
 
-        // exec.arguments 是 unknown，写工具自行校验；这里只取用到的字段
-        const filePath = (exec.arguments as { filePath?: unknown } | undefined)?.filePath;
+        // exec.arguments 是 unknown，写工具自行校验；这里只取用到的字段。
+        // 注意：dsh 官方写工具的参数字段是 snake_case `file_path`（write/edit），
+        // 兼容 camelCase `filePath`（自定义工具 / 未来变体）。
+        const rawArgs = exec.arguments as { file_path?: unknown; filePath?: unknown } | undefined;
+        const filePath =
+          typeof rawArgs?.file_path === "string" ? rawArgs.file_path : rawArgs?.filePath;
         if (typeof filePath !== "string" || !filePath) return decision;
         if (!isJsFile(filePath)) return decision;
 

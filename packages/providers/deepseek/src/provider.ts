@@ -399,14 +399,22 @@ function resolveDeepSeekOptions(options?: Record<string, unknown>): DeepSeekProv
   return {
     ...DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
     home: (po.home as string) ?? (options.home as string | undefined),
-    agentPreset: (po.agentPreset as string) ?? (options.agentPreset as string | undefined),
+    agentPreset:
+      (po.agentPreset as string) ??
+      (options.agentPreset as string | undefined) ??
+      DEFAULT_DEEPSEEK_PROVIDER_OPTIONS.agentPreset,
     permissionPreset:
       (po.permissionPreset as DeepSeekPermissionPreset) ??
       (options.permissionPreset as DeepSeekPermissionPreset | undefined),
     busyEnter:
       (po.busyEnter as DeepSeekBusyEnter) ?? (options.busyEnter as DeepSeekBusyEnter | undefined),
-    autoDiagnose: (po.autoDiagnose as boolean) ?? (options.autoDiagnose as boolean | undefined),
+    autoDiagnose:
+      (po.autoDiagnose as boolean) ??
+      (options.autoDiagnose as boolean | undefined) ??
+      DEFAULT_DEEPSEEK_PROVIDER_OPTIONS.autoDiagnose,
     enableDiagnostics:
-      (po.enableDiagnostics as boolean) ?? (options.enableDiagnostics as boolean | undefined),
+      (po.enableDiagnostics as boolean) ??
+      (options.enableDiagnostics as boolean | undefined) ??
+      DEFAULT_DEEPSEEK_PROVIDER_OPTIONS.enableDiagnostics,
   };
 }

@@ -4,13 +4,17 @@
  * host 端 dsh-plugin 通过 output.presentationMeta 把结构化诊断投影进持久化的
  * tool/result.meta；本视图从会话节点的 meta.diagnostics 读取并渲染为按严重级别
  * 着色的诊断列表（点击可打开文件），达到 opencode 诊断面板的呈现效果。
- * meta 缺失（旧日志 / 运行中）时回退到通用文本渲染。
+ * meta 缺失（旧日志 / 运行中 / PTC 子调度）时回退到通用文本渲染。
  *
  * 类型说明：dsh 客户端会话节点类型（ToolCallBlock / ToolResultNode）仅在新版
  * client 包发布，rc.2 生态不含其类型；这里按官方 records.ts 的运行时形状
  * 自定义最小结构（结构性兼容），不引入缺失依赖。
  */
 import type { Context } from "@deepseek-ai/cordis";
+import { useState, type ReactNode } from "react";
+// 与官方 dsh-client-ui-tool 一致：primitives 作为 external 运行时解析（dsh web 提供），
+// 不打包进产物（打包会带进 katex/markdown 整条子图，膨胀到 3.6MB）。
+import { DisclosureRow, StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 
 /** 与 host 端 dsh-plugin presentationMeta 持久化的条目结构一致 */
 interface DiagnosticEntry {
@@ -54,11 +58,6 @@ interface SlotsRegistryLike {
 /** bridge 按 provider option enableDiagnostics 写入的开关标记（与 provider constants 的 DSH_STORAGE_KEYS 对应） */
 const DIAGNOSTICS_STORAGE_KEY = "dsh.bridge.diagnostics.enabled";
 
-const ERROR_COLOR = "#f87171";
-const WARN_COLOR = "#fbbf24";
-const TEXT_COLOR = "#9ca3af";
-const HEAD_COLOR = "#e5e7eb";
-
 /** 从冻结的会话节点读取 host 侧持久化的诊断数据（校验通过才使用） */
 function readDiagnostics(block: unknown): DiagnosticEntry[] | undefined {
   if (typeof block !== "object" || block === null) return undefined;
@@ -68,6 +67,17 @@ function readDiagnostics(block: unknown): DiagnosticEntry[] | undefined {
   const diagnostics = meta?.diagnostics;
   if (!Array.isArray(diagnostics)) return undefined;
   return diagnostics.every(isEntry) ? (diagnostics as DiagnosticEntry[]) : undefined;
+}
+
+/** 拼出工具结果节点里的纯文本（text blocks join "\n"） */
+function extractBlockText(block: unknown): string {
+  if (typeof block !== "object" || block === null) return "";
+  const settled = block as SettledToolBlock;
+  if (!Array.isArray(settled.content)) return "";
+  return (settled.content ?? [])
+    .filter((b): b is { type: "text"; text: string } => b.type === "text" && typeof b.text === "string")
+    .map((b) => b.text)
+    .join("\n");
 }
 
 function isEntry(d: unknown): d is DiagnosticEntry {
@@ -92,89 +102,143 @@ function relativize(path: string, cwd?: string): string {
   return path;
 }
 
-/** 回退渲染：无结构化 meta 时展示工具结果的原始文本 */
-function RawResult({ block }: { block: unknown }) {
-  const settled = block as SettledToolBlock;
-  if (settled.kind !== "tool-result") {
-    return <div style={styles.card}>诊断运行中…</div>;
-  }
-  const text = (settled.content ?? [])
-    .filter((b): b is { type: "text"; text: string } => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
-  return (
-    <div style={styles.card}>
-      <pre style={styles.pre}>{text || "(无输出)"}</pre>
-    </div>
-  );
-}
-
 const styles = {
-  card: {
+  count: { color: "var(--dsw-alias-label-tertiary, #9ca3af)", fontWeight: 500, fontSize: 12 },
+  sep: {
+    background: "var(--dsw-alias-label-caption, #555)",
+    borderRadius: 1,
+    flex: "none",
+    width: 2,
+    height: 2,
+    margin: "0 8px",
+  },
+  summary: {
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    minWidth: 0,
+    color: "var(--dsw-alias-label-tertiary, #9ca3af)",
+    flex: "auto",
+    fontSize: 12,
+    lineHeight: 24,
+    overflow: "hidden",
+  },
+  diagnostic: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: "4px 0 4px 22px",
+  },
+  marker: { flex: "0 0 auto", width: 14, textAlign: "center", fontSize: 12, lineHeight: 1.6 },
+  diagBody: {
+    flex: 1,
+    minWidth: 0,
     display: "flex",
     flexDirection: "column",
-    gap: 4,
-    padding: "8px 12px",
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    fontSize: 12,
-    lineHeight: 1.5,
-    whiteSpace: "nowrap",
-    overflowX: "auto",
+    gap: 3,
   },
-  header: { fontWeight: 600, color: HEAD_COLOR },
-  count: { color: TEXT_COLOR, fontWeight: 400, marginLeft: 6 },
-  row: { display: "flex", alignItems: "baseline", gap: 6, cursor: "pointer" },
-  marker: { flex: "none" },
-  loc: { flex: "none", color: TEXT_COLOR },
-  msg: { color: HEAD_COLOR },
-  pre: { margin: 0, whiteSpace: "pre-wrap", color: HEAD_COLOR, font: "inherit" },
+  loc: {
+    color: "var(--dsw-alias-label-tertiary, #9ca3af)",
+    fontSize: 12,
+    lineHeight: 1.4,
+  },
+  msg: {
+    color: "var(--dsw-alias-label-primary, #f0f0f0)",
+    fontSize: 12,
+    lineHeight: 1.6,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+  },
 } as const;
 
-function DiagnosticsRow({ block, cwd, openFile }: ToolCallOwnerProps) {
+function DiagnosticsRow({ block, cwd, toolName }: ToolCallOwnerProps) {
   const diagnostics = readDiagnostics(block);
-  if (diagnostics === undefined) return <RawResult block={block} />;
+  const [expanded, setExpanded] = useState(false);
 
-  const errors = diagnostics.filter((d) => d.severity === "error");
-  const warnings = diagnostics.filter((d) => d.severity === "warning");
+  const isSettled = (block as SettledToolBlock)?.kind === "tool-result";
+  const hasDiagnostics = typeof diagnostics !== "undefined" && diagnostics.length > 0;
+  const errors = (diagnostics ?? []).filter((d) => d.severity === "error");
+  const warnings = (diagnostics ?? []).filter((d) => d.severity === "warning");
 
-  if (diagnostics.length === 0) {
-    return (
-      <div style={styles.card}>
-        <div style={styles.header}>✓ 未发现问题</div>
-      </div>
+  const errColor = "var(--dsw-alias-state-error-primary, #ef4444)";
+  const warnColor = "var(--dsw-alias-state-warn-primary, #f59e0b)";
+
+  const state = !isSettled
+    ? "ongoing"
+    : errors.length > 0
+      ? "error"
+      : warnings.length > 0
+        ? "warning"
+        : "done";
+  const expandable = hasDiagnostics;
+
+  let collapsed: ReactNode;
+  if (hasDiagnostics) {
+    collapsed = (
+      <>
+        <span style={styles.sep} aria-hidden />
+        <span style={styles.summary}>
+          <span style={{ color: errColor }}>{errors.length} 错误</span> ·{" "}
+          <span style={{ color: warnColor }}>{warnings.length} 警告</span>
+        </span>
+      </>
+    );
+  } else if (!isSettled) {
+    collapsed = (
+      <>
+        <span style={styles.sep} aria-hidden />
+        <span style={styles.summary}>诊断运行中…</span>
+      </>
+    );
+  } else if (diagnostics && diagnostics.length === 0) {
+    collapsed = (
+      <>
+        <span style={styles.sep} aria-hidden />
+        <span style={{ ...styles.summary, color: "var(--dsw-alias-state-success-primary, #34d399)" }}>
+          未发现问题
+        </span>
+      </>
+    );
+  } else {
+    collapsed = (
+      <>
+        <span style={styles.sep} aria-hidden />
+        <span style={styles.summary}>{extractBlockText(block) || "无输出"}</span>
+      </>
     );
   }
 
   return (
-    <div style={styles.card}>
-      <div style={styles.header}>
-        诊断结果
-        <span style={styles.count}>
-          {errors.length} 错误 · {warnings.length} 警告
-        </span>
-      </div>
-      {diagnostics.map((d, i) => (
-        <div
-          key={i}
-          style={styles.row}
-          title={d.message}
-          onClick={() => d.file && openFile(d.file)}
-        >
-          <span
-            style={{
-              ...styles.marker,
-              color: d.severity === "error" ? ERROR_COLOR : WARN_COLOR,
-            }}
-          >
-            {d.severity === "error" ? "✖" : "⚠"}
-          </span>
-          <span style={styles.loc}>
-            {relativize(d.file, cwd)}:{d.line}:{d.column}
-          </span>
-          <span style={styles.msg}>{d.message}</span>
-        </div>
-      ))}
-    </div>
+    <DisclosureRow
+      icon={<StateDot state={state} />}
+      title={toolName}
+      open={expanded}
+      expandable={expandable}
+      expandOnRowClick={expandable}
+      keepContentWhenOpen={false}
+      onToggle={() => setExpanded((v) => !v)}
+      collapsedContent={collapsed}
+    >
+      {expandable && expanded && hasDiagnostics ? (
+        diagnostics.map((d, i) => (
+          <div key={i} style={styles.diagnostic}>
+            <span
+              style={{
+                ...styles.marker,
+                color: d.severity === "error" ? errColor : warnColor,
+              }}
+            >
+              {d.severity === "error" ? "✖" : "⚠"}
+            </span>
+            <div style={styles.diagBody}>
+              <span style={styles.loc}>
+                {relativize(d.file, cwd)}:{d.line}:{d.column}
+              </span>
+              <span style={styles.msg}>{d.message}</span>
+            </div>
+          </div>
+        ))
+      ) : null}
+    </DisclosureRow>
   );
 }
 

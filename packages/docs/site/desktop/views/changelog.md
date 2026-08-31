@@ -1,5 +1,39 @@
 # 更新日志
 
+## v1.2.6
+
+`2026-08-31`
+
+### core
+
+#### ✨ 新增
+
+- 新增代码诊断引擎，封装 ESLint + vue-tsc 检查逻辑，作为审查工具与编辑后自动诊断的统一实现
+
+### deepseek
+
+#### ✨ 新增
+
+- 新增 `enableDiagnostics`（诊断总开关）与 `autoDiagnose`（编辑后自动诊断）配置项，默认开启，对齐 opencode `enableLsp` 的默认行为
+- 新增诊断卡片视图，结构化渲染诊断结果：卡片式布局、作用域标识、可点击的文件跳转，兼容 snake_case / camelCase 文件路径参数
+
+### opencode
+
+#### ⚡ 改进
+
+- 重构 block-on-error 插件，移除重复的诊断实现，统一复用核心层诊断引擎
+
+### ui
+
+#### 🐛 修复
+
+- 修复诊断面板展开逻辑，仅在任务完成后才可展开
+- 移除样式中的硬编码默认色值，统一使用 CSS 变量引用
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.6/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.5
 
 `2026-08-28`

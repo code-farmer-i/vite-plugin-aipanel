@@ -1,5 +1,22 @@
 # 更新日志
 
+## v1.2.7
+
+`2026-09-01`
+
+### opencode
+
+#### ⚡ 改进
+
+- 重构编辑后诊断插件：移除独立 `@aipanel/opencode-plugins` 包，插件随 provider 包一起编译到 `es/plugins`，统一复用核心层诊断引擎（与 dsh 侧审查工具共用同一实现，保证行为一致）
+- 新增 `run_diagnostics` 工具，支持 Agent 主动触发单文件或全量项目诊断（ESLint + vue-tsc）
+- 移除 `MIGRATED_TO_MCP_PLUGINS` 过滤逻辑，清理旧插件包残留
+- 移除 `enableBlockOnError` 配置项：编辑后不再因错误回滚文件，改为将诊断结果追加到工具输出供 Agent 查看，并同步清理 types / 默认配置 / 环境变量 / 文档速查表中的相关配置
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.7/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.6
 
 `2026-08-31`

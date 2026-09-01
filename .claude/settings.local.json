@@ -7,7 +7,6 @@
       "Bash(grep -oE '\"/\\\\$bunfs/root/index-[^\"]+\\\\.html\"')",
       "Bash(xxd /Users/chenkang/.nvm/versions/node/v24.13.0/lib/node_modules/opencode-ai/bin/.opencode)",
       "Bash(pnpm --filter @aipanel/ui build)",
-      "Bash(pnpm --filter @aipanel/opencode-plugins build)",
       "Bash(pnpm --filter @vite-plugin-aipanel/vite build)",
       "Bash(pnpm --filter vite-plugin-aipanel build)",
       "Bash(npm run:*)",
@@ -22,7 +21,6 @@
       "Bash(gh pr *)",
       "Bash(pnpm --filter @aipanel/ui exec vue-tsc --noEmit -p /Volumes/development/projects/vite-plugin-aipanel/packages/components/tsconfig.json)",
       "Bash(pnpm --filter @aipanel/ui exec vue-tsc --noEmit)",
-      "Bash(ls -la /Volumes/development/projects/vite-plugin-aipanel/node_modules/.pnpm/vite-plugin-aipanel*/node_modules/@aipanel/opencode-plugins/es/plugins/)",
       "Bash(git config *)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:github.com)"

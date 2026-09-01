@@ -25,8 +25,8 @@
     "typecheck": "tsc -p tsconfig.declaration.json --noEmit"
   },
   "dependencies": {
-    "@aipanel/opencode-plugins": "workspace:*",
     "@aipanel/core": "workspace:*",
+    "@opencode-ai/plugin": "^1.18.0",
     "execa": "^9.6.1"
   }
 }

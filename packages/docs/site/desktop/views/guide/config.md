@@ -63,7 +63,6 @@ aipanelAssistant({
       },
     },
     enableLsp: true, // 启用 LSP 诊断（TypeScript + ESLint），默认 true
-    enableBlockOnError: false, // 编辑有错误时回滚文件并拒绝修改，默认 false
     enablePrettier: true, // 启用代码格式化，默认 true
   },
 
@@ -78,7 +77,7 @@ aipanelAssistant({
 });
 ```
 
-> 旧写法（顶层 `language` / `settings` / `enableLsp` / `enableBlockOnError` / `enablePrettier`）仍兼容，但已废弃，推荐统一迁移到 `providerOptions` 段。
+> 旧写法（顶层 `language` / `settings` / `enableLsp` / `enablePrettier`）仍兼容，但已废弃，推荐统一迁移到 `providerOptions` 段。
 
 ## 配置项速查表
 
@@ -98,7 +97,6 @@ aipanelAssistant({
 | `providerOptions.language`           | `string`  | -             | 界面语言          |
 | `providerOptions.settings`           | `object`  | -             | Provider 内部设置 |
 | `providerOptions.enableLsp`          | `boolean` | `true`        | LSP 诊断          |
-| `providerOptions.enableBlockOnError` | `boolean` | `false`       | 编辑错误回滚      |
 | `providerOptions.enablePrettier`     | `boolean` | `true`        | 代码格式化        |
 | `logFiles`                           | `array`   | -             | 自定义日志文件    |
 

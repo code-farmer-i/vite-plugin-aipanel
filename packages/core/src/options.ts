@@ -52,8 +52,6 @@ export interface PluginOptions<P extends Record<string, unknown> = Record<string
   settings?: unknown;
   /** @deprecated 使用 providerOptions.enableLsp */
   enableLsp?: boolean;
-  /** @deprecated 使用 providerOptions.enableBlockOnError */
-  enableBlockOnError?: boolean;
   /** @deprecated 使用 providerOptions.enablePrettier */
   enablePrettier?: boolean;
 }

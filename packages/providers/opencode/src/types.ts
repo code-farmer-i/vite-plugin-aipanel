@@ -107,8 +107,6 @@ export type OpenCodeProviderOptions = {
   // === LSP 诊断配置 ===
   /** 启用 LSP 诊断（TypeScript + ESLint），agent 编辑文件后自动返回错误信息，默认 false */
   enableLsp?: boolean;
-  /** 启用 LSP 错误硬阻止：编辑后有错误则回滚文件并拒绝修改，默认 false */
-  enableBlockOnError?: boolean;
   /** 启用代码格式化功能（prettier），默认 true */
   enablePrettier?: boolean;
 
@@ -138,8 +136,6 @@ export interface WebOptions {
   logsApiUrl?: string;
   /** 日志文件配置（JSON 字符串） */
   logFilesJson?: string;
-  /** 启用 LSP 错误硬阻止（环境变量透传给 OpenCode 插件） */
-  enableBlockOnError?: boolean;
   /** 启用 verbose 模式（环境变量透传，调试日志输出） */
   verbose?: boolean;
   /** 启用 LSP / 质量门禁（环境变量透传，控制 block-on-error 插件运行） */

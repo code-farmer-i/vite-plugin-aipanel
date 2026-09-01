@@ -1,9 +1,9 @@
 /**
- * @fileoverview 质量门禁插件
+ * @fileoverview 编辑后诊断插件
  * @description edit/write 工具执行后：
  *   1. ESLint 检查（Node API）
  *   2. vue-tsc 类型检查（过滤当前文件诊断）
- *   3. 错误硬阻止（可选，OPENCODE_BLOCK_ON_ERROR=1 时回滚）
+ *   3. 诊断结果追加到工具输出，供 Agent 查看（不做回滚）
  *
  * 诊断引擎（ESLint/vue-tsc/格式化/全量诊断）统一由 @aipanel/core/node 提供，
  * 与 dsh 侧审查工具共用同一实现，保证行为一致。
@@ -28,22 +28,15 @@ if (process.env.OPENCODE_VERBOSE === "1") {
   setVerbose(true);
 }
 
-const log = createLogger("BlockOnError");
+const log = createLogger("EditDiagnostics");
 
-interface Snapshot {
-  filePath: string;
-  content: string | null;
-}
-
-const BLOCKED_TOOLS = new Set(["edit", "write", "apply_patch"]);
-const isBlocking = () => process.env.OPENCODE_BLOCK_ON_ERROR === "1";
+const EDIT_TOOLS = new Set(["edit", "write", "apply_patch"]);
 const isLintEnabled = () => process.env.OPENCODE_ENABLE_LINT === "1";
 
 export default {
-  id: "vite-plugin-aipanel/block-on-error",
+  id: "vite-plugin-aipanel/edit-diagnostics",
   async server(): Promise<Hooks> {
     const workspace = process.env.OPENCODE_WORKSPACE || process.cwd();
-    const snapshots = new Map<string, Snapshot>();
 
     // 定义 run_diagnostics 工具，让 agent 可以主动触发诊断
     const runDiagnosticsTool = tool({
@@ -104,24 +97,8 @@ export default {
     });
 
     return {
-      "tool.execute.before": async (input, output) => {
-        if (!BLOCKED_TOOLS.has(input.tool)) return;
-        if (!isBlocking()) return;
-
-        const args = output.args as Record<string, unknown>;
-        const filePath = args.filePath as string | undefined;
-        if (!filePath || !isJsFile(filePath)) return;
-
-        try {
-          const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : null;
-          snapshots.set(input.callID, { filePath, content });
-        } catch (err) {
-          log.warn("Failed to save file snapshot", { filePath, error: (err as Error).message });
-        }
-      },
-
       "tool.execute.after": async (input, output) => {
-        if (!BLOCKED_TOOLS.has(input.tool)) return;
+        if (!EDIT_TOOLS.has(input.tool)) return;
         if (!isLintEnabled()) return;
 
         const filePath = (input.args?.filePath as string) || "";
@@ -132,16 +109,10 @@ export default {
           filePath,
           processCwd: workspace,
           lintEnabled: isLintEnabled(),
-          blocking: isBlocking(),
         });
 
         // ESLint 和 vue-tsc 并行检查
         const { eslintOutput, tscOutput } = await runAllChecks(filePath, workspace);
-
-        // 判断是否有错误
-        const eslintError = !!eslintOutput.text;
-        const tscError = tscOutput.exitCode !== 0;
-        const anyError = eslintError || tscError;
 
         // 构建诊断原文
         const parts: string[] = [];
@@ -155,17 +126,17 @@ export default {
 
         log.debug("Diagnostics result", {
           filePath,
-          eslintError,
-          tscError,
-          anyError,
+          eslintError: !!eslintOutput.text,
+          tscError: tscOutput.exitCode !== 0,
         });
 
-        // 诊断信息追加到 output（无论是否 blocking）
+        // 诊断信息追加到 output（供 Agent 查看，不再回滚）
         if (diagText) {
           output.output += "\n\n" + diagText;
         }
 
         // 写入 metadata.diagnostics 供 UI 渲染
+        const anyError = !!eslintOutput.text || tscOutput.exitCode !== 0;
         if (anyError) {
           const meta = (output.metadata ?? (output.metadata = {})) as Record<string, unknown>;
           const existing = (meta.diagnostics ?? (meta.diagnostics = {})) as Record<
@@ -178,41 +149,6 @@ export default {
           ];
           existing[filePath] = [...(existing[filePath] ?? []), ...diags];
         }
-
-        // 错误回滚（仅 blocking 模式）
-        if (!isBlocking()) return;
-
-        const snap = snapshots.get(input.callID);
-        if (!snap) return;
-        snapshots.delete(input.callID);
-
-        if (!anyError) return;
-
-        // 回滚文件
-        try {
-          if (snap.content === null) {
-            if (fs.existsSync(snap.filePath)) fs.unlinkSync(snap.filePath);
-          } else {
-            fs.writeFileSync(snap.filePath, snap.content, "utf-8");
-          }
-          log.debug("Rolled back", { filePath: snap.filePath });
-        } catch (err) {
-          log.error("Rollback failed", { filePath: snap.filePath, error: (err as Error).message });
-        }
-
-        // 构建阻塞输出
-        const sources: string[] = [];
-        if (eslintError) sources.push("ESLint");
-        if (tscError) sources.push("vue-tsc");
-
-        output.output = [
-          `❌ BLOCKED: Changes were reverted due to ${sources.join(" + ")} errors.`,
-          "",
-          diagText,
-        ].join("\n");
-        output.title = `REJECTED: ${path.basename(snap.filePath)}`;
-
-        log.warn("Edit blocked", { tool: input.tool, filePath: snap.filePath });
       },
       tool: {
         run_diagnostics: runDiagnosticsTool,

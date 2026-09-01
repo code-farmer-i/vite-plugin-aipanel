@@ -2,7 +2,7 @@ import { execa } from "execa";
 import type { ResultPromise } from "execa";
 import fs from "fs";
 import path from "path";
-import { pathToFileURL } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import type { WebOptions } from "./types";
 import {
   AIPANEL_CACHE_DIR,
@@ -12,11 +12,11 @@ import {
   createLogger,
   getProcessLogBuffer,
   createPackageRequire,
-  resolvePackageDir,
 } from "@aipanel/core/node";
 
 const require = createPackageRequire();
-const packageDir = resolvePackageDir("@aipanel/opencode-plugins");
+// 当前模块位于本包 es/ 目录；插件随本包构建到同级 es/plugins
+const pluginsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "plugins");
 
 const log = createLogger("OpenCodeWeb");
 
@@ -74,7 +74,6 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     contextApiUrl,
     logsApiUrl,
     logFilesJson,
-    enableBlockOnError,
     verbose,
     enableLsp,
     vueDevtoolsApiUrl,
@@ -87,7 +86,6 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     contextApiUrl,
     logsApiUrl,
     logFilesJson,
-    enableBlockOnError,
     verbose,
     enableLsp,
   });
@@ -98,7 +96,6 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     contextApiUrl,
     logsApiUrl,
     logFilesJson,
-    enableBlockOnError,
     verbose,
     enableLsp,
     vueDevtoolsApiUrl,
@@ -256,7 +253,7 @@ function resolveFormatBridgePath(): string | undefined {
 }
 
 function resolveSourcePluginsDir(): string {
-  const candidatePaths = [path.join(packageDir, "es", "plugins")];
+  const candidatePaths = [pluginsDir];
 
   for (const candidatePath of candidatePaths) {
     if (fs.existsSync(candidatePath)) {
@@ -267,13 +264,8 @@ function resolveSourcePluginsDir(): string {
   return candidatePaths[0];
 }
 
-/** 已迁移到 MCP 的插件（不再通过 OpenCode 插件机制加载，避免与 MCP 工具重复） */
-const MIGRATED_TO_MCP_PLUGINS = new Set(["vue-devtools.js", "vite-logs.js", "service-logs.js"]);
-
 function resolvePluginEntries(sourceDir: string): string[] {
-  const files = fs
-    .readdirSync(sourceDir)
-    .filter((f) => f.endsWith(".js") && !MIGRATED_TO_MCP_PLUGINS.has(f));
+  const files = fs.readdirSync(sourceDir).filter((f) => f.endsWith(".js"));
 
   const entries = files.map((file) => {
     const absolutePath = path.join(sourceDir, file);
@@ -290,7 +282,6 @@ function buildProcessEnv(
   contextApiUrl?: string,
   logsApiUrl?: string,
   logFilesJson?: string,
-  enableBlockOnError?: boolean,
   verbose?: boolean,
   enableLsp?: boolean,
   vueDevtoolsApiUrl?: string,
@@ -323,11 +314,6 @@ function buildProcessEnv(
   if (logFilesJson) {
     env.OPENCODE_LOG_FILES_JSON = logFilesJson;
     log.debug("Set OPENCODE_LOG_FILES_JSON", { logFilesJson });
-  }
-
-  if (enableBlockOnError) {
-    env.OPENCODE_BLOCK_ON_ERROR = "1";
-    log.debug("Set OPENCODE_BLOCK_ON_ERROR=1");
   }
 
   if (verbose) {

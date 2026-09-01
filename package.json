@@ -23,7 +23,7 @@
     ]
   },
   "scripts": {
-    "build": "pnpm --filter @aipanel/core build && pnpm --filter @aipanel/opencode-plugins build && pnpm --filter @aipanel/provider-opencode build && pnpm --filter @aipanel/provider-deepseek build && pnpm --filter @aipanel/ui build && pnpm --filter vite-plugin-aipanel build && pnpm --filter @aipanel/extension build",
+    "build": "pnpm --filter @aipanel/core build && pnpm --filter @aipanel/provider-opencode build && pnpm --filter @aipanel/provider-deepseek build && pnpm --filter @aipanel/ui build && pnpm --filter vite-plugin-aipanel build && pnpm --filter @aipanel/extension build",
     "dev:components": "pnpm --filter @aipanel/ui dev:site",
     "dev:docs": "pnpm --filter @aipanel/docs dev",
     "build:docs": "pnpm --filter @aipanel/docs build",

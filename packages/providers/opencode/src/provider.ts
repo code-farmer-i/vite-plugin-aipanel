@@ -143,7 +143,6 @@ Please install OpenCode first:
       contextApiUrl: options.contextApiUrl,
       logsApiUrl: options.logsApiUrl,
       logFilesJson: this.opts.logFiles ? JSON.stringify(this.opts.logFiles) : undefined,
-      enableBlockOnError: this.opts.enableBlockOnError,
       verbose: options.verbose,
       enableLsp: this.opts.enableLsp,
       enablePrettier: this.opts.enablePrettier,
@@ -349,8 +348,6 @@ function resolveOpenCodeOptions(options?: Record<string, unknown>): OpenCodeProv
     settings: (po.settings as OpenCodeSettings) ?? (options.settings as OpenCodeSettings),
     logFiles: options.logFiles as LogFileConfig[],
     enableLsp: (po.enableLsp as boolean) ?? (options.enableLsp as boolean),
-    enableBlockOnError:
-      (po.enableBlockOnError as boolean) ?? (options.enableBlockOnError as boolean),
     enablePrettier: (po.enablePrettier as boolean) ?? (options.enablePrettier as boolean),
   };
 }

@@ -31,7 +31,10 @@
     "client": {
       "platform": "web",
       "inject": [
-        "slots"
+        "slots",
+        "sessions",
+        "inputTriggers",
+        "conversation"
       ]
     }
   }

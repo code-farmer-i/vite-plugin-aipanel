@@ -18,8 +18,14 @@ import { registerDiagnosticsView } from "./diagnostics-view";
 
 const SELECTION_STORAGE_KEY = "dsh.bridge.selection";
 
-/** cordis 插件服务注入声明：诊断卡片视图需要访问 ctx.slots（官方 ui-tool 同款姿势） */
-export const inject = ["slots"];
+/**
+ * cordis 插件服务注入声明。rc.1 起插件 ctx 只暴露 inject 声明过的服务面：
+ *  - slots：诊断卡片视图（官方 ui-tool 同款姿势）
+ *  - sessions：会话就绪探针（sessions.list.current 稳态后派发 session-ready）
+ *  - inputTriggers：注册 @aipanel 引用 source（否则 apply 直接 return，后续逻辑全不执行）
+ *  - conversation：选中元素插入当前会话输入框
+ */
+export const inject = ["slots", "sessions", "inputTriggers", "conversation"];
 
 /** 桥接层监听的自定义事件：确认目标会话已激活且渲染稳定（detail.sessionId 为当前会话） */
 export const SESSION_READY_EVENT = "aipanel:session-ready";

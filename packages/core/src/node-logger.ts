@@ -213,24 +213,31 @@ export class RequestContext {
   path: string;
   startTime: number;
   private checkpoints: Array<{ time: number; label: string }> = [];
+  private quiet: boolean;
 
-  constructor(method: string, path: string) {
+  constructor(method: string, path: string, options?: { quiet?: boolean }) {
     this.traceId = _generateTraceId();
     this.method = method;
     this.path = path;
+    this.quiet = options?.quiet ?? false;
     this.startTime = performance.now();
 
-    nodeLogger.debug(`→ ${method} ${path}`, { traceId: this.traceId, module: "HTTP" });
+    if (!this.quiet) {
+      nodeLogger.debug(`→ ${method} ${path}`, { traceId: this.traceId, module: "HTTP" });
+    }
   }
 
   checkpoint(label: string): void {
     const elapsed = Math.round(performance.now() - this.startTime);
     this.checkpoints.push({ time: elapsed, label });
-    nodeLogger.debug(`  → ${label}`, { traceId: this.traceId, duration: elapsed });
+    if (!this.quiet) {
+      nodeLogger.debug(`  → ${label}`, { traceId: this.traceId, duration: elapsed });
+    }
   }
 
   end(statusCode: number): void {
     const duration = Math.round(performance.now() - this.startTime);
+    if (this.quiet) return;
     const statusColor = statusCode < 400 ? COLORS.green : COLORS.red;
     nodeLogger.debug(`← ${this.method} ${this.path} ${statusColor}${statusCode}${COLORS.reset}`, {
       traceId: this.traceId,

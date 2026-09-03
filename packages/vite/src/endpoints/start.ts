@@ -5,7 +5,8 @@ import { RequestContext } from "@aipanel/core/node";
 
 export function setupStartEndpoint(server: ViteDevServer, ctx: EndpointContext) {
   server.middlewares.use(START_API_PATH, async (_req, res) => {
-    const reqCtx = new RequestContext("GET", START_API_PATH);
+    // 该端点被扩展背景脚本每 2s 轮询一次，属于心跳请求，静默以避免刷屏
+    const reqCtx = new RequestContext("GET", START_API_PATH, { quiet: true });
 
     res.setHeader("Content-Type", "application/json");
     res.setHeader("Access-Control-Allow-Origin", "*");

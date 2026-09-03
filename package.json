@@ -11,6 +11,7 @@
       "vue-tsc": "^3.3.6"
     },
     "onlyBuiltDependencies": [
+      "@parcel/watcher",
       "@vscode/vsce",
       "@vscode/vsce-sign",
       "esbuild",

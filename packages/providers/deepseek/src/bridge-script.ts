@@ -109,6 +109,11 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
     } catch (e) { /* ignore */ }
   }
 
+  // === 选择模式状态 ===
+  // 记录宿主是否处于"选择元素"模式：选择模式开启时，iframe 内捕获的 Esc 应优先
+  // 转发给宿主退出选择模式，并吞掉本页自身的按键处理（如停止生成/关闭弹层）。
+  let isInSelectMode = false;
+
   // === 消息监听 ===
   window.addEventListener("message", function(event) {
     if (!event.data) return;
@@ -136,7 +141,39 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
     if (event.data.type === ${JSON.stringify(WIDGET_MSG.INSERT_FILE_PART)}) {
       pushSelection(event.data.element);
     }
+
+    // 核心层通知：选择元素模式变化（更新本地状态，供键盘转发判断是否吞掉本页 Esc 处理）
+    if (event.data.type === ${JSON.stringify(WIDGET_MSG.SELECT_MODE_CHANGE)}) {
+      isInSelectMode = event.data.selectMode === true;
+    }
   });
+
+  // === 键盘事件转发（退出/切换选择模式） ===
+  // 与 opencode bridge 一致：iframe 内的 keydown 不会冒泡到宿主文档（跨文档事件隔离），
+  // 因此当焦点在聊天 iframe 内时，宿主 App 收不到 Esc / Ctrl+P，导致：
+  //   - 选择元素模式开启时按 Esc 无法退出（被 dsh 自身按键处理吞掉或直接丢失）；
+  //   - 光标在聊天输入框时无法用 Ctrl+P 进入选择元素模式。
+  // 此处用捕获阶段监听 Esc / Ctrl+P 并转发为 KEYDOWN 消息给宿主 App（App.vue 据此
+  // 退出/切换选择模式）。选择模式开启时优先退出：preventDefault + stopPropagation，
+  // 避免 dsh 自身对 Esc 的处理抢走按键。
+  window.addEventListener("keydown", function(event) {
+    if (event.key === "Escape" || (event.ctrlKey && event.key.toLowerCase() === "p")) {
+      if (isInSelectMode) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      if (window.parent !== window) {
+        window.parent.postMessage({
+          type: ${JSON.stringify(WIDGET_MSG.KEYDOWN)},
+          key: event.key,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          shiftKey: event.shiftKey,
+          altKey: event.altKey
+        }, "*");
+      }
+    }
+  }, true);
 
   // === 就绪通知 ===
   // 不再用 MutationObserver 每帧发 READY（那会在 dsh 刚渲染、目标会话尚未激活时就

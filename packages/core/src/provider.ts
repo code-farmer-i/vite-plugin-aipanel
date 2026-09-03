@@ -67,6 +67,12 @@ export interface ProviderStartOptions {
   logsApiUrl?: string;
   /** Vue DevTools API 地址（核心层提供的回连地址） */
   vueDevtoolsApiUrl?: string;
+  /**
+   * 宿主事件推送令牌（核心层每轮启动随机生成，透传给 Host 侧插件）。
+   * dsh-plugin 监听宿主事件（session/event 总线）时须携带该令牌 POST 到 HOST_EVENTS_API_PATH，
+   * core 校验通过后按 SESSION_EVENT 广播给 SSE 客户端。无该能力/无需求的 Provider 忽略即可。
+   */
+  eventsToken?: string;
   /** 启用 verbose 模式 */
   verbose?: boolean;
 }
@@ -94,6 +100,12 @@ export interface ProviderStartResult {
   url: string;
   /** 进程句柄（供编排层做就绪等待与退出检测，不透明） */
   processHandle?: unknown;
+  /**
+   * 对 Provider Web 服务做浏览器会话认证所需的 Cookie（可选）。
+   * dsh web 升级后在索引页与 /api 上强制 browser-session 认证（launch token → 签名 cookie），
+   * 代理需在转发请求时注入该 Cookie 才能通过 401 门禁。opencode 等无需认证的 Provider 不设置。
+   */
+  webAuthCookie?: string;
 }
 
 /** Provider 初始化配置（主题/语言/设置等，schema 由 Provider 定义） */
@@ -145,8 +157,12 @@ export interface WebProvider {
   /** 清理孤儿进程（上次退出残留的 provider 进程），返回清理数量（可选） */
   killOrphans?(): Promise<number>;
 
-  /** 会话管理（归一化到 ChatSession，过滤逻辑在此内部完成） */
-  listSessions(projectDir: string): Promise<ChatSession[]>;
+  /**
+   * 会话管理（归一化到 ChatSession，过滤逻辑在此内部完成）。
+   * @param activeSessionId 当前选中会话 id（可选）：用于对齐 dsh 等 UI 的可见性规则
+   *   （blank 会话仅当其为当前选中会话时展示）。无选中态概念的 Provider 忽略即可。
+   */
+  listSessions(projectDir: string, activeSessionId?: string): Promise<ChatSession[]>;
   createSession(projectDir: string, title?: string): Promise<ChatSession>;
   /** 可选：部分 Provider 无删除语义；core 不支持时隐藏删除入口 */
   deleteSession?(sessionId: string): Promise<void>;

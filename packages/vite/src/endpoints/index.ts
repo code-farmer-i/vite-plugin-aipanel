@@ -4,6 +4,7 @@ import { setupWidgetEndpoints } from "./widget";
 import { setupContextEndpoint } from "./context";
 import { setupStartEndpoint } from "./start";
 import { setupSseEndpoint } from "./sse";
+import { setupHostEventsEndpoint } from "./host-events";
 import { setupSessionsEndpoint } from "./sessions";
 import { setupWarmupEndpoint } from "./warmup";
 import { setupLogsEndpoint } from "./logs";
@@ -25,6 +26,7 @@ export function setupMiddlewares(
   setupContextEndpoint(server, ctx);
   setupStartEndpoint(server, ctx);
   setupSseEndpoint(server, ctx);
+  setupHostEventsEndpoint(server, ctx);
   setupSessionsEndpoint(server, ctx);
   setupWarmupEndpoint(server, ctx);
   setupLogsEndpoint(server);

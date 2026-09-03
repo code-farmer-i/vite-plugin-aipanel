@@ -58,8 +58,11 @@ export const SESSIONS_API_PATH = "/__aipanel_sessions__";
 /** MCP 代理 API 路径 */
 export const MCP_API_PATH = "/__aipanel_mcp__";
 
-/** SSE 事件流路径 */
+/** SSE 事件流路径（客户端订阅 SESSION_EVENT 等） */
 export const SSE_EVENTS_PATH = "/__aipanel_events__";
+
+/** 宿主侧事件推送 API 路径（dsh-plugin 等 Host 插件把归一化 ProviderEvent POST 到这里，core 再广播给 SSE 客户端） */
+export const HOST_EVENTS_API_PATH = "/__aipanel_host_events__";
 
 /** 上下文更新间隔（毫秒） */
 export const CONTEXT_UPDATE_INTERVAL = 500;

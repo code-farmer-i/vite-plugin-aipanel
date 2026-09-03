@@ -223,9 +223,15 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
           get serviceInstanceId() {
             return serviceInstanceId;
           },
-          getSessions: () => {
+          get eventsToken() {
+            return service.eventsToken;
+          },
+          pushProviderEvent(event) {
+            service.pushProviderEvent(event);
+          },
+          getSessions: (activeSessionId?: string) => {
             if (!provider) return Promise.reject(new Error("Provider 未初始化"));
-            return provider.listSessions(service.workspaceRoot!);
+            return provider.listSessions(service.workspaceRoot!, activeSessionId);
           },
           createSession: () => {
             if (!provider) return Promise.reject(new Error("Provider 未初始化"));

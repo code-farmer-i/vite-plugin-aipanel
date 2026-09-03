@@ -1,6 +1,7 @@
 import type { ResultPromise } from "execa";
 import type http from "http";
-import type { PluginOptions, ServiceStartupTask, WebProvider } from "@aipanel/core";
+import { randomUUID } from "node:crypto";
+import type { PluginOptions, ProviderEvent, ServiceStartupTask, WebProvider } from "@aipanel/core";
 import { DEFAULT_PROXY_PORT, SERVER_START_TIMEOUT, ChromeMcpWarmupErrorType } from "@aipanel/core";
 import { createLogger, findAvailablePort } from "@aipanel/core/node";
 import { findGitRoot, waitForServer } from "../utils/system";
@@ -24,6 +25,11 @@ export class AIPanelService {
   private mcp: McpProxy | null = null;
   private provider: WebProvider | null = null;
   private unsubscribeEvents: (() => void) | null = null;
+  /**
+   * 宿主事件推送令牌（每轮 start 随机生成）。Provider 侧 Host 插件（dsh-plugin）推送
+   * ProviderEvent 时须携带该令牌，core 校验通过后按 SESSION_EVENT 广播给 SSE 客户端。
+   */
+  public eventsToken: string | null = null;
 
   constructor(
     private config: Required<PluginOptions>,
@@ -77,6 +83,9 @@ export class AIPanelService {
     }
 
     this.startPromise = (async () => {
+      // 每轮启动生成新的宿主事件推送令牌（旧令牌随上一轮失效，防止跨轮伪造推送）
+      this.eventsToken = randomUUID();
+
       const timer = log.timer("startServices", {
         corsOrigins,
         contextApiUrl,
@@ -121,6 +130,7 @@ export class AIPanelService {
       this.sendTaskUpdate("preparing_runtime");
       this.sendTaskUpdate("starting_web");
       let webUrl: string;
+      let webAuthCookie: string | undefined;
       try {
         const startResult = await provider.start({
           port: this.actualWebPort,
@@ -132,11 +142,14 @@ export class AIPanelService {
           logsApiUrl,
           verbose: this.config.verbose,
           vueDevtoolsApiUrl,
+          // 宿主事件推送令牌：provider 将其注入 Host 插件（dsh-plugin）配置，用于回推事件鉴权
+          eventsToken: this.eventsToken ?? undefined,
         });
         this.webProcess = (startResult.processHandle as ResultPromise | null) ?? null;
 
         timer.checkpoint("Web process started");
         webUrl = startResult.url;
+        webAuthCookie = startResult.webAuthCookie;
         log.debug(`Waiting for Web UI to become ready at ${webUrl}...`);
 
         this.sendTaskUpdate("waiting_web_ready");
@@ -182,6 +195,7 @@ export class AIPanelService {
         const result = await startProxyServer(webUrl, this.actualProxyPort, {
           bridgeScript: provider.bridgeScript,
           hostname: this.config.hostname,
+          webAuthCookie,
         });
         this.proxyServer = result.server;
         if (result.actualPort !== this.actualProxyPort) {
@@ -199,6 +213,7 @@ export class AIPanelService {
           const result = await startProxyServer(webUrl, nextPort, {
             bridgeScript: provider.bridgeScript,
             hostname: this.config.hostname,
+            webAuthCookie,
           });
           this.proxyServer = result.server;
           this.actualProxyPort = result.actualPort;
@@ -239,13 +254,7 @@ export class AIPanelService {
       // 订阅 Provider 事件流，归一化后广播给所有 SSE 客户端（SESSION_EVENT）
       this.unsubscribeEvents?.();
       this.unsubscribeEvents = provider.subscribeEvents((event) => {
-        this.sseClients.forEach((client) => {
-          try {
-            client.write(`data: ${JSON.stringify({ type: "SESSION_EVENT", event })}\n\n`);
-          } catch (e) {
-            log.debug("Failed to send SESSION_EVENT", { error: e });
-          }
-        });
+        this.pushProviderEvent(event);
       });
 
       if (warmupFailed) {
@@ -260,6 +269,17 @@ export class AIPanelService {
     })();
 
     return this.startPromise;
+  }
+
+  /** 把一条 ProviderEvent 广播给所有 SSE 客户端（SESSION_EVENT 载荷） */
+  pushProviderEvent(event: ProviderEvent): void {
+    this.sseClients.forEach((client) => {
+      try {
+        client.write(`data: ${JSON.stringify({ type: "SESSION_EVENT", event })}\n\n`);
+      } catch (e) {
+        log.debug("Failed to send SESSION_EVENT", { error: e });
+      }
+    });
   }
 
   async retryWarmupChromeMcp(): Promise<{
@@ -298,6 +318,8 @@ export class AIPanelService {
 
     this.unsubscribeEvents?.();
     this.unsubscribeEvents = null;
+    // 撤销宿主事件推送令牌：停止后 Host 插件推送一律 403
+    this.eventsToken = null;
 
     if (this.proxyServer) {
       log.debug("Closing proxy server");

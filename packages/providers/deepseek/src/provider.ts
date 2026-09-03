@@ -1,4 +1,5 @@
 import type { ResultPromise } from "execa";
+import { sleep } from "@aipanel/core";
 import type {
   ChatSession,
   ProviderConfig,
@@ -13,16 +14,21 @@ import type {
   DeepSeekBusyEnter,
   DeepSeekPermissionPreset,
   DeepSeekProviderOptions,
-  ServerRequest,
   SessionSummary,
 } from "./types";
 import { DEFAULT_DEEPSEEK_PROVIDER_OPTIONS } from "./constants";
-import { DSH_LOOPBACK_HOST, DSH_MUX_EVENTS_PATH, DSH_HOST_EVENTS_PATH } from "./constants";
+import { DSH_LOOPBACK_HOST } from "./constants";
 import { DeepSeekAPI } from "./api";
 import { generateBridgeScript, type BridgeScriptOptions } from "./bridge-script";
-import { startDeepSeekWeb } from "./deepseek-web";
+import { LaunchToken, startDeepSeekWeb } from "./deepseek-web";
 import { buildDshOverlay, writeDshOverlay } from "./profile";
-import { checkDeepSeekInstalled, getDeepSeekVersion, killOrphanDeepSeekProcesses } from "./system";
+import {
+  checkDeepSeekInstalled,
+  getDeepSeekVersion,
+  isDeepSeekVersionAtLeast,
+  killOrphanDeepSeekProcesses,
+  MIN_DSH_VERSION,
+} from "./system";
 import {
   DSH_CLIENT_PACKAGE,
   DSH_PLUGIN_PACKAGE,
@@ -104,6 +110,20 @@ or run without installing:
       };
     }
     const version = await getDeepSeekVersion();
+    // 0.1.2 起 API/认证协议（browser-session、{args} RPC、remote.mux）不向下兼容：
+    // 低于最低版本直接给明确指引，避免启动后干等 token 并逐个 RPC 失败。
+    const compatible = version === null ? true : isDeepSeekVersionAtLeast(version);
+    if (compatible === false) {
+      return {
+        ok: false,
+        message: `DeepSeek Harness (dsh) ${version} is too old: this provider requires dsh >= ${MIN_DSH_VERSION} (browser-session auth / Remote RPC protocol).
+
+Please upgrade:
+
+  npm install -g @deepseek-ai/dsh@latest
+`,
+      };
+    }
     return { ok: true, version: version ?? undefined };
   }
 
@@ -155,10 +175,16 @@ or run without installing:
       clientAvailable,
       autoDiagnose: this.opts.autoDiagnose,
       enableDiagnostics: this.opts.enableDiagnostics,
+      // 宿主事件推送令牌（core 每轮启动随机）：随 plugin config 注入 dsh-plugin 用于回推鉴权
+      eventsToken: options.eventsToken,
     });
     const patchPath = writeDshOverlay(options.cwd, overlay);
 
     // dsh 服务 schema 只接受 127.0.0.1 / 0.0.0.0，且 CLI 拒绝 0.0.0.0 —— 强制 loopback
+    // launchToken 捕获器：从 dsh 启动打印的 URL（?token=…）解析出 browser-session 认证 token。
+    const launchToken = new LaunchToken();
+    // 启动早期 widget 可能先发起 /api 会话请求：把 token 等待源绑定到 API，使其等待而非抛错。
+    this.api.setLaunchTokenSource(() => launchToken.wait());
     const proc = startDeepSeekWeb({
       port: options.port,
       hostname: DSH_LOOPBACK_HOST,
@@ -166,11 +192,44 @@ or run without installing:
       patchPath,
       home: this.opts.home,
       verbose: options.verbose,
+      launchToken,
     });
     this.process = proc;
 
+    // dsh 0.1.2+ 在索引页与 /api 强制 browser-session 认证：用 launch token 换签名 Cookie，
+    // 便于后续 applySettings / RPC 直连通过 401 门禁，并把同一 Cookie 交代理注入转发请求。
+    // Cookie 必须在代理启动前就绪，否则经代理访问的 UI 将永久 401，因此这里带短退避重试；
+    // 全部失败才降级告警（未认证直连，界面可能 401），不阻塞 dsh 启动。
+    let webAuthCookie: string | undefined;
+    try {
+      const token = await launchToken.wait();
+      this.api.setLaunchToken(token);
+      const maxAuthAttempts = 3;
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await this.api.authenticate();
+          break;
+        } catch (e) {
+          if (attempt >= maxAuthAttempts) throw e;
+          log.debug("dsh browser-session auth bootstrap attempt failed, retrying", {
+            attempt,
+            error: e instanceof Error ? e.message : String(e),
+          });
+          await sleep(250 * attempt);
+        }
+      }
+      webAuthCookie = this.api.getAuthCookie();
+    } catch (e) {
+      log.warn(
+        "failed to establish dsh web browser-session auth; UI may show authentication required",
+        {
+          error: e instanceof Error ? e.message : String(e),
+        },
+      );
+    }
+
     // 应用 providerOptions 指定的 dsh 用户设置（agent 预设 / 权限 / 繁忙 Enter 行为）。
-    // 通过 settings.update 写用户层，需 dsh API 就绪后生效；失败仅告警，不阻塞启动。
+    // 通过 settings/mutate 写用户层，需 dsh API 就绪后生效；失败仅告警，不阻塞启动。
     const settings = this.buildSettingsToApply();
     if (Object.keys(settings).length > 0) {
       void this.api.applySettings(settings).catch((e) => {
@@ -181,7 +240,7 @@ or run without installing:
       });
     }
 
-    return { url: this.api.shellUrl, processHandle: proc };
+    return { url: this.api.shellUrl, processHandle: proc, webAuthCookie };
   }
 
   /** 把 providerOptions 配置映射为 dsh settings 命名空间 patch（仅含用户显式配置项） */
@@ -220,8 +279,8 @@ or run without installing:
     return killOrphanDeepSeekProcesses();
   }
 
-  async listSessions(projectDir: string): Promise<ChatSession[]> {
-    const sessions = await this.api.listSessions(projectDir);
+  async listSessions(projectDir: string, activeSessionId?: string): Promise<ChatSession[]> {
+    const sessions = await this.api.listSessions(projectDir, activeSessionId);
     // 无 deepLink：所有会话共用应用壳 URL（走代理注入 bridge）
     const url = this.buildSessionUrl(projectDir, "");
     return sessions.map((s) => toChatSession(s, url));
@@ -254,126 +313,13 @@ or run without installing:
   }
 
   subscribeEvents(handler: (e: ProviderEvent) => void): () => void {
-    const port = this.deps.getWebPort();
-    // dsh 事件流是下行 WebSocket（普通 http.get 会被 426 拒绝）：
-    // mux 提供 session/event（推导 thinking），host 提供 host/session-status（运行态开关）
-    const base = `ws://${DSH_LOOPBACK_HOST}:${port}`;
-    const endpoints = [DSH_MUX_EVENTS_PATH, DSH_HOST_EVENTS_PATH];
-    log.debug("Subscribing to dsh event streams (WebSocket)", {
-      endpoints: endpoints.map((p) => base + p),
-    });
-
-    let aborted = false;
-    const sockets = new Set<WebSocket>();
-    const retryTimers = new Set<NodeJS.Timeout>();
-
-    const cleanupAll = () => {
-      for (const timer of retryTimers) clearTimeout(timer);
-      retryTimers.clear();
-      for (const ws of sockets) {
-        try {
-          ws.close();
-        } catch {
-          /* ignore */
-        }
-      }
-      sockets.clear();
-    };
-
-    const connect = (path: string, attempt = 0) => {
-      if (aborted) return;
-      let socket: WebSocket;
-      try {
-        socket = new WebSocket(base + path);
-      } catch (e) {
-        log.warn("dsh event WebSocket create failed", { path, error: String(e) });
-        scheduleReconnect(path, attempt + 1);
-        return;
-      }
-      sockets.add(socket);
-
-      // dsh 事件流是 downlink-only：只接收，绝不 send（发送会被 1008 关闭）
-      socket.onmessage = (ev) => {
-        try {
-          const frame = JSON.parse(String(ev.data)) as Partial<ServerRequest>;
-          const event = mapEvent(frame);
-          if (event) handler(event);
-        } catch {
-          // 忽略无法解析的消息
-        }
-      };
-
-      socket.onclose = () => {
-        sockets.delete(socket);
-        scheduleReconnect(path, attempt + 1);
-      };
-
-      socket.onerror = () => {
-        // error 后通常紧跟 close，由 onclose 统一重连；主动关闭避免悬挂
-        try {
-          socket.close();
-        } catch {
-          /* ignore */
-        }
-      };
-    };
-
-    const scheduleReconnect = (path: string, attempt: number) => {
-      if (aborted) return;
-      // 指数退避：250ms → 500ms → 1s → 2s → 5s（封顶），避免重连风暴
-      const delays = [250, 500, 1000, 2000, 5000];
-      const after = delays[Math.min(attempt, delays.length - 1)];
-      const timer = setTimeout(() => {
-        retryTimers.delete(timer);
-        connect(path);
-      }, after);
-      retryTimers.add(timer);
-    };
-
-    endpoints.forEach((p) => connect(p));
-
-    return () => {
-      aborted = true;
-      cleanupAll();
-    };
-  }
-}
-
-/**
- * 归一化：dsh 事件帧（ServerRequest）→ ProviderEvent
- * - host/session-status.running → session.status
- * - session/event 的会话日志事件 → 推导 thinking / streaming
- */
-function mapEvent(frame: Partial<ServerRequest>): ProviderEvent | null {
-  if (!frame || typeof frame.method !== "string" || !frame.payload) return null;
-  const payload = frame.payload;
-  const sessionId = (payload.sessionId as string | undefined) ?? "";
-
-  switch (frame.method) {
-    case "host/session-status": {
-      if (!sessionId) return null;
-      const running = payload.running === true;
-      return { type: "session.status", sessionId, status: running ? "running" : "idle" };
-    }
-    case "session/event": {
-      const event = payload.event as { type?: string } | undefined;
-      const type = event?.type ?? "";
-      if (!sessionId || !type) return null;
-      switch (type) {
-        case "assistant/message":
-        case "turn/end":
-          return { type: "thinking", sessionId, thinking: false };
-        case "assistant/chunk":
-        case "thinking/delta":
-        case "turn/start":
-        case "step/start":
-          return { type: "thinking", sessionId, thinking: true };
-        default:
-          return null;
-      }
-    }
-    default:
-      return null;
+    void handler;
+    // dsh 0.1.2+ 移除了旧的 /api/events.mux 与 /api/events.host（全局下推帧流），provider
+    // 直连侧不再订阅事件。running/thinking 事件由宿主内 @aipanel/dsh-plugin 监听 session/event
+    // 总线并经 core 的 HOST_EVENTS_API_PATH 中继广播（与服务端 provider.subscribeEvents 同一
+    // SESSION_EVENT 通道），本通道保持为空即可。
+    log.debug("dsh 事件经宿主插件(dsh-plugin)中继推送，provider 直连事件通道为空");
+    return () => {};
   }
 }
 
@@ -392,6 +338,7 @@ function toChatSession(s: SessionSummary, url?: string): ChatSession {
 /**
  * 从用户完整插件配置中解析 DeepSeek 专属配置
  * 优先级：providerOptions（新写法）> 顶层字段（旧写法）> provider 默认值。
+ * 注：agentPreset 已无内置默认（交由 dsh 自身默认预设），仅当用户显式配置时才写 settings。
  */
 function resolveDeepSeekOptions(options?: Record<string, unknown>): DeepSeekProviderOptions {
   if (!options) return { ...DEFAULT_DEEPSEEK_PROVIDER_OPTIONS };
@@ -399,10 +346,7 @@ function resolveDeepSeekOptions(options?: Record<string, unknown>): DeepSeekProv
   return {
     ...DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
     home: (po.home as string) ?? (options.home as string | undefined),
-    agentPreset:
-      (po.agentPreset as string) ??
-      (options.agentPreset as string | undefined) ??
-      DEFAULT_DEEPSEEK_PROVIDER_OPTIONS.agentPreset,
+    agentPreset: (po.agentPreset as string) ?? (options.agentPreset as string | undefined),
     permissionPreset:
       (po.permissionPreset as DeepSeekPermissionPreset) ??
       (options.permissionPreset as DeepSeekPermissionPreset | undefined),

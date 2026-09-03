@@ -76,7 +76,10 @@ export function useSessionsAndCapabilities(options: UseSessionsAndCapabilitiesOp
       iframeLoading.value = true;
     }
     try {
-      const response = await fetch(basePath(SESSIONS_API_PATH));
+      // 携带当前选中会话：Provider 据此对齐 dsh 等 UI 的可见性规则（如 blank 仅当前会话展示）
+      const current = currentSessionId.value;
+      const query = current ? `?current=${encodeURIComponent(current)}` : "";
+      const response = await fetch(basePath(SESSIONS_API_PATH + query));
       const data = (await response.json()) as {
         sessions: ChatSession[];
         capabilities?: { deepLink?: boolean; reviewPanel?: boolean };

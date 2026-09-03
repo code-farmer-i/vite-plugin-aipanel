@@ -24,8 +24,10 @@ export function setupSessionsEndpoint(server: ViteDevServer, ctx: EndpointContex
     try {
       if (req.method === "GET") {
         reqCtx.checkpoint("Fetching sessions");
+        const url = new URL(req.url || "", `http://${req.headers.host}`);
+        const activeSessionId = url.searchParams.get("current") || undefined;
         const [sessions, capabilities] = await Promise.all([
-          ctx.getSessions(),
+          ctx.getSessions(activeSessionId),
           ctx.getCapabilities(),
         ]);
         res.writeHead(200);

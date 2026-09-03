@@ -8,6 +8,13 @@ export interface ProxyServerOptions {
   bridgeScript?: string;
   /** 绑定地址，需与端口检查使用的地址族一致，避免 IPv4/IPv6 不匹配 */
   hostname?: string;
+  /**
+   * Provider Web 服务的 browser-session 认证 Cookie（dsh 0.1.2+ 需要）。
+   * 代理在转发每个请求（含 WebSocket 升级）时把该 Cookie 注入到上游请求头，
+   * 使浏览器免于亲自换取/携带会话 Cookie（避免跨端口/跨站 SameSite 限制），
+   * 同时通过上游 /api 的 browser-auth 门禁。
+   */
+  webAuthCookie?: string;
 }
 
 export interface ProxyServerResult {
@@ -23,6 +30,7 @@ export function startProxyServer(
   return new Promise((resolve, reject) => {
     const target = new URL(targetUrl);
     const bridgeScript = options.bridgeScript ?? "";
+    const webAuthCookie = options.webAuthCookie ?? "";
 
     // 使用 keep-alive agent 复用连接，避免频繁创建/销毁 TCP 连接导致偶发 502
     const agent = new http.Agent({
@@ -54,6 +62,9 @@ export function startProxyServer(
         headers: {
           ...req.headers,
           host: target.host,
+          // 注入 Provider Web 服务的 browser-session 认证 Cookie：代理作为已认证客户端
+          // 替 iframe 里的浏览器完成 dsh 0.1.2+ 的会话认证（浏览器无需换取/携带该 Cookie）。
+          ...(webAuthCookie ? { cookie: webAuthCookie } : {}),
           // 上游（如 dsh 的 trust fence）校验 Origin 必须匹配自身 origin；
           // 页面经代理访问时浏览器发的 Origin 是代理端口，须改写为目标 origin 否则 403
           origin: `http://${target.host}`,
@@ -135,7 +146,8 @@ export function startProxyServer(
       reject(err);
     });
 
-    // WebSocket 升级转发：dsh 页面经代理连接 ws://host:port/api/events.* 时，
+    // WebSocket 升级转发：dsh 页面经代理连接 ws://host:port/api/remote.mux（0.1.2+ 的
+    // Remote 流 mux，workspace/follow、session/follow、$events 都走这里）时，
     // 须把 upgrade 请求转发到目标并把 101 响应回给浏览器，否则 WS 直接失败。
     server.on("upgrade", (req, clientSocket, head) => {
       const upgradeOptions: http.RequestOptions = {
@@ -148,6 +160,8 @@ export function startProxyServer(
         headers: {
           ...req.headers,
           host: target.host,
+          // 与 HTTP 分支一致：注入认证 Cookie，通过 dsh 0.1.2+ 的 browser-auth 门禁
+          ...(webAuthCookie ? { cookie: webAuthCookie } : {}),
           // 与 HTTP 分支一致：改写 Origin 为目标 origin，通过 dsh 的 trust fence
           origin: `http://${target.host}`,
         },

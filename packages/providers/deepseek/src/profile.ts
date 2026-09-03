@@ -10,6 +10,7 @@ import {
   AIPANEL_CACHE_DIR,
   MCP_API_PATH,
   CONTEXT_API_PATH,
+  HOST_EVENTS_API_PATH,
   createLogger,
 } from "@aipanel/core/node";
 
@@ -29,6 +30,12 @@ export function buildDshOverlay(options: {
    */
   autoDiagnose?: boolean;
   /**
+   * 宿主事件推送令牌（core 每轮启动随机）：随 plugin config 注入 dsh-plugin，
+   * 使其把归一化 ProviderEvent POST 到 core 的 HOST_EVENTS_API_PATH。
+   * 缺省（undefined）时不写该配置行，事件中继不启用（兼容未升级的 dsh-plugin）。
+   */
+  eventsToken?: string;
+  /**
    * 诊断功能总开关（provider option enableDiagnostics）。
    * true（默认，对齐 opencode enableLsp）时 host 插件注册 run_diagnostics 工具与自动诊断逻辑。
    */
@@ -41,6 +48,7 @@ export function buildDshOverlay(options: {
     clientAvailable = true,
     autoDiagnose,
     enableDiagnostics = true,
+    eventsToken,
   } = options;
   const mcpUrl = `http://127.0.0.1:${vitePort}${MCP_API_PATH}`;
 
@@ -75,6 +83,12 @@ export function buildDshOverlay(options: {
       `        enableDiagnostics: ${enableDiagnostics ? "true" : "false"}`,
       ...(autoDiagnose !== undefined
         ? [`        autoDiagnose: ${autoDiagnose ? "true" : "false"}`]
+        : []),
+      ...(eventsToken
+        ? [
+            `        eventsToken: ${JSON.stringify(eventsToken)}`,
+            `        eventsPath: ${JSON.stringify(HOST_EVENTS_API_PATH)}`,
+          ]
         : []),
     ].join("\n"),
   );

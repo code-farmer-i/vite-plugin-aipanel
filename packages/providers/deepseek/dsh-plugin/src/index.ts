@@ -26,7 +26,7 @@ import type {
   ToolRuntime,
 } from "@deepseek-ai/dsh-tools";
 import type { UserMessage } from "@deepseek-ai/dsh-llm";
-import type { JsonValue } from "@deepseek-ai/dsh-tools";
+import type { JsonValue } from "@deepseek-ai/dsh-util-values";
 import {
   runAllChecks,
   runProjectDiagnostics,
@@ -36,6 +36,7 @@ import {
   type EslintOutput,
   type TscResult,
 } from "@aipanel/core/node";
+import { setupEventRelay } from "./events-relay";
 
 export const name = "aipanel";
 export const inject = ["tools"];
@@ -48,6 +49,10 @@ export interface AipanelPluginConfig {
   vitePort?: number;
   /** 核心层 context 端点路径（由 overlay 从 @aipanel/core 的 CONTEXT_API_PATH 常量注入） */
   contextApiPath?: string;
+  /** 宿主事件推送令牌（core 每轮启动随机）：与 eventsPath 配对启用 session/event 事件中继 */
+  eventsToken?: string;
+  /** 宿主事件推送路径（由 overlay 从 @aipanel/core 的 HOST_EVENTS_API_PATH 常量注入） */
+  eventsPath?: string;
   /**
    * 编辑后是否自动补跑诊断。
    * 与 opencode 对齐：默认关闭，仅当显式配置为 true 或环境变量
@@ -397,4 +402,11 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
       { prepend: true },
     );
   }
+
+  // === 4) 宿主 → core 事件中继（running / thinking 指示恢复；无令牌/无端口时为空操作） ===
+  setupEventRelay(ctx, {
+    vitePort,
+    eventsPath: config.eventsPath,
+    eventsToken: config.eventsToken,
+  });
 }

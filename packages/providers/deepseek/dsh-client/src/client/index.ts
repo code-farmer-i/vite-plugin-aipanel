@@ -269,18 +269,54 @@ export function apply(ctx: Context) {
       if (!snapshot) return;
       // dsh（文本机器实现）的 InputState.draft 是纯文本：chip 展开为 `@节点[n<id>]` 完整文本，
       // occurrence.offset/length 与 insertReference 的 span 都直接按该文本坐标切片。
-      // 输入框 textarea 的 value 即 draft 投影，selectionStart/End 可直接用作插入位置。
-      // 不依赖 activeElement：选中页面元素时输入框会失焦，但 textarea 的 selectionStart
-      // 仍保留上次光标位置；用 value 与 draft 一致来确认是当前会话的输入框。
+      // rc.1 输入框是 Lexical contenteditable（div[role=textbox][contenteditable]），没有
+      // textarea，旧逻辑查不到 textarea 就退化成 draft.length → 永远插到末尾。这里改从
+      // composer 内当前选区换算光标（选中页面元素后输入框失焦，但 getSelection 锚点仍在
+      // composer 内），并用其文本与 draft 一致来确认是当前会话的输入框；textarea 旧版保留。
       let start = snapshot.draft.length;
       let end = snapshot.draft.length;
       try {
-        const el = document.querySelector("textarea[data-phase]") as HTMLTextAreaElement | null;
-        if (el && el.value === snapshot.draft) {
-          const s = el.selectionStart ?? 0;
-          const e = el.selectionEnd ?? s;
-          start = Math.min(s, snapshot.draft.length);
-          end = Math.min(e, snapshot.draft.length);
+        const composer = document.querySelector<HTMLElement>(
+          '[role="textbox"][contenteditable="true"], textarea[data-phase]',
+        );
+        if (composer) {
+          if (composer.isContentEditable) {
+            const draftInComposer = (composer.innerText ?? "").replace(/\n$/, "");
+            if (draftInComposer === snapshot.draft) {
+              const sel = window.getSelection();
+              if (sel && sel.rangeCount > 0 && sel.anchorNode && sel.focusNode &&
+                  composer.contains(sel.anchorNode) && composer.contains(sel.focusNode)) {
+                const textNodes: Text[] = [];
+                const walker = document.createTreeWalker(composer, NodeFilter.SHOW_TEXT);
+                let n: Node | null = walker.nextNode();
+                while (n) {
+                  textNodes.push(n as Text);
+                  n = walker.nextNode();
+                }
+                const posOf = (node: Node, off: number): number | null => {
+                  const idx = textNodes.indexOf(node as Text);
+                  if (idx < 0) return null;
+                  let acc = 0;
+                  for (let i = 0; i < idx; i++) acc += textNodes[i].data.length;
+                  return acc + Math.min(off, textNodes[idx].data.length);
+                };
+                const s = posOf(sel.anchorNode, sel.anchorOffset);
+                const e = posOf(sel.focusNode, sel.focusOffset);
+                if (s !== null && e !== null) {
+                  start = Math.min(Math.max(s, 0), snapshot.draft.length);
+                  end = Math.min(Math.max(e, start), snapshot.draft.length);
+                }
+              }
+            }
+          } else {
+            const ta = composer as HTMLTextAreaElement;
+            if (ta.value === snapshot.draft) {
+              const s = ta.selectionStart ?? snapshot.draft.length;
+              const e = ta.selectionEnd ?? s;
+              start = Math.min(s, snapshot.draft.length);
+              end = Math.min(e, snapshot.draft.length);
+            }
+          }
         }
       } catch {
         /* ignore */
@@ -319,11 +355,46 @@ export function apply(ctx: Context) {
       // 把焦点放回输入框，并把光标定位到新插入 chip 之后（等渲染提交后再设置 selection）
       requestAnimationFrame(() => {
         try {
-          const el = document.querySelector("textarea[data-phase]") as HTMLTextAreaElement | null;
+          const el = document.querySelector<HTMLElement>(
+            '[role="textbox"][contenteditable="true"], textarea[data-phase]',
+          );
           if (!el) return;
-          const caret = Math.min(start + insertedLen + leadingSpace, el.value.length);
-          el.focus();
-          el.setSelectionRange(caret, caret);
+          const caret = start + insertedLen + leadingSpace;
+          if (el.isContentEditable) {
+            const textNodes: Text[] = [];
+            const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+            let n: Node | null = walker.nextNode();
+            while (n) {
+              textNodes.push(n as Text);
+              n = walker.nextNode();
+            }
+            let target: Text | null = textNodes[textNodes.length - 1] ?? null;
+            let off = target ? target.data.length : 0;
+            let remaining = Math.max(0, caret);
+            if (target) {
+              for (const t of textNodes) {
+                if (remaining <= t.data.length) {
+                  target = t;
+                  off = remaining;
+                  break;
+                }
+                remaining -= t.data.length;
+              }
+            }
+            if (target) {
+              const range = document.createRange();
+              range.setStart(target, Math.min(off, target.data.length));
+              range.collapse(true);
+              const sel = window.getSelection();
+              sel?.removeAllRanges();
+              sel?.addRange(range);
+            }
+            el.focus();
+          } else {
+            const ta = el as HTMLTextAreaElement;
+            ta.focus();
+            ta.setSelectionRange(Math.min(caret, ta.value.length), Math.min(caret, ta.value.length));
+          }
         } catch {
           /* ignore */
         }

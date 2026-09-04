@@ -1,6 +1,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import type { AIPanelSelectedElement, ServiceStatus } from "@aipanel/core";
-import { EXT_MSG, CONTEXT_API_PATH, createLogger } from "@aipanel/core";
+import { EXT_MSG, CONTEXT_API_PATH } from "@aipanel/core";
+import { createLogger } from "@aipanel/core/client";
 
 /**
  * 扩展模式：通过 chrome.runtime 监听目标页面的 PAGE_CONTEXT 消息，

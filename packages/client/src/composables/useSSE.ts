@@ -1,5 +1,5 @@
 import { ref, computed, onUnmounted, type Ref } from "vue";
-import { createLogger } from "@aipanel/core";
+import { createLogger } from "@aipanel/core/client";
 
 const log = createLogger("SSE");
 

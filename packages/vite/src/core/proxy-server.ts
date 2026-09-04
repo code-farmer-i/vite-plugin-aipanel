@@ -1,5 +1,6 @@
 import http from "http";
-import { createLogger, BRIDGE_SCRIPT_PATH } from "@aipanel/core";
+import { BRIDGE_SCRIPT_PATH } from "@aipanel/core";
+import { createLogger } from "@aipanel/core/node";
 
 const log = createLogger("ProxyServer");
 

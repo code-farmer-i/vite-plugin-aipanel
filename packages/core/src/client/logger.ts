@@ -1,4 +1,4 @@
-import { LOG_PREFIX } from "./constants";
+import { LOG_PREFIX } from "../common/constants";
 import {
   LogLevel,
   type LogContext,
@@ -6,7 +6,7 @@ import {
   getTimestamp,
   formatContext,
   formatValue,
-} from "./logger-core";
+} from "../common/logger-core";
 
 /**
  * 浏览器端 logger（使用 %c CSS 样式，无 ANSI 颜色码、无 process.pid）

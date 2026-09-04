@@ -1,6 +1,7 @@
 import { ref, computed } from "vue";
 import type { ServiceStartupTask, ServiceStatus } from "@aipanel/core";
-import { SERVICE_STARTUP_TASKS, createLogger } from "@aipanel/core";
+import { SERVICE_STARTUP_TASKS } from "@aipanel/core";
+import { createLogger } from "@aipanel/core/client";
 
 export function useServiceStatus() {
   const currentTask = ref<ServiceStartupTask | "">("");

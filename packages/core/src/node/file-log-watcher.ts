@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { createLogger } from "./logger";
+import { createLogger } from "../client/logger";
 
 const log = createLogger("FileLogReader");
 

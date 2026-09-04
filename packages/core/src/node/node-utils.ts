@@ -4,7 +4,7 @@
 
 import { createRequire } from "node:module";
 import path from "node:path";
-import { CHROME_DEVTOOLS_PORT, CHROME_DEVTOOLS_CHECK_TIMEOUT } from "./constants";
+import { CHROME_DEVTOOLS_PORT, CHROME_DEVTOOLS_CHECK_TIMEOUT } from "../common/constants";
 
 /**
  * 创建一个锚定到指定目录（默认 process.cwd()）的 require。

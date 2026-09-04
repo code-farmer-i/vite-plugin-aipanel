@@ -1,4 +1,5 @@
-import { EXT_MSG, createLogger, setVerbose } from "@aipanel/core";
+import { EXT_MSG, setVerbose } from "@aipanel/core";
+import { createLogger } from "@aipanel/core/client";
 
 const log = createLogger("AIPanel SP");
 

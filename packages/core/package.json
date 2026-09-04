@@ -16,6 +16,11 @@
       "import": "./es/index.mjs",
       "require": "./lib/index.cjs"
     },
+    "./client": {
+      "types": "./es/client.d.ts",
+      "import": "./es/client.mjs",
+      "require": "./lib/client.cjs"
+    },
     "./node": {
       "types": "./es/node.d.ts",
       "import": "./es/node.mjs",

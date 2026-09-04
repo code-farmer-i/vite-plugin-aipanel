@@ -1,4 +1,5 @@
-import { EXT_MSG, WIDGET_MSG, createLogger } from "@aipanel/core";
+import { EXT_MSG, WIDGET_MSG } from "@aipanel/core";
+import { createLogger } from "@aipanel/core/client";
 
 const log = createLogger("AIPanel CS");
 

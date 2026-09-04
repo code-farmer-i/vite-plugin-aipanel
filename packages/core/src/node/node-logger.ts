@@ -1,4 +1,4 @@
-import { LOG_PREFIX } from "./constants";
+import { LOG_PREFIX } from "../common/constants";
 import {
   LogLevel,
   type LogContext,
@@ -6,7 +6,7 @@ import {
   formatContext,
   formatValue,
   generateTraceId as _generateTraceId,
-} from "./logger-core";
+} from "../common/logger-core";
 
 // ============== Node 环境样式增强 ==============
 

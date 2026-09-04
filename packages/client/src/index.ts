@@ -1,5 +1,6 @@
 import { createApp } from "vue";
-import { CONFIG_DATA_ATTR, WIDGET_MSG, createLogger, setVerbose } from "@aipanel/core";
+import { CONFIG_DATA_ATTR, WIDGET_MSG, setVerbose } from "@aipanel/core";
+import { createLogger } from "@aipanel/core/client";
 import type { WidgetOptions } from "@aipanel/core";
 
 const log = createLogger("AIPanel");

@@ -6,7 +6,8 @@ import type {
   AIPanelSelectedElement,
 } from "@aipanel/core";
 import type { WidgetOptions } from "@aipanel/core";
-import { WIDGET_MSG, WARMUP_API_PATH, START_API_PATH, ensureNodeId, createLogger } from "@aipanel/core";
+import { WIDGET_MSG, WARMUP_API_PATH, START_API_PATH, ensureNodeId } from "@aipanel/core";
+import { createLogger } from "@aipanel/core/client";
 
 import { useHotkey } from "./composables/useHotkey";
 import { useServerSSE } from "./composables/useServerSSE";

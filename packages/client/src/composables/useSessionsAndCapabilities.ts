@@ -1,5 +1,6 @@
 import { ref, computed, nextTick, type Ref } from "vue";
-import { SESSIONS_API_PATH, createLogger } from "@aipanel/core";
+import { SESSIONS_API_PATH } from "@aipanel/core";
+import { createLogger } from "@aipanel/core/client";
 import type { ChatSession, AIPanelWidgetSession } from "@aipanel/core";
 
 const log = createLogger("AIPanel");

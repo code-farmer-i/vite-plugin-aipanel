@@ -12,8 +12,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { exec } from "node:child_process";
 import { createRequire } from "node:module";
-import { SEVERITY_ERROR, SEVERITY_WARN } from "../constants";
-import { createLogger } from "../node-logger";
+import { SEVERITY_ERROR, SEVERITY_WARN } from "../common/constants";
+import { createLogger } from "./node-logger";
 
 const log = createLogger("Diagnostics");
 

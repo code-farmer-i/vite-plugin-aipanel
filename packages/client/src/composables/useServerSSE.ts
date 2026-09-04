@@ -1,9 +1,9 @@
 import {
   ServiceStartupTask,
   SSE_EVENTS_PATH,
-  createLogger,
   type ProviderEvent,
 } from "@aipanel/core";
+import { createLogger } from "@aipanel/core/client";
 import { useSSE } from "./useSSE";
 
 const log = createLogger("ServerSSE");

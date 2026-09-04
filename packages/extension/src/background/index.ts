@@ -1,4 +1,5 @@
-import { EXT_MSG, EXT_BROADCAST, START_API_PATH, createLogger } from "@aipanel/core";
+import { EXT_MSG, EXT_BROADCAST, START_API_PATH } from "@aipanel/core";
+import { createLogger } from "@aipanel/core/client";
 
 const log = createLogger("AIPanel BG");
 

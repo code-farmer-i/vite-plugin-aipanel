@@ -1,5 +1,5 @@
 import { watch, onMounted, type Ref } from "vue";
-import { createLogger } from "@aipanel/core";
+import { createLogger } from "@aipanel/core/client";
 import type { FloatingBubbleOffset } from "../src/components/FloatingBubble/types";
 import type { AIPanelWidgetTheme, DisplayMode } from "../src/types";
 

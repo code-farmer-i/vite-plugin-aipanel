@@ -123,6 +123,30 @@ http://localhost:5173/__aipanel_mcp__
 
 > 端口随 Vite dev server 变化（默认 5173），以实际输出日志中的 `MCP endpoint` 地址为准。
 
+#### MCP 客户端接入示例
+
+兼容 `mcpServers` 标准结构的客户端（Claude Code / Cursor 等）均可直接接入，
+把 `aipanel` 注册为 Streamable HTTP 类型的 server：
+
+```json
+{
+  "mcpServers": {
+    "aipanel": {
+      "type": "http",
+      "url": "http://localhost:5173/__aipanel_mcp__"
+    }
+  }
+}
+```
+
+- **Claude Code**：写入项目根目录 `.mcp.json`，或在终端执行
+  `claude mcp add --transport http aipanel http://localhost:5173/__aipanel_mcp__`；
+- **Cursor**：写入项目根目录 `.cursor/mcp.json`；
+- 其他客户端：按其文档把上述 `mcpServers` 片段放入对应配置文件即可。
+
+> 端点无需鉴权。URL 端口须与当前 `vite dev` 端口一致（默认 5173），以启动日志中的
+> `MCP endpoint` 地址为准。
+
 ### logFiles 说明
 
 配置后 AI 可获得 `get_{name}_logs` 工具，查看指定日志文件的最近 50 条（最多 200 条）：

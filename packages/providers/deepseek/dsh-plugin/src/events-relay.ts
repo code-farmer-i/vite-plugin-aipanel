@@ -10,6 +10,10 @@
  * 状态只发送"迁移"（按 session 去重 + 批量节流），并携带 core 每轮启动的随机令牌
  * POST 到 HOST_EVENTS_API_PATH；core 校验后按 SESSION_EVENT 广播给 AIPanel 挂件。
  *
+ * 标题同步：dsh 标题（自动生成或用户手动改名）以 `session/title` 事件提交到同一总线，
+ * 这里将其映射为 session.updated 事件推送给 core，让挂件外层会话列表标题实时更新
+ * （否则标题只在会话列表整表重拉时才会刷新）。
+ *
  * 取舍：推送失败静默降级（不影响会话/诊断）；无令牌或 vitePort 缺失时不启用；
  * 定时器全部 unref + 自调度，事件静止后无残留定时器。
  */
@@ -30,6 +34,8 @@ interface RelaySessionEvent {
   readonly type: string;
   readonly seq: number;
   readonly time: number;
+  /** 事件负载：session/title 为 { title, messageSeqs, source } */
+  readonly data?: Record<string, unknown>;
 }
 
 /** 归一化后的界面状态（running 与 thinking 分开跟踪，均只外发迁移） */
@@ -40,7 +46,11 @@ interface SessionUiState {
 
 type RelayEventType =
   | { type: "session.status"; sessionId: string; status: "idle" | "running" }
-  | { type: "thinking"; sessionId: string; thinking: boolean };
+  | { type: "thinking"; sessionId: string; thinking: boolean }
+  | {
+      type: "session.updated";
+      session: { id: string; title: string; updatedAt?: number };
+    };
 
 /** 批量节流窗口（ms）：chunk 高频事件在窗口内合并成一次推送 */
 const FLUSH_DELAY_MS = 120;
@@ -82,6 +92,8 @@ export function setupEventRelay(
 
   const states = new Map<string, SessionUiState>();
   const lastSent = new Map<string, SessionUiState>();
+  /** 已推送的标题（按 session 去重：同名/同内容标题只外发一次） */
+  const lastTitles = new Map<string, string>();
   const dirty = new Set<string>();
   const idleTimers = new Map<string, NodeJS.Timeout>();
 
@@ -121,6 +133,26 @@ export function setupEventRelay(
   const handleSessionEvent = (session: RelaySession, event: RelaySessionEvent) => {
     const sessionId = session?.id;
     if (!sessionId || !event || typeof event.type !== "string") return;
+
+    // === 标题变更（自动生成 / 用户改名）：映射为 session.updated 单独推送 ===
+    if (event.type === "session/title") {
+      const raw = event.data?.title;
+      const title = typeof raw === "string" ? raw.trim() : "";
+      if (title.length > 0 && title !== lastTitles.get(sessionId)) {
+        lastTitles.set(sessionId, title);
+        post({
+          type: "session.updated",
+          session: {
+            id: sessionId,
+            title,
+            // dsh session/event 自带提交时间戳，客户端据此刷新列表 meta（更新时刻）
+            updatedAt: typeof event.time === "number" ? event.time : Date.now(),
+          },
+        });
+      }
+      // 标题事件不改变 running/thinking 状态，也不重置 idle 判定
+      return;
+    }
 
     // 任何新活动都会取消"待判 idle"定时器
     const idleTimer = idleTimers.get(sessionId);

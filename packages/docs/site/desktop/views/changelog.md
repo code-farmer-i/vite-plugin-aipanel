@@ -1,5 +1,41 @@
 # 更新日志
 
+## v1.2.8
+
+`2026-09-04`
+
+### core
+
+#### ⚡ 改进
+
+- 新增请求上下文静默模式：被高频轮询的端点（如扩展后台脚本每 2s 调用的服务状态心跳）不再输出调试日志，避免进程日志刷屏
+
+### deepseek
+
+#### ✨ 新增
+
+- 升级 dsh 相关依赖至 0.1.2-rc.1+，适配新版认证与事件架构：
+  - 实现 dsh browser-session 认证：启动时从 `dsh web` 输出 URL 解析 launch token 换取签名 Cookie，并经代理注入转发请求；dsh 版本低于最低要求时给出明确升级提示
+  - 重构事件流：dsh 0.1.2+ 移除全局事件下推后，改由宿主内 dsh-plugin 监听 `session/event` 总线、经令牌校验回推 core 再广播，恢复会话 running / thinking 状态指示（思考动画等）
+  - 会话列表按当前选中会话过滤：排除子代理与已归档会话，空白（未开始回合）会话仅当前选中时展示，与 dsh UI 可见性规则对齐
+- 新增会话标题实时同步：监听 dsh `session/title` 事件（自动生成或手动改名）并转发为 `session.updated`，外层会话列表标题无需整页刷新即可更新
+
+#### 🐛 修复
+
+- 补全 dsh 客户端需注入的 cordis 服务（`sessions` / `inputTriggers` / `conversation`），修复选中元素插入、输入触发与会话切换能力不可用的问题
+- 修复 Lexical 编辑器（contenteditable）下插入选中元素光标定位不准确的问题：不再仅依赖 `textarea`，新增可编辑内容选区文本节点遍历换算光标坐标，并兼容两种输入框的焦点恢复与光标回位
+- 桥接脚本支持跨 iframe 键盘事件转发与选择模式处理：修复聊天 iframe 内 Esc 无法退出选择模式、Ctrl+P 无法开启选择模式的问题（选择模式下优先转发并阻止按键被 dsh 自身处理吞掉）
+
+### docs
+
+#### ✨ 新增
+
+- 配置文档新增「MCP 客户端接入示例」：给出兼容 `mcpServers` 标准结构的客户端（Claude Code / Cursor 等）接入纯净 MCP 模式（mcpOnly）的 Streamable HTTP 配置 JSON 与写入位置
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.8/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.7
 
 `2026-09-01`

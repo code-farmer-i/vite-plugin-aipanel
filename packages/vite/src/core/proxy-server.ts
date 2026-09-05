@@ -90,18 +90,22 @@ export function startProxyServer(
           proxyRes.on("end", () => {
             let body = Buffer.concat(chunks).toString("utf-8");
 
-            if (body.match(/<\/head>/i)) {
-              body = body.replace(
-                /<\/head>/i,
-                `<script src="${BRIDGE_SCRIPT_PATH}"></script></head>`,
-              );
-            } else if (body.match(/<\/body>/i)) {
-              body = body.replace(
-                /<\/body>/i,
-                `<script src="${BRIDGE_SCRIPT_PATH}"></script></body>`,
-              );
-            } else {
-              body += `<script src="${BRIDGE_SCRIPT_PATH}"></script>`;
+            // 仅当 Provider 提供了桥接脚本才改写 HTML 注入；无脚本（如 dsh 页内行为已由
+            // @aipanel/dsh-client 插件承担）时原样透传，避免多余改写与空 script 请求。
+            if (bridgeScript.trim().length > 0) {
+              if (body.match(/<\/head>/i)) {
+                body = body.replace(
+                  /<\/head>/i,
+                  `<script src="${BRIDGE_SCRIPT_PATH}"></script></head>`,
+                );
+              } else if (body.match(/<\/body>/i)) {
+                body = body.replace(
+                  /<\/body>/i,
+                  `<script src="${BRIDGE_SCRIPT_PATH}"></script></body>`,
+                );
+              } else {
+                body += `<script src="${BRIDGE_SCRIPT_PATH}"></script>`;
+              }
             }
 
             const headers: http.OutgoingHttpHeaders = {};

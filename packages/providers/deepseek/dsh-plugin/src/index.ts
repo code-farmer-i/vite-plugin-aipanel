@@ -32,14 +32,20 @@ import {
   runProjectDiagnostics,
   isJsFile,
   SEVERITY_ERROR,
+  CONTEXT_API_PATH,
+  createLogger,
   type DiagnosticItem,
   type EslintOutput,
   type TscResult,
 } from "@aipanel/core/node";
+import type { AIPanelDiagnosticEntry, SelectedElement } from "@aipanel/core";
+import type { SettingsProvider } from "@deepseek-ai/dsh-settings";
 import { setupEventRelay } from "./events-relay";
 
 export const name = "aipanel";
 export const inject = ["tools"];
+
+const log = createLogger("DshPlugin");
 
 /** 来自 provider.start() 生成的 cordis overlay 注入的 config */
 export interface AipanelPluginConfig {
@@ -65,25 +71,19 @@ export interface AipanelPluginConfig {
    * overlay 始终显式注入；缺失配置时按 fail-closed 处理（不注入）。
    */
   enableDiagnostics?: boolean;
+  /**
+   * 默认 Agent 预设（provider option agentPreset；对应 dsh settings agent-presets.default）。
+   * 显式配置时本插件在启动期经 ctx.settings.update 写入，替代 provider 启动后的 RPC settings/mutate。
+   */
+  agentPreset?: string;
+  /** 默认权限预设（provider option permissionPreset；对应 dsh settings permission.defaultPreset） */
+  permissionPreset?: "read-only" | "workspace-write" | "danger-full-access";
+  /** 繁忙时 Enter 键行为（provider option busyEnter；对应 dsh settings ui-conversation.busyEnter） */
+  busyEnter?: "queue" | "steer";
 }
 
 const MUTATING_TOOLS = new Set(["write", "edit", "apply_patch"]);
 
-/** 核心层 context 端点路径的兜底默认值（与 @aipanel/core 的 CONTEXT_API_PATH 保持一致；优先取 config 注入值） */
-const DEFAULT_CONTEXT_API_PATH = "/__aipanel_context__";
-
-/** 核心层 context 端点返回的选中元素（字段与 @aipanel/core SelectedElement 对应） */
-interface ContextElement {
-  /** 节点唯一 id（`@节点[n<id>]` 引用标记与上下文注入共用） */
-  id?: string;
-  filePath?: string | null;
-  line?: number | null;
-  column?: number | null;
-  innerText?: string;
-  description?: string;
-  previewPageUrl?: string;
-  previewPageTitle?: string;
-}
 
 /** 提取文本中的全部节点 id（`@节点[n<id>]` 标记） */
 function collectNodeIds(text: string): string[] {
@@ -95,7 +95,7 @@ function collectNodeIds(text: string): string[] {
 }
 
 /** 把单个选中元素组织成注入给 agent 的上下文文本块；开头带节点 id 供 agent 与消息标记关联 */
-function buildNodeContext(e: ContextElement): string {
+function buildNodeContext(e: SelectedElement): string {
   const lines: string[] = [`节点 ID：${e.id ?? ""}`];
   if (e.filePath) lines.push(`源码文件路径：${e.filePath}${e.line ? `:${e.line}` : ""}`);
   if (e.line) lines.push(`代码所在行号：${e.line}`);
@@ -107,17 +107,6 @@ function buildNodeContext(e: ContextElement): string {
   return lines.join("\n");
 }
 
-/** 归一化后的单条诊断（canonical 输出 / presentationMeta 持久化 / client 渲染共用） */
-interface DiagnosticEntry {
-  /** 所属文件（绝对路径，由诊断引擎解析） */
-  file: string;
-  /** 1-based 行号 */
-  line: number;
-  /** 1-based 列号 */
-  column: number;
-  severity: "error" | "warning";
-  message: string;
-}
 
 /** 单条诊断分区（ESLint / vue-tsc） */
 interface DiagnosticsSection {
@@ -129,11 +118,11 @@ interface DiagnosticsSection {
 interface DiagnosticsCanonical {
   title: string;
   sections: DiagnosticsSection[];
-  diagnostics: DiagnosticEntry[];
+  diagnostics: AIPanelDiagnosticEntry[];
 }
 
 /** 把诊断引擎的结构化诊断项归一化为可展示/持久化条目（LSP 零基坐标 → 1-based） */
-function toDiagnosticEntries(items: DiagnosticItem[]): DiagnosticEntry[] {
+function toDiagnosticEntries(items: DiagnosticItem[]): AIPanelDiagnosticEntry[] {
   return items.map((d) => ({
     file: d.file ?? "",
     line: d.range.start.line + 1,
@@ -168,6 +157,91 @@ function renderDiagnosticsText(value: DiagnosticsCanonical): string {
   return body ? `${value.title}\n\n${body}` : value.title;
 }
 
+/**
+ * 启动期设置应用（agentPreset / permissionPreset / busyEnter）。
+ *
+ * 替代 provider 启动后的 RPC settings/mutate：宿主插件在 boot 期把 providerOptions
+ * 直写 dsh 用户设置。命名空间由 dsh 各功能插件注册（agent-presets / permission /
+ * ui-conversation），注册顺序可能晚于本插件 apply —— 这里按“已注册才写”轮询，
+ * 超时后放弃（不阻塞启动）；settings 服务或命名空间缺失时仅告警。
+ */
+export function applyProviderSettings(
+  ctx: Context,
+  config: AipanelPluginConfig,
+): void {
+  const pending: { ns: string; patch: Record<string, unknown> }[] = [];
+  if (typeof config.agentPreset === "string" && config.agentPreset) {
+    pending.push({ ns: "agent-presets", patch: { default: config.agentPreset } });
+  }
+  if (typeof config.permissionPreset === "string" && config.permissionPreset) {
+    pending.push({ ns: "permission", patch: { defaultPreset: config.permissionPreset } });
+  }
+  if (typeof config.busyEnter === "string" && config.busyEnter) {
+    pending.push({ ns: "ui-conversation", patch: { busyEnter: config.busyEnter } });
+  }
+  if (pending.length === 0) return;
+
+  // 官方 dsh settings 服务（@deepseek-ai/dsh-settings）：describe() 判定命名空间是否已注册，
+  // update() 按命名空间写用户设置；命名空间注册顺序可能晚于本插件 apply，见下方轮询。
+  const settings = ctx.get("settings") as SettingsProvider | undefined;
+  if (!settings) {
+    log.warn("settings service unavailable; provider settings not applied via plugin");
+    return;
+  }
+  const registered = (ns: string): boolean =>
+    settings.describe()?.some((d) => String(d.ns) === ns) ?? false;
+
+  const APPLY_TIMEOUT_MS = 12000;
+  const APPLY_INTERVAL_MS = 300;
+  const deadline = Date.now() + APPLY_TIMEOUT_MS;
+  let timer: NodeJS.Timeout | null = null;
+  const applied = new Set<number>();
+
+  const tick = () => {
+    timer = null;
+    let stillPending = false;
+    for (let i = 0; i < pending.length; i++) {
+      if (applied.has(i)) continue;
+      const entry = pending[i];
+      if (!registered(entry.ns)) {
+        stillPending = true;
+        continue;
+      }
+      void settings
+        .update(entry.ns, entry.patch)
+        .then(() => {
+          applied.add(i);
+          log.debug("applied provider setting via plugin", { ns: entry.ns });
+        })
+        .catch((err: unknown) => {
+          // 单命名空间写入失败只告警，不阻塞（与 provider RPC 路径的降级一致）
+          log.warn("failed to apply provider setting via plugin", {
+            ns: entry.ns,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          applied.add(i); // 不反复重试失败的命名空间
+        });
+    }
+    if (!stillPending && applied.size === pending.length) return;
+    if (Date.now() < deadline) {
+      timer = setTimeout(tick, APPLY_INTERVAL_MS);
+      timer.unref?.();
+    } else if (stillPending) {
+      log.warn("provider settings not fully applied: namespace registration timed out", {
+        pending: pending.filter((_, i) => !applied.has(i)).map((p) => p.ns),
+      });
+    }
+  };
+  tick();
+
+  ctx.effect(
+    () => () => {
+      if (timer) clearTimeout(timer);
+    },
+    "aipanel: settings apply timer",
+  );
+}
+
 export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
   const cwd = config.cwd ?? process.cwd();
   // 诊断功能总开关：关闭时不注入 run_diagnostics 工具与自动诊断逻辑
@@ -175,7 +249,7 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
   // 与 opencode 对齐：默认关闭自动诊断，OPENCODE_ENABLE_LINT=1（或显式配置）开启
   const autoDiagnose = config.autoDiagnose ?? process.env.OPENCODE_ENABLE_LINT === "1";
   const vitePort = config.vitePort ?? 0;
-  const contextApiPath = config.contextApiPath ?? DEFAULT_CONTEXT_API_PATH;
+  const contextApiPath = config.contextApiPath ?? CONTEXT_API_PATH;
 
   const tools: ToolRuntime = ctx.tools;
 
@@ -354,23 +428,23 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
         if (ids.size === 0) return decision;
 
         // 从核心层 context 端点拉取选中元素，按 id 反查（端点不可达时不注入，不阻塞会话）
-        let elements: ContextElement[] = [];
+        let elements: SelectedElement[] = [];
         try {
           const res = await fetch(contextBase, { signal });
           if (res.ok) {
-            const pc = (await res.json()) as { selectedElements?: ContextElement[] };
+            const pc = (await res.json()) as { selectedElements?: SelectedElement[] };
             elements = pc.selectedElements ?? [];
           }
         } catch {
           /* ignore */
         }
-        const byId = new Map<string, ContextElement>();
+        const byId = new Map<string, SelectedElement>();
         for (const el of elements) {
           if (el.id) byId.set(el.id, el);
         }
         const injected = [...ids]
           .map((id) => byId.get(id))
-          .filter((el): el is ContextElement => el !== undefined);
+          .filter((el): el is SelectedElement => el !== undefined);
         if (injected.length === 0) return decision;
 
         // 保留消息中的 `@节点[id]` 标记：durable user/message 以 decision.messages 持久化
@@ -409,4 +483,7 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
     eventsPath: config.eventsPath,
     eventsToken: config.eventsToken,
   });
+
+  // === 5) 启动期设置应用（agentPreset / permissionPreset / busyEnter；替代 provider 侧 RPC） ===
+  applyProviderSettings(ctx, config);
 }

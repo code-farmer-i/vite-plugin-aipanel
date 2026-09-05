@@ -1,6 +1,7 @@
 import type { ResultPromise } from "execa";
 import { sleep } from "@aipanel/core";
 import type {
+  AIPanelWidgetTheme,
   ChatSession,
   ProviderConfig,
   ProviderEnvironmentInfo,
@@ -19,7 +20,6 @@ import type {
 import { DEFAULT_DEEPSEEK_PROVIDER_OPTIONS } from "./constants";
 import { DSH_LOOPBACK_HOST } from "./constants";
 import { DeepSeekAPI } from "./api";
-import { generateBridgeScript, type BridgeScriptOptions } from "./bridge-script";
 import { LaunchToken, startDeepSeekWeb } from "./deepseek-web";
 import { buildDshOverlay, writeDshOverlay } from "./profile";
 import {
@@ -55,7 +55,9 @@ export interface DeepSeekWebProviderDeps {
 
 /**
  * DeepSeek Harness Web Provider
- * 组合 CLI 进程管理、RPC 会话 API、桥接脚本，向核心层暴露 WebProvider 契约。
+ * 组合 CLI 进程管理、RPC 会话 API、dsh 侧插件编排（host 插件 + 浏览器 client 插件），
+ * 向核心层暴露 WebProvider 契约。dsh 页内行为（会话聚焦/主题/布局/选中元素）全部
+ * 由浏览器插件 @aipanel/dsh-client 承担，不再注入 bridge 脚本。
  */
 export class DeepSeekWebProvider implements WebProvider {
   readonly id = "deepseek";
@@ -67,7 +69,8 @@ export class DeepSeekWebProvider implements WebProvider {
   private readonly api: DeepSeekAPI;
   private deps: DeepSeekWebProviderDeps;
   private process: ResultPromise | null = null;
-  private bridgeOptions: BridgeScriptOptions = {};
+  /** AIPanel 侧下发的主题偏好（AIPanelWidgetTheme，default auto）：随 client 插件 config 注入，作为启动初值 */
+  private uiTheme: AIPanelWidgetTheme = "auto";
   private readonly opts: DeepSeekProviderOptions;
 
   constructor(
@@ -80,17 +83,10 @@ export class DeepSeekWebProvider implements WebProvider {
     this.api = new DeepSeekAPI(DSH_LOOPBACK_HOST, deps.getWebPort);
   }
 
-  /** 代理注入到 HTML 的桥接脚本（Provider 资产） */
-  get bridgeScript(): string | undefined {
-    return generateBridgeScript(this.bridgeOptions);
-  }
-
-  /** 初始化桥接配置（主题、诊断开关等） */
+  /** 记录 AIPanel 侧主题偏好（applyConfig 在 start 前调用；start 时随 client 插件 config 下发） */
   applyConfig(config: ProviderConfig): void {
-    this.bridgeOptions = {
-      theme: config.theme ?? "auto",
-      diagnosticsEnabled: this.opts.enableDiagnostics ?? false,
-    };
+    const t = config.theme;
+    this.uiTheme = t === "light" || t === "dark" || t === "auto" ? t : "auto";
   }
 
   async checkEnvironment(): Promise<ProviderEnvironmentInfo> {
@@ -162,12 +158,14 @@ Please upgrade:
       this.opts.home,
     );
     if (!pluginAvailable) {
-      log.warn("@aipanel/dsh-plugin unavailable; run_diagnostics & auto-diagnose disabled", {
+      log.warn("@aipanel/dsh-plugin unavailable; run_diagnostics & settings application disabled", {
         metaUrl: import.meta.url,
       });
     }
 
-    // 生成 cordis overlay：接入 AIPanel MCP（浏览器控制/Debug 等）+ 审查工具插件（包名引用）
+    // 生成 cordis overlay：接入 AIPanel MCP（浏览器控制/Debug 等）+ aipanel 宿主/浏览器插件。
+    // providerOptions（agentPreset/permissionPreset/busyEnter）随 host 插件 config 下发，
+    // 由 dsh-plugin 在启动期经 ctx.settings 应用；诊断开关/主题初值随 client 插件 config 下发。
     const overlay = buildDshOverlay({
       vitePort: options.vitePort,
       cwd: options.cwd,
@@ -177,6 +175,10 @@ Please upgrade:
       enableDiagnostics: this.opts.enableDiagnostics,
       // 宿主事件推送令牌（core 每轮启动随机）：随 plugin config 注入 dsh-plugin 用于回推鉴权
       eventsToken: options.eventsToken,
+      agentPreset: this.opts.agentPreset,
+      permissionPreset: this.opts.permissionPreset,
+      busyEnter: this.opts.busyEnter,
+      theme: this.uiTheme,
     });
     const patchPath = writeDshOverlay(options.cwd, overlay);
 
@@ -197,7 +199,7 @@ Please upgrade:
     this.process = proc;
 
     // dsh 0.1.2+ 在索引页与 /api 强制 browser-session 认证：用 launch token 换签名 Cookie，
-    // 便于后续 applySettings / RPC 直连通过 401 门禁，并把同一 Cookie 交代理注入转发请求。
+    // 便于后续 RPC 直连通过 401 门禁，并把同一 Cookie 交代理注入转发请求。
     // Cookie 必须在代理启动前就绪，否则经代理访问的 UI 将永久 401，因此这里带短退避重试；
     // 全部失败才降级告警（未认证直连，界面可能 401），不阻塞 dsh 启动。
     let webAuthCookie: string | undefined;
@@ -228,43 +230,11 @@ Please upgrade:
       );
     }
 
-    // 应用 providerOptions 指定的 dsh 用户设置（agent 预设 / 权限 / 繁忙 Enter 行为）。
-    // 通过 settings/mutate 写用户层，需 dsh API 就绪后生效；失败仅告警，不阻塞启动。
-    const settings = this.buildSettingsToApply();
-    if (Object.keys(settings).length > 0) {
-      void this.api.applySettings(settings).catch((e) => {
-        log.warn("failed to apply provider settings to dsh", {
-          settings,
-          error: e instanceof Error ? e.message : String(e),
-        });
-      });
-    }
+    // 注：providerOptions 指定的 dsh 用户设置（agent 预设 / 权限 / 繁忙 Enter）不再由本
+    // provider 在启动后经 RPC settings/mutate 写入 —— 已随 overlay 的 host 插件 config 下发，
+    // 由 @aipanel/dsh-plugin 在 dsh boot 期经 ctx.settings.update 应用（见 dsh-plugin/applyProviderSettings）。
 
     return { url: this.api.shellUrl, processHandle: proc, webAuthCookie };
-  }
-
-  /** 把 providerOptions 配置映射为 dsh settings 命名空间 patch（仅含用户显式配置项） */
-  private buildSettingsToApply(): Record<string, Record<string, unknown>> {
-    const sections: Record<string, Record<string, unknown>> = {};
-    if (this.opts.agentPreset !== undefined) {
-      // dsh settings agent-presets.default：新建会话的默认预设
-      sections["agent-presets"] = { ...sections["agent-presets"], default: this.opts.agentPreset };
-    }
-    if (this.opts.permissionPreset !== undefined) {
-      // dsh settings permission.defaultPreset：新会话默认权限预设
-      sections.permission = {
-        ...sections.permission,
-        defaultPreset: this.opts.permissionPreset,
-      };
-    }
-    if (this.opts.busyEnter !== undefined) {
-      // dsh settings ui-conversation.busyEnter：繁忙时 Enter 键行为
-      sections["ui-conversation"] = {
-        ...sections["ui-conversation"],
-        busyEnter: this.opts.busyEnter,
-      };
-    }
-    return sections;
   }
 
   async stop(): Promise<void> {
@@ -281,7 +251,7 @@ Please upgrade:
 
   async listSessions(projectDir: string, activeSessionId?: string): Promise<ChatSession[]> {
     const sessions = await this.api.listSessions(projectDir, activeSessionId);
-    // 无 deepLink：所有会话共用应用壳 URL（走代理注入 bridge）
+    // 无 deepLink：所有会话共用应用壳 URL（会话切换经 FOCUS_SESSION → dsh-client 的 sessions.open）
     const url = this.buildSessionUrl(projectDir, "");
     return sessions.map((s) => toChatSession(s, url));
   }
@@ -308,7 +278,8 @@ Please upgrade:
     void projectDir;
     void sessionId;
     // 无 deepLink 能力：所有会话共用应用壳 URL。必须走代理（proxyPort）而非直连 dsh，
-    // 否则 bridge 脚本无法注入（主题同步 / FOCUS_SESSION 均依赖它）；切换会话靠 FOCUS_SESSION 消息
+    // 使 dsh-client 能收到父窗消息（页面与核心层同域转发）；切换会话靠 FOCUS_SESSION →
+    // dsh-client 的 sessions.open 完成。
     return `http://${DSH_LOOPBACK_HOST}:${this.deps.getProxyPort()}/`;
   }
 

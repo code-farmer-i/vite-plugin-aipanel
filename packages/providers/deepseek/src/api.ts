@@ -269,48 +269,6 @@ export class DeepSeekAPI {
     throw lastError;
   }
 
-  /**
-   * 通过 dsh settings/mutate 应用 providerOptions 指定的用户设置（逐命名空间幂等 patch）。
-   * dsh 启动初期 API 未就绪，整体带重试；单个命名空间不存在会导致该次调用失败重试。
-   */
-  async applySettings(
-    sections: Record<string, Record<string, unknown>>,
-    retries = DEFAULT_RETRIES,
-  ): Promise<void> {
-    const namespaces = Object.keys(sections);
-    if (namespaces.length === 0) return;
-    const timer = log.timer("applySettings", { namespaces });
-    let lastError: Error | null = null;
-
-    for (let i = 0; i < retries; i++) {
-      try {
-        // 走 settings/mutate（wire 参数 ns + ops[]；0.1.2 同时保留 settings/update(ns,patch)，
-        // 这里统一用 mutate 逐 key set，语义与旧的扁平 patch 合并等价）。
-        // 把 { ns, patch } 扁平化为 set 操作数组：[{ op:'set', path:[key], value }]。
-        log.debug(`Attempt ${i + 1}/${retries}`, { method: "settings/mutate", namespaces });
-        for (const [ns, patch] of Object.entries(sections)) {
-          const ops = Object.entries(patch).map(([key, value]) => ({
-            op: "set" as const,
-            path: [key],
-            value,
-          }));
-          await this.call("settings/mutate", { ns, ops });
-        }
-        timer.end(`Applied settings: ${namespaces.join(", ")}`);
-        return;
-      } catch (e) {
-        lastError = e instanceof Error ? e : new Error(String(e));
-        log.debug(`Attempt ${i + 1} failed: ${lastError.message}`, { method: "applySettings" });
-        if (i < retries - 1) {
-          await sleep(RETRY_DELAY);
-        }
-      }
-    }
-
-    timer.end("❌ All retries exhausted");
-    throw lastError;
-  }
-
   /** 归档会话（dsh 无硬删除，仅归档；幂等） */
   async archiveSession(sessionId: string, retries = DEFAULT_RETRIES): Promise<void> {
     const timer = log.timer("archiveSession", { sessionId, retries });

@@ -6,8 +6,10 @@ import { fileURLToPath, pathToFileURL } from "url";
 import type { WebOptions } from "./types";
 import {
   AIPANEL_CACHE_DIR,
+  DEFAULT_HOSTNAME,
   MCP_API_PATH,
   VSCODE_EXTENSION_PORT,
+  VSCODE_ROUTE_HEALTH,
   ENV_VSCODE_PORT,
   createLogger,
   getProcessLogBuffer,
@@ -231,7 +233,7 @@ function isFormatServiceRunning(): boolean {
   if (_formatServiceRunning !== undefined) return _formatServiceRunning;
   try {
     require("child_process").execSync(
-      `node -e "const h=require('http');h.get('http://127.0.0.1:${VSCODE_EXTENSION_PORT}/health',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"`,
+      `node -e "const h=require('http');h.get('http://${DEFAULT_HOSTNAME}:${VSCODE_EXTENSION_PORT}${VSCODE_ROUTE_HEALTH}',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"`,
       { timeout: 500, stdio: "ignore" },
     );
     _formatServiceRunning = true;

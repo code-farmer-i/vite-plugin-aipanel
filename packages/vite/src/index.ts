@@ -8,6 +8,7 @@ import {
   CONTEXT_API_PATH,
   DEFAULT_PROXY_PORT,
   MCP_API_PATH,
+  SESSION_ID_KEY,
   resolvePluginConfig,
   setVerbose,
 } from "@aipanel/core";
@@ -66,7 +67,7 @@ const SILENT_CONTEXT_SCRIPT = `<script>
     if (!force && key === last) return;
     last = key;
     var sessionId = "";
-    try { sessionId = sessionStorage.getItem("_aipanel_pk") || ""; } catch (e) {}
+    try { sessionId = sessionStorage.getItem("${SESSION_ID_KEY}") || ""; } catch (e) {}
     fetch(API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -411,7 +412,7 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
       // 纯净 MCP 模式也需注入：current_page 定位依赖 _aipanel_pk
       const titleInject = `<script>
         (function () {
-          var KEY = "_aipanel_pk";
+          var KEY = "${SESSION_ID_KEY}";
           if (!sessionStorage.getItem(KEY)) {
             sessionStorage.setItem(KEY, "[" + Math.random().toString(36).slice(2, 10) + "]");
           }

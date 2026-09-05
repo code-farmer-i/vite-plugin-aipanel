@@ -21,6 +21,7 @@
   "devDependencies": {
     "@aipanel/core": "workspace:*",
     "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-settings": "^0.1.2-rc.1",
     "@deepseek-ai/dsh-agent": "^0.1.2-rc.1",
     "@deepseek-ai/dsh-llm": "^0.1.2-rc.1",
     "@deepseek-ai/dsh-tools": "^0.1.2-rc.1",

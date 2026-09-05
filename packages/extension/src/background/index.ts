@@ -1,4 +1,5 @@
-import { EXT_MSG, EXT_BROADCAST, START_API_PATH } from "@aipanel/core";
+import { DEFAULT_HOSTNAME, EXT_MSG, EXT_BROADCAST, START_API_PATH } from "@aipanel/core";
+import type { AIPanelServiceInfo } from "@aipanel/core";
 import { createLogger } from "@aipanel/core/client";
 
 const log = createLogger("AIPanel BG");
@@ -21,16 +22,8 @@ function isLocalHost(hostname: string): boolean {
 // 核心原则：服务是独立实体（由 serviceInstanceId 标识），不绑定到窗口或 Tab。
 // Tab 只是"指向"某个服务 — 多个 Tab 可指向同一服务，也可不指向任何服务。
 
-interface ServiceInfo {
-  proxyPort: number;
-  vitePort: string;
-  projectRoot: string;
-  serviceInstanceId: string;
-  verbose?: boolean;
-}
-
 /** 所有已知的服务（serviceInstanceId → 服务信息），独立于 Tab/窗口 */
-const services = new Map<string, ServiceInfo>();
+const services = new Map<string, AIPanelServiceInfo>();
 
 /** tabId → 该 Tab 当前指向的 serviceInstanceId */
 const tabService = new Map<number, string>();
@@ -44,7 +37,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 // ========== 服务检测 ==========
 
-async function fetchService(origin: string): Promise<ServiceInfo | null> {
+async function fetchService(origin: string): Promise<AIPanelServiceInfo | null> {
   try {
     const res = await fetch(`${origin}${START_API_PATH}`);
     const data = await res.json();
@@ -64,7 +57,7 @@ async function fetchService(origin: string): Promise<ServiceInfo | null> {
 }
 
 /** 轮询指定 Tab 上的服务端点 */
-async function pollTab(tabId: number): Promise<ServiceInfo | null> {
+async function pollTab(tabId: number): Promise<AIPanelServiceInfo | null> {
   try {
     const tab = await chrome.tabs.get(tabId);
     if (!tab.url || !isLocalHost(new URL(tab.url).hostname)) {
@@ -77,7 +70,7 @@ async function pollTab(tabId: number): Promise<ServiceInfo | null> {
 }
 
 /** 获取当前活跃窗口活跃 Tab 的服务信息 */
-function getActiveService(): ServiceInfo | null {
+function getActiveService(): AIPanelServiceInfo | null {
   if (activeWindowId === undefined) return null;
   const tabId = activeTabs.get(activeWindowId);
   if (tabId === undefined) return null;
@@ -103,7 +96,7 @@ function countTabsForService(serviceInstanceId: string): number {
  *  - 服务端口变更 → SERVICE_APPEARED
  *  - 服务从活跃 Tab 消失且无其他 Tab 引用 → SERVICE_GONE
  */
-function updateActiveTabService(tabId: number, windowId: number, info: ServiceInfo | null): void {
+function updateActiveTabService(tabId: number, windowId: number, info: AIPanelServiceInfo | null): void {
   const oldSid = tabService.get(tabId);
 
   if (info) {
@@ -242,7 +235,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // 同 origin 路径切换 — 无需重新轮询
   if (oldSid) {
     const oldInfo = services.get(oldSid);
-    const oldOrigin = oldInfo ? `http://127.0.0.1:${oldInfo.vitePort}` : null;
+    const oldOrigin = oldInfo ? `http://${DEFAULT_HOSTNAME}:${oldInfo.vitePort}` : null;
     if (oldOrigin && new URL(oldOrigin).origin === newOrigin) {
       return;
     }
@@ -375,7 +368,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
 
-  if (msg.type === "FORCE_POLL") {
+  if (msg.type === EXT_MSG.FORCE_POLL) {
     tick().then(() => {
       sendResponse(getActiveService());
     });

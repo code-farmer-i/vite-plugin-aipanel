@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import * as http from "http";
-import { VSCODE_EXTENSION_PORT } from "@aipanel/core/node";
+import {
+  DEFAULT_HOSTNAME,
+  VSCODE_EXTENSION_PORT,
+  VSCODE_ROUTE_FORMAT,
+  VSCODE_ROUTE_HEALTH,
+} from "@aipanel/core/node";
 
 let server: http.Server | null = null;
 const outputChannel = vscode.window.createOutputChannel("AIPanel Assistant");
@@ -25,7 +30,7 @@ function createRequestHandler(): http.RequestListener {
       res.end();
       return;
     }
-    if (req.method === "GET" && req.url === "/health") {
+    if (req.method === "GET" && req.url === VSCODE_ROUTE_HEALTH) {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));
       return;
@@ -46,7 +51,7 @@ function createRequestHandler(): http.RequestListener {
           res.end(JSON.stringify({ error: "Missing filePath" }));
           return;
         }
-        if (req.url === "/format") {
+        if (req.url === VSCODE_ROUTE_FORMAT) {
           const result = await formatFile(filePath);
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(result));
@@ -64,7 +69,7 @@ function createRequestHandler(): http.RequestListener {
 
 function probeRunningService(): Promise<boolean> {
   return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${VSCODE_EXTENSION_PORT}/health`, (res) => {
+    const req = http.get(`http://${DEFAULT_HOSTNAME}:${VSCODE_EXTENSION_PORT}${VSCODE_ROUTE_HEALTH}`, (res) => {
       res.resume();
       resolve(res.statusCode === 200);
     });
@@ -84,7 +89,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   try {
     await new Promise<void>((resolve, reject) => {
-      srv.listen(VSCODE_EXTENSION_PORT, "127.0.0.1", resolve);
+      srv.listen(VSCODE_EXTENSION_PORT, DEFAULT_HOSTNAME, resolve);
       srv.on("error", reject);
     });
     server = srv;

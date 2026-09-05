@@ -6,47 +6,21 @@
  * 着色的诊断列表（点击可打开文件），达到 opencode 诊断面板的呈现效果。
  * meta 缺失（旧日志 / 运行中 / PTC 子调度）时回退到通用文本渲染。
  *
- * 类型说明：dsh 客户端会话节点类型（ToolCallBlock / ToolResultNode）仅在新版
- * client 包发布，rc.2 生态不含其类型；这里按官方 records.ts 的运行时形状
- * 自定义最小结构（结构性兼容），不引入缺失依赖。
+ * 类型说明：会话节点类型与 slot owner props 均直接引用官方单一来源：
+ *   - ToolCallBlock / ToolResultNode / RunningToolCall → @deepseek-ai/dsh-client-ui-conversation/client
+ *   - ToolCallOwnerProps / tool.call.toolview → @deepseek-ai/dsh-client-ui-tool/client
  */
 import type { Context } from "@deepseek-ai/cordis";
+import type { AIPanelDiagnosticEntry } from "@aipanel/core";
+import type { ToolCallBlock, ToolResultNode } from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type { ToolCallOwnerProps } from "@deepseek-ai/dsh-client-ui-tool/client";
 import { useState, type ReactNode } from "react";
 // 与官方 dsh-client-ui-tool 一致：primitives 作为 external 运行时解析（dsh web 提供），
 // 不打包进产物（打包会带进 katex/markdown 整条子图，膨胀到 3.6MB）。
 import { DisclosureRow, StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 
-/** 与 host 端 dsh-plugin presentationMeta 持久化的条目结构一致 */
-interface DiagnosticEntry {
-  file: string;
-  line: number;
-  column: number;
-  severity: "error" | "warning";
-  message: string;
-}
-
 interface DiagnosticsMeta {
   diagnostics?: unknown;
-}
-
-/** 已结算工具节点的最小结构（对应官方 ToolResultNode 的运行时形状） */
-interface SettledToolBlock {
-  kind: "tool-result";
-  callId: string;
-  content: Array<{ type: string; text?: string }>;
-  isError: boolean;
-  meta?: unknown;
-}
-
-/** tool.call.toolview 的 owner props（官方 ToolCallOwnerProps 的结构子集） */
-interface ToolCallOwnerProps {
-  callId: string;
-  toolName: string;
-  block: SettledToolBlock | { callId: string; argsRaw?: string };
-  cwd?: string;
-  home?: string;
-  openFile: (path: string) => void;
-  inspect?: () => void;
 }
 
 /** ctx.slots 的最小类型（slot 注册面；运行时由 dsh web 前端提供） */
@@ -55,33 +29,39 @@ interface SlotsRegistryLike {
   register(decl: { name: string; key: string }, component: unknown): () => void;
 }
 
-/** bridge 按 provider option enableDiagnostics 写入的开关标记（与 provider constants 的 DSH_STORAGE_KEYS 对应） */
-const DIAGNOSTICS_STORAGE_KEY = "dsh.bridge.diagnostics.enabled";
+/** 是否为已结算的工具结果节点（官方 RunningToolCall 无 kind；ToolResultNode.kind === "tool-result"） */
+function isSettledToolResult(block: ToolCallBlock): block is ToolResultNode {
+  return typeof block === "object" && block !== null && "kind" in block && block.kind === "tool-result";
+}
 
-/** 从冻结的会话节点读取 host 侧持久化的诊断数据（校验通过才使用） */
-function readDiagnostics(block: unknown): DiagnosticEntry[] | undefined {
-  if (typeof block !== "object" || block === null) return undefined;
-  const settled = block as SettledToolBlock;
-  if (settled.kind !== "tool-result") return undefined;
-  const meta = settled.meta as DiagnosticsMeta | undefined;
+/** 从冻结的工具结果节点读取 host 侧持久化的诊断数据（校验通过才使用） */
+function readDiagnostics(block: ToolCallBlock): AIPanelDiagnosticEntry[] | undefined {
+  if (!isSettledToolResult(block)) return undefined;
+  const meta = block.meta as DiagnosticsMeta | undefined;
   const diagnostics = meta?.diagnostics;
   if (!Array.isArray(diagnostics)) return undefined;
-  return diagnostics.every(isEntry) ? (diagnostics as DiagnosticEntry[]) : undefined;
+  return diagnostics.every(isEntry) ? (diagnostics as AIPanelDiagnosticEntry[]) : undefined;
 }
 
 /** 拼出工具结果节点里的纯文本（text blocks join "\n"） */
-function extractBlockText(block: unknown): string {
-  if (typeof block !== "object" || block === null) return "";
-  const settled = block as SettledToolBlock;
-  if (!Array.isArray(settled.content)) return "";
-  return (settled.content ?? [])
-    .filter((b): b is { type: "text"; text: string } => b.type === "text" && typeof b.text === "string")
+function extractBlockText(block: ToolCallBlock): string {
+  if (!isSettledToolResult(block)) return "";
+  const content = block.content as readonly unknown[];
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter(
+      (b): b is { type: "text"; text: string } =>
+        typeof b === "object" &&
+        b !== null &&
+        (b as { type?: unknown }).type === "text" &&
+        typeof (b as { text?: unknown }).text === "string",
+    )
     .map((b) => b.text)
     .join("\n");
 }
 
-function isEntry(d: unknown): d is DiagnosticEntry {
-  const e = d as DiagnosticEntry | null;
+function isEntry(d: unknown): d is AIPanelDiagnosticEntry {
+  const e = d as AIPanelDiagnosticEntry | null;
   return (
     !!e &&
     typeof e.file === "string" &&
@@ -214,7 +194,7 @@ function DiagnosticsRow({ block, cwd, toolName, openFile }: ToolCallOwnerProps) 
   const diagnostics = readDiagnostics(block);
   const [expanded, setExpanded] = useState(false);
 
-  const isSettled = (block as SettledToolBlock)?.kind === "tool-result";
+  const isSettled = isSettledToolResult(block);
   const hasDiagnostics = typeof diagnostics !== "undefined" && diagnostics.length > 0;
   const errors = (diagnostics ?? []).filter((d) => d.severity === "error");
   const warnings = (diagnostics ?? []).filter((d) => d.severity === "warning");
@@ -346,13 +326,9 @@ function DiagnosticsRow({ block, cwd, toolName, openFile }: ToolCallOwnerProps) 
 }
 
 /** 注册 run_diagnostics 的 keyed 工具视图（命中后替换官方 generic 卡片） */
-export function registerDiagnosticsView(ctx: Context): void {
-  // 诊断功能未开启（bridge 未写入标记）时不注册视图，避免注入无用的渲染逻辑
-  try {
-    if (localStorage.getItem(DIAGNOSTICS_STORAGE_KEY) !== "1") return;
-  } catch {
-    return;
-  }
+export function registerDiagnosticsView(ctx: Context, enabled = true): void {
+  // 诊断功能总开关（provider option enableDiagnostics）：关闭时不注册视图。
+  if (!enabled) return;
   const slots = (ctx as unknown as { slots?: SlotsRegistryLike }).slots;
   if (!slots) return;
   slots.inject("tool.call.toolview", function* () {

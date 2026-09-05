@@ -6,11 +6,12 @@
  */
 import { DEFAULT_OPENCODE_SETTINGS, OPENCODE_STORAGE_KEYS } from "./constants";
 import type { OpenCodeLanguage, OpenCodeSettings } from "./types";
+import type { AIPanelWidgetTheme } from "@aipanel/core";
 import { WIDGET_MSG } from "@aipanel/core";
 
 export interface BridgeScriptOptions {
-  /** 主题模式 */
-  theme?: "light" | "dark" | "auto";
+  /** 主题模式（单一来源：@aipanel/core AIPanelWidgetTheme） */
+  theme?: AIPanelWidgetTheme;
   /** 界面语言 */
   language?: OpenCodeLanguage;
   /** 内部设置 */

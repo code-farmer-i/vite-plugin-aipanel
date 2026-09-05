@@ -1,6 +1,6 @@
 /**
  * DeepSeek Harness Web Provider
- * 实现 WebProvider 契约：进程管理、RPC 会话 API、桥接脚本、CLI 环境检查。
+ * 实现 WebProvider 契约：进程管理、RPC 会话 API、dsh 侧插件编排、CLI 环境检查。
  * 所有 dsh 专属类型与常量自包含于此包。
  */
 import type { ProviderInitContext, WebProvider } from "@aipanel/core";
@@ -20,7 +20,6 @@ export { DeepSeekAPI } from "./api";
 export type { DeepSeekWebProviderConfig, DeepSeekWebProviderDeps } from "./provider";
 export { startDeepSeekWeb, type DeepSeekWebOptions } from "./deepseek-web";
 export { buildDshOverlay, writeDshOverlay } from "./profile";
-export { generateBridgeScript, type BridgeScriptOptions } from "./bridge-script";
 export { checkDeepSeekInstalled, getDeepSeekVersion, killOrphanDeepSeekProcesses } from "./system";
 export { DEFAULT_DEEPSEEK_PROVIDER_OPTIONS, DSH_LOOPBACK_HOST, DSH_DEFAULT_PORT } from "./constants";
 export type {

@@ -1,62 +1,86 @@
 /**
  * AIPanel 浏览器侧插件（dsh Web Client bundle）
  *
- * 经 dsh 的 dsh.client 契约被 __DSH_BOOT__ 自动激活。注册 `@aipanel` 引用 source：
- *   - candidates 读取 bridge 写入的 localStorage('dsh.bridge.selection') —— 最近选中元素
- *   - onPick 铸造 appearance:'file' 的 ReferenceInsert（输入框高亮）
- *   - codec.serialize 输出 `@节点[n<id>]` 标记（无空格无斜杠，天然满足高亮 token 语法）；
- *     完整节点上下文不进会话文本，由 host 端 dsh-plugin 在 agent/pre-step 按 id
- *     从核心层 context 端点反查后注入（plugin source）。
+ * 经 dsh 的 dsh.client 契约被 __DSH_BOOT__ 自动激活。AIPanel × dsh 的“页内”
+ * 全部行为都由本插件承载（不再向 HTML 注入 bridge 脚本）：
+ *
+ *  1. @aipanel 引用 source（@ 菜单 chip）：candidates 读本地最近选中元素，
+ *     onPick 铸造 appearance:'file' 的 ReferenceInsert，codec 序列化为 `@节点[n<id>]`；
+ *     完整节点上下文不进会话文本，由 host 端 dsh-plugin 在 agent/pre-step 反查注入。
+ *  2. 会话聚焦（FOCUS_SESSION）：直接走官方 ctx.sessions.open() —— 无 reload、
+ *     无 localStorage 握手；激活稳定后把 SESSION_READY 上报父窗（放行 loading）。
+ *  3. 主题同步（SET_THEME）：ctx.theme.setTheme()（官方持久化偏好 + 呈现器落 DOM）。
+ *  4. AIPanel 布局：嵌入式（iframe）时隐藏 dsh 侧栏，避免与 AIPanel 自带会话列表重复。
+ *  5. 键盘转发（Esc / Ctrl+P）：嵌入式时把按键转交父窗（退出/切换选择模式）。
+ *  6. 选中元素即时插入：官方 SessionInput.insertReference() 把元素以 chip 插入输入框。
+ *
+ * 与 AIPanel 挂件的消息协议（WIDGET_MSG）、元素/诊断等共享类型均直接引用
+ * @aipanel/core 单一来源，不在此维护副本。
  */
+import type { Context } from "@deepseek-ai/cordis";
 import type {
   InputTriggerCandidate,
   InputTriggerSource,
   ReferenceInsert,
 } from "@deepseek-ai/dsh-client-ui-input-trigger/client";
-import type { Context } from "@deepseek-ai/cordis";
+import { WIDGET_MSG } from "@aipanel/core";
+import type { AIPanelSelectedElement, AIPanelWidgetTheme } from "@aipanel/core";
+import type { ISessions, SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
+import type { SessionId } from "@deepseek-ai/dsh-session/types";
+import type {
+  IConversation,
+  InputState,
+  SessionInput,
+  TokenSpan,
+} from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type { ThemePreference, ThemeRuntime } from "@deepseek-ai/dsh-client-ui-theme/client";
 import { registerDiagnosticsView } from "./diagnostics-view";
 
-const SELECTION_STORAGE_KEY = "dsh.bridge.selection";
+/**
+ * AIPanel 挂件 ⇄ dsh iframe 的消息协议：单一来源 @aipanel/core 的 WIDGET_MSG。
+ * 本包不再自行维护一份镜像常量，避免协议漂移。
+ */
+const MSG = WIDGET_MSG;
+
+/** overlay 传入的插件配置（config 段，best-effort；缺失时走默认值） */
+export interface AipanelClientPluginConfig {
+  /**
+   * 诊断功能总开关（provider option enableDiagnostics，对齐 opencode enableLsp）。
+   * 缺失时默认开启（与 provider 默认一致）；显式 false 时不注册诊断卡片视图。
+   */
+  enableDiagnostics?: boolean;
+  /**
+   * 初始主题偏好（provider applyConfig.theme，见 @aipanel/core AIPanelWidgetTheme）。
+   * 缺省不干预：沿用 dsh 用户设置里已持久化的主题偏好。
+   */
+  theme?: AIPanelWidgetTheme;
+}
 
 /**
  * cordis 插件服务注入声明。rc.1 起插件 ctx 只暴露 inject 声明过的服务面：
  *  - slots：诊断卡片视图（官方 ui-tool 同款姿势）
- *  - sessions：会话就绪探针（sessions.list.current 稳态后派发 session-ready）
- *  - inputTriggers：注册 @aipanel 引用 source（否则 apply 直接 return，后续逻辑全不执行）
+ *  - sessions：会话列表/current/聚焦（sessions.open）与会话就绪探针
+ *  - inputTriggers：注册 @aipanel 引用 source
  *  - conversation：选中元素插入当前会话输入框
  */
 export const inject = ["slots", "sessions", "inputTriggers", "conversation"];
 
-/** 桥接层监听的自定义事件：确认目标会话已激活且渲染稳定（detail.sessionId 为当前会话） */
-export const SESSION_READY_EVENT = "aipanel:session-ready";
+/** 最近选中元素的本地存储键（插件自持；跨页面刷新保留 @ 菜单候选） */
+const SELECTION_STORAGE_KEY = "aipanel.selection";
 
-/** 桥接层派发的自定义事件：用户选中了一个元素，需追加到当前会话对话框（detail.element 为选中元素） */
-export const INSERT_ELEMENT_EVENT = "aipanel:insert-element";
-
-/**
- * 会话就绪确认所需的最小稳态时长（毫秒）。
- * current 在该窗口期内保持不变即视为"已稳定"，此时才通知桥接层放行 loading。
- */
+/** 会话就绪确认所需的最小稳态时长（毫秒）：current 在该窗口内不变视为“已稳定” */
 const SESSION_SETTLE_MS = 400;
 
-/** bridge 写入 localStorage 的最近选中元素 */
-interface SelectedElement {
-  /** 插件生成的节点唯一 id（插入引用时赋值，随 ref 持久化；serialize 标记与注入上下文共用） */
-  id?: string;
-  filePath?: string;
-  line?: number;
-  description?: string;
-  innerText?: string;
-  previewPageUrl?: string;
-  previewPageTitle?: string;
-}
+/** 等待会话列表基线/会员资格就绪后再 open 的最大重试次数 */
+const FOCUS_OPEN_MAX_ATTEMPTS = 3;
+
 
 /**
- * 取（或生成）元素的节点唯一 id：优先复用已赋值的 id（client 侧 App.vue 分配后随
- * bridge 写入 localStorage），否则兜底生成随机 id 并写回元素。id 与核心层
- * selectedElements 里的一致，host 端 dsh-plugin 据此反查并注入上下文。
+ * 取（或生成）元素的节点唯一 id：优先复用已赋值的 id（AIPanel App.vue 分配后随
+ * 消息下发），否则兜底生成随机 id 并写回元素。id 与核心层 selectedElements 一致，
+ * host 端 dsh-plugin 据此反查并注入上下文。
  */
-function ensureNodeId(e: SelectedElement): string {
+function ensureNodeId(e: AIPanelSelectedElement): string {
   if (e.id) return e.id;
   const random =
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -67,27 +91,22 @@ function ensureNodeId(e: SelectedElement): string {
 }
 
 /** 短标签（chip / @ 菜单展示，不含完整的 filePath:line 长尾） */
-function elementLabel(e: SelectedElement): string {
+function elementLabel(e: AIPanelSelectedElement): string {
   if (e.description) return e.description;
   const text = e.innerText?.trim();
   if (text) return text.slice(0, 40);
   return "元素";
 }
 
-/** 不透明引用：携带完整元素上下文（提交时由 codec.serialize 还原成全文，对标 opencode 的 nodeContext） */
-function elementContextRef(e: SelectedElement): string {
+/** 不透明引用：携带完整元素上下文（提交时由 codec.serialize 还原成全文） */
+function elementContextRef(e: AIPanelSelectedElement): string {
   return JSON.stringify(e);
 }
 
-/**
- * 构造 model 可见的引用文本：只带节点 id（`@节点[n<id>]`）。
- * 标记无空格无斜杠，天然满足高亮 token 语法（@/[^\s]+/），无需格式化转义；
- * id 可区分同 selector 的多个实例。完整节点上下文不进会话文本，由 host 端
- * dsh-plugin 在 agent/pre-step 按 id 反查核心层 context 端点后注入（plugin source）。
- */
+/** 构造 model 可见的引用文本：只带节点 id（`@节点[n<id>]`）。完整上下文由 host 端按 id 反查注入。 */
 function serializeElement(ref: string): string {
   try {
-    const e = JSON.parse(ref) as SelectedElement;
+    const e = JSON.parse(ref) as AIPanelSelectedElement;
     if (!e || typeof e !== "object") throw new Error("not an element payload");
     return `@节点[${ensureNodeId(e)}]`;
   } catch {
@@ -95,13 +114,8 @@ function serializeElement(ref: string): string {
   }
 }
 
-/**
- * 把选中元素铸成 ReferenceInsert。
- * label 不带 @（chip 的 title / 完整标签）；clipboardText 必须以 @ 开头——
- * dsh 输入框 backdrop 用 clipboardText[0] 作为 chip 的触发字符 glyph、slice(1) 作为名字，
- * 去掉 @ 会导致 glyph 错乱（显示成"节"字）。
- */
-function toReference(e: SelectedElement): ReferenceInsert {
+/** 把选中元素铸成 ReferenceInsert（label/clipboardText 规则与官方 input-trigger 一致） */
+function toReference(e: AIPanelSelectedElement): ReferenceInsert {
   const mark = `节点[${ensureNodeId(e)}]`;
   return {
     source: "aipanel",
@@ -112,8 +126,8 @@ function toReference(e: SelectedElement): ReferenceInsert {
   };
 }
 
-/** 把选中元素铸成候选：name 短标签，value 携带完整元素上下文（供 onPick 铸成 ref） */
-function toCandidate(e: SelectedElement): InputTriggerCandidate {
+/** 把选中元素铸成候选（@ 菜单项） */
+function toCandidate(e: AIPanelSelectedElement): InputTriggerCandidate {
   return {
     name: elementLabel(e),
     description: e.description || e.innerText || undefined,
@@ -121,15 +135,15 @@ function toCandidate(e: SelectedElement): InputTriggerCandidate {
   };
 }
 
-/** 读 bridge 写入的最近选中元素候选 */
+/** 读取本地最近选中元素候选（@ 菜单数据源） */
 function readSelectionCandidates(): InputTriggerCandidate[] {
   try {
     const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
     if (!raw) return [];
-    const elements = JSON.parse(raw) as SelectedElement[];
+    const elements = JSON.parse(raw) as AIPanelSelectedElement[];
     if (!Array.isArray(elements)) return [];
     return elements
-      .filter((e): e is SelectedElement => !!e && typeof e === "object")
+      .filter((e): e is AIPanelSelectedElement => !!e && typeof e === "object")
       .slice(0, 20)
       .map(toCandidate);
   } catch {
@@ -137,10 +151,387 @@ function readSelectionCandidates(): InputTriggerCandidate[] {
   }
 }
 
-export function apply(ctx: Context) {
-  // 注册 run_diagnostics 诊断卡片视图（host 端 presentationMeta 持久化的结构化诊断）
-  registerDiagnosticsView(ctx);
+/** 记录一条最近选中元素（去重，最多 20 条，供 @ 菜单候选与刷新后恢复） */
+function pushSelection(element: AIPanelSelectedElement): void {
+  if (!element) return;
+  try {
+    const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
+    const list: AIPanelSelectedElement[] = raw ? ((JSON.parse(raw) as AIPanelSelectedElement[]) ?? []) : [];
+    if (!Array.isArray(list)) return;
+    if (!list.some((e) => e.filePath === element.filePath && e.line === element.line)) {
+      list.unshift(element);
+      if (list.length > 20) list.length = 20;
+      localStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(list));
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
+/** 是否嵌入在父文档（AIPanel 挂件 iframe）中：仅嵌入式才做 AIPanel 专属 UI 行为 */
+function isEmbedded(): boolean {
+  try {
+    return window.parent !== window;
+  } catch {
+    return false;
+  }
+}
+
+/** 把消息投递给父窗（AIPanel 挂件）。非嵌入式不发。 */
+function postToHost(type: string, data: Record<string, unknown> = {}): void {
+  if (!isEmbedded()) return;
+  try {
+    window.parent.postMessage({ type, ...data }, "*");
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * AIPanel 主题 → dsh 主题偏好（ThemePreference）。
+ * AIPanel 的 auto 语义即“跟随系统”，映射为 dsh 的 system（单一来源：各自包的类型）。
+ */
+function mapAipanelTheme(t: AIPanelWidgetTheme | ThemePreference | string): ThemePreference | null {
+  if (t === "light" || t === "dark") return t;
+  if (t === "system" || t === "auto") return "system";
+  return null;
+}
+
+export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
+  // 诊断卡片视图：provider option enableDiagnostics 关闭时不注册（默认开启，与 provider 默认一致）。
+  registerDiagnosticsView(ctx, config.enableDiagnostics !== false);
+
+  // ============================================================
+  // 1) 会话就绪探针 + 聚焦（FOCUS_SESSION → sessions.open，无 reload）
+  // ============================================================
+  const sessions = ctx.get("sessions") as ISessions | undefined;
+  if (sessions) {
+    let lastCurrent: SessionId | undefined;
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    /** 当前聚焦目标：仅在收到 FOCUS_SESSION 时使用 */
+    let targetSessionId: SessionId | undefined;
+    /** FOCUS_SESSION 在列表基线就绪前到达时排队 */
+    let pendingFocusId: SessionId | undefined;
+    let focusAttempts = 0;
+    let refreshing = false;
+
+    /** 会话已稳定（current 在该窗口内未变）→ 上报父窗放行 loading */
+    const notifyReady = (sessionId: SessionId) => {
+      postToHost(MSG.SESSION_READY, { sessionId });
+    };
+
+    /** 判定列表是否已有基线（非“尚无任何数据”的 loading 态） */
+    const hasBaseline = (snap?: SessionListState): boolean => {
+      if (!snap) return false;
+      return !!snap.current || !!snap.ids?.length || Object.keys(snap.byId ?? {}).length > 0;
+    };
+
+    const listContains = (snap: SessionListState | undefined, id: SessionId): boolean => {
+      if (!snap) return false;
+      return !!snap.byId?.[id] || snap.ids?.includes(id) === true;
+    };
+
+    /** 等列表基线到达后把排队的聚焦目标切进去 */
+    const drainPendingFocus = () => {
+      const id = pendingFocusId;
+      if (!id) return;
+      const snap = sessions.list.getSnapshot();
+      if (!hasBaseline(snap)) return; // 等下一次订阅回调
+      pendingFocusId = undefined;
+      focusAttempts = 0;
+      void tryOpenTarget(id);
+    };
+
+    /** 尝试把目标会话设为 current：会员未就绪时刷新重试，上限后放弃（父窗 30s 兜底放行） */
+    const tryOpenTarget = async (id: SessionId) => {
+      if (focusAttempts >= FOCUS_OPEN_MAX_ATTEMPTS) return;
+      focusAttempts += 1;
+      const snap = sessions.list.getSnapshot();
+      if (snap.current === id) return; // 已就位（探针会负责上报）
+      if (!listContains(snap, id) && !refreshing) {
+        refreshing = true;
+        try {
+          await sessions.refresh();
+        } catch {
+          /* ignore */
+        } finally {
+          refreshing = false;
+        }
+        const fresh = sessions.list.getSnapshot();
+        if (!listContains(fresh, id)) {
+          // 会员仍缺失：稍后重试一次，避免立刻风暴
+          setTimeout(() => void tryOpenTarget(id), 500);
+          return;
+        }
+      }
+      try {
+        sessions.open(id);
+      } catch {
+        /* open 失败（会话不可达）：放弃本轮，父窗兜底 */
+      }
+    };
+
+    /** 收到父窗聚焦指令 */
+    const handleFocus = (sessionId: SessionId) => {
+      targetSessionId = sessionId;
+      const snap = sessions.list.getSnapshot();
+      if (!hasBaseline(snap)) {
+        pendingFocusId = sessionId;
+        return;
+      }
+      focusAttempts = 0;
+      void tryOpenTarget(sessionId);
+    };
+
+    // current 稳态探针：任何会话稳定即上报（聚焦目标经 open 后由这里放行）
+    const probe = () => {
+      const snapshot = sessions.list?.getSnapshot?.();
+      const current = snapshot?.current;
+      if (!current) {
+        lastCurrent = undefined;
+        if (settleTimer) {
+          clearTimeout(settleTimer);
+          settleTimer = null;
+        }
+        return;
+      }
+      if (current === lastCurrent) return; // 未变化，等待既有计时到期
+      lastCurrent = current;
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        settleTimer = null;
+        if (sessions.list?.getSnapshot?.()?.current === current) {
+          notifyReady(current);
+          if (targetSessionId && targetSessionId !== current) {
+            // 目标会话聚焦失败/迟到：当前稳定的是别的会话 → 补一次聚焦
+            handleFocus(targetSessionId);
+          }
+        }
+      }, SESSION_SETTLE_MS);
+      // 基线刚就绪时若有排队的聚焦目标，立即尝试
+      if (hasBaseline(snapshot)) drainPendingFocus();
+    };
+
+    probe();
+    const unsubscribe = sessions.list.subscribe?.(probe);
+    ctx.effect(() => unsubscribe ?? (() => {}), "aipanel: session-ready watcher");
+
+    // ============================================================
+    // 2) 主题 / 布局 / 键盘 / 选中元素 —— 页内行为（原 bridge 职责）
+    // ============================================================
+    const embedded = isEmbedded();
+    let selectModeActive = false;
+
+    // ---- 主题（官方 ctx.theme）：SET_THEME → setTheme；偏好由 dsh 持久化 ----
+    const applyThemeFromHost = (theme: unknown) => {
+      const id = typeof theme === "string" ? mapAipanelTheme(theme) : null;
+      if (!id) return;
+      try {
+        const themeService = ctx.get("theme") as ThemeRuntime | undefined;
+        themeService?.setTheme(id);
+      } catch {
+        /* ignore：主题服务不可用/未知 id 时跳过 */
+      }
+    };
+
+    // ---- 布局：嵌入式时隐藏 dsh 侧栏（与 AIPanel 自带会话列表去重） ----
+    // 与旧 bridge 的 CSS 一致（data-sidebar-collapsed 首列轨道坍缩 + 工作区下拉隐藏）。
+    // 不折叠成 dsh 的紧凑控制条：AIPanel 窄 iframe 下完全隐藏以节省横向空间。
+    const LAYOUT_STYLE_ID = "aipanel-layout-overrides";
+    const injectLayoutOverrides = () => {
+      if (!embedded) return;
+      try {
+        if (document.getElementById(LAYOUT_STYLE_ID)) return;
+        const style = document.createElement("style");
+        style.id = LAYOUT_STYLE_ID;
+        style.textContent = [
+          "[data-sidebar-collapsed] {",
+          "  grid-template-columns: auto !important;",
+          "}",
+          "[data-sidebar-collapsed] > :first-child {",
+          "  display: none !important;",
+          "}",
+          '[aria-label="\u9009\u62E9\u5DE5\u4F5C\u533A"] {',
+          "  display: none !important;",
+          "}",
+        ].join("\n");
+        document.head.appendChild(style);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    // ---- 键盘转发：iframe 内的 keydown 不冒泡到宿主，须捕获后转交 ----
+    // Esc：选择模式开启时优先退出（吞掉 dsh 自身的 Esc 处理）；Ctrl+P 切换选择模式。
+    const onKeydownCapture = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" && !(event.ctrlKey && event.key.toLowerCase() === "p")) return;
+      if (selectModeActive) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      postToHost(MSG.KEYDOWN, {
+        key: event.key,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+      });
+    };
+
+    // ---- 选中元素：INSERT_FILE_PART → 记录候选 + 立即以 chip 插入输入框 ----
+    // 走官方 SessionInput.insertReference()，避免手写 Lexical/DOM 编辑。
+    const focusComposer = () => {
+      try {
+        const el = document.querySelector<HTMLElement>(
+          '[role="textbox"][contenteditable="true"], textarea[data-phase]',
+        );
+        el?.focus();
+      } catch {
+        /* ignore */
+      }
+    };
+
+    /** 计算当前插入点（投影坐标 span）：输入框文本与 draft 一致时取真实光标，否则取文末 */
+    const caretSpan = (snapshot: InputState | undefined): TokenSpan | null => {
+      if (!snapshot) return null;
+      const draft = snapshot.draft;
+      const rev = snapshot.draftRev;
+      let start = draft.length;
+      let end = draft.length;
+      try {
+        const composer = document.querySelector<HTMLElement>(
+          '[role="textbox"][contenteditable="true"], textarea[data-phase]',
+        );
+        if (composer) {
+          if (composer.isContentEditable) {
+            const draftInComposer = (composer.innerText ?? "").replace(/\n$/, "");
+            if (draftInComposer === draft) {
+              const sel = window.getSelection();
+              if (
+                sel &&
+                sel.rangeCount > 0 &&
+                sel.anchorNode &&
+                sel.focusNode &&
+                composer.contains(sel.anchorNode) &&
+                composer.contains(sel.focusNode)
+              ) {
+                const textNodes: Text[] = [];
+                const walker = document.createTreeWalker(composer, NodeFilter.SHOW_TEXT);
+                let n: Node | null = walker.nextNode();
+                while (n) {
+                  textNodes.push(n as Text);
+                  n = walker.nextNode();
+                }
+                const posOf = (node: Node, off: number): number | null => {
+                  const idx = textNodes.indexOf(node as Text);
+                  if (idx < 0) return null;
+                  let acc = 0;
+                  for (let i = 0; i < idx; i++) acc += textNodes[i].data.length;
+                  return acc + Math.min(off, textNodes[idx].data.length);
+                };
+                const s = posOf(sel.anchorNode, sel.anchorOffset);
+                const e = posOf(sel.focusNode, sel.focusOffset);
+                if (s !== null && e !== null) {
+                  start = Math.min(Math.max(s, 0), draft.length);
+                  end = Math.min(Math.max(e, start), draft.length);
+                }
+              }
+            }
+          } else {
+            const ta = composer as HTMLTextAreaElement;
+            if (ta.value === draft) {
+              const s = ta.selectionStart ?? draft.length;
+              const e = ta.selectionEnd ?? s;
+              start = Math.min(s, draft.length);
+              end = Math.min(e, draft.length);
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      return { start, end, draftRev: rev };
+    };
+
+    const insertElement = (element: AIPanelSelectedElement) => {
+      if (!element) return;
+      const current = sessions.list.getSnapshot().current;
+      if (!current) return;
+      try {
+        const actx = sessions.scope(current);
+        if (!actx) return;
+        const conversation = ctx.get("conversation") as IConversation | undefined;
+        if (!conversation) return;
+        // 官方 SessionInputResolver：scope 会话 → per-session 输入机
+        const inputFor: SessionInput = conversation.input.for(actx as Context);
+
+        const reference = toReference(element);
+        const span1 = caretSpan(inputFor.state.getSnapshot());
+        if (!span1) return;
+        // 官方 insertReference：chip 后自动补分隔空格（如需），无需手工处理
+        const applied = inputFor.insertReference(reference, span1);
+        if (!applied) {
+          // span 校验失败（draftRev 过期 / 输入处于 claimed 等）→ 用最新状态在文末重试一次
+          const snap2 = inputFor.state.getSnapshot();
+          if (!snap2) return;
+          inputFor.insertReference(reference, {
+            start: snap2.draft.length,
+            end: snap2.draft.length,
+            draftRev: snap2.draftRev,
+          });
+        }
+        focusComposer();
+      } catch {
+        // 注入失败静默：仍可从 @aipanel 菜单手动插入
+      }
+    };
+
+    // ---- 页内消息监听（替代 bridge 的 window message 处理）----
+    const onWindowMessage = (event: MessageEvent) => {
+      const data = event.data as
+        | {
+            type?: string;
+            theme?: string;
+            sessionId?: string;
+            selectMode?: boolean;
+            element?: AIPanelSelectedElement;
+          }
+        | undefined;
+      if (!data || typeof data.type !== "string") return;
+      if (data.type === MSG.SET_THEME && typeof data.theme === "string") {
+        applyThemeFromHost(data.theme);
+      } else if (data.type === MSG.FOCUS_SESSION && typeof data.sessionId === "string") {
+        handleFocus(data.sessionId as SessionId);
+      } else if (data.type === MSG.INSERT_FILE_PART && data.element) {
+        pushSelection(data.element);
+        insertElement(data.element);
+      } else if (data.type === MSG.SELECT_MODE_CHANGE) {
+        selectModeActive = data.selectMode === true;
+      }
+    };
+    window.addEventListener("message", onWindowMessage);
+    ctx.effect(
+      () => () => window.removeEventListener("message", onWindowMessage),
+      "aipanel: host message listener",
+    );
+
+    // 初始化：布局覆盖 + 键盘捕获（嵌入式时）+ 初始主题（config 提供时）
+    injectLayoutOverrides();
+    if (embedded) {
+      window.addEventListener("keydown", onKeydownCapture, true);
+      ctx.effect(
+        () => () => window.removeEventListener("keydown", onKeydownCapture, true),
+        "aipanel: keydown capture",
+      );
+    }
+    if (typeof config.theme === "string") {
+      applyThemeFromHost(config.theme);
+    }
+  }
+
+  // ============================================================
+  // 3) @aipanel 引用 source（@ 菜单 chip 高亮）
+  // ============================================================
   const inputTriggers = ctx.get("inputTriggers");
   if (!inputTriggers) return;
 
@@ -150,7 +541,7 @@ export function apply(ctx: Context) {
     order: 300,
     showGroupTitle: false,
 
-    // 候选 = 最近选中元素（bridge 写入），按输入查询过滤
+    // 候选 = 最近选中元素（本地存储，由 INSERT_FILE_PART 写入），按输入查询过滤
     candidates: async (_session, req) => {
       const all = readSelectionCandidates();
       const query = req.query.trim().toLowerCase();
@@ -165,7 +556,7 @@ export function apply(ctx: Context) {
     // 选定 → 铸造 file 引用：ref/label 分离（label 短，ref 携带完整元素 + 节点 id）
     onPick: (pick) => {
       try {
-        const parsed = JSON.parse(pick.candidate.value ?? "null") as SelectedElement | null;
+        const parsed = JSON.parse(pick.candidate.value ?? "null") as AIPanelSelectedElement | null;
         if (parsed) {
           ensureNodeId(parsed);
           return {
@@ -201,212 +592,4 @@ export function apply(ctx: Context) {
   };
 
   ctx.effect(() => inputTriggers.registerSource(source), "aipanel: @ source");
-
-  // === 会话就绪确认：下游 loading 只在目标会话激活且渲染稳定后放行 ===
-  // dsh 的选中态随 sessions.list.current（持久化于 dsh.sessions.current）在启动
-  // / 切会话后恢复；等 current 落到某个会话并稳定一个窗口期，再通知桥接层上报
-  // SESSION_READY，由客户端决定何时隐藏"加载会话"蒙层。
-  const sessions = ctx.get("sessions");
-  if (sessions && sessions.list) {
-    let lastCurrent: string | undefined;
-    let settleTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const notifyBridge = (sessionId: string) => {
-      try {
-        window.dispatchEvent(new CustomEvent(SESSION_READY_EVENT, { detail: { sessionId } }));
-      } catch {
-        /* ignore */
-      }
-    };
-
-    const probe = () => {
-      const snapshot = sessions.list.getSnapshot();
-      const current = snapshot?.current;
-      // current 变空（列表刷新 / 会话被移除）→ 取消未确认的稳态计时
-      if (!current) {
-        lastCurrent = undefined;
-        if (settleTimer) {
-          clearTimeout(settleTimer);
-          settleTimer = null;
-        }
-        return;
-      }
-      if (current === lastCurrent) return; // 未变化，等待既有计时到期
-      lastCurrent = current;
-      if (settleTimer) clearTimeout(settleTimer);
-      settleTimer = setTimeout(() => {
-        settleTimer = null;
-        // 到期时再核对一次，确认 current 在整个窗口期内未再变化
-        if (sessions.list.getSnapshot()?.current === current) {
-          notifyBridge(current);
-        }
-      }, SESSION_SETTLE_MS);
-    };
-
-    probe();
-    const dispose = sessions.list.subscribe(probe);
-    ctx.effect(() => dispose, "aipanel: session-ready watcher");
-  }
-
-  // === 选中元素 → 立即插入当前会话输入框 ===
-  // 与 opencode 交互一致：用户选中元素（AIPanel 选择模式）后，bridge 派发
-  // aipanel:insert-element，这里把元素以 file chip 插入当前会话输入框（光标处，
-  // 必要时前置空格保证气泡高亮），并把焦点与光标移回 chip 之后。
-  // 提交时由 @aipanel source 的 codec 序列化为模型可见文本。
-  const conversation = ctx.get("conversation");
-  const insertElementListener = (event: Event) => {
-    const detail = (event as CustomEvent).detail as { element?: SelectedElement } | undefined;
-    const element = detail?.element;
-    if (!element) return;
-    const current = sessions?.list?.getSnapshot()?.current;
-    if (!current) return;
-    try {
-      const actx = sessions?.scope?.(current);
-      if (!actx) return;
-      const input = conversation?.input?.for?.(actx);
-      if (!input || typeof input.insertReference !== "function") return;
-      const snapshot = input.state?.getSnapshot?.();
-      if (!snapshot) return;
-      // dsh（文本机器实现）的 InputState.draft 是纯文本：chip 展开为 `@节点[n<id>]` 完整文本，
-      // occurrence.offset/length 与 insertReference 的 span 都直接按该文本坐标切片。
-      // rc.1 输入框是 Lexical contenteditable（div[role=textbox][contenteditable]），没有
-      // textarea，旧逻辑查不到 textarea 就退化成 draft.length → 永远插到末尾。这里改从
-      // composer 内当前选区换算光标（选中页面元素后输入框失焦，但 getSelection 锚点仍在
-      // composer 内），并用其文本与 draft 一致来确认是当前会话的输入框；textarea 旧版保留。
-      let start = snapshot.draft.length;
-      let end = snapshot.draft.length;
-      try {
-        const composer = document.querySelector<HTMLElement>(
-          '[role="textbox"][contenteditable="true"], textarea[data-phase]',
-        );
-        if (composer) {
-          if (composer.isContentEditable) {
-            const draftInComposer = (composer.innerText ?? "").replace(/\n$/, "");
-            if (draftInComposer === snapshot.draft) {
-              const sel = window.getSelection();
-              if (sel && sel.rangeCount > 0 && sel.anchorNode && sel.focusNode &&
-                  composer.contains(sel.anchorNode) && composer.contains(sel.focusNode)) {
-                const textNodes: Text[] = [];
-                const walker = document.createTreeWalker(composer, NodeFilter.SHOW_TEXT);
-                let n: Node | null = walker.nextNode();
-                while (n) {
-                  textNodes.push(n as Text);
-                  n = walker.nextNode();
-                }
-                const posOf = (node: Node, off: number): number | null => {
-                  const idx = textNodes.indexOf(node as Text);
-                  if (idx < 0) return null;
-                  let acc = 0;
-                  for (let i = 0; i < idx; i++) acc += textNodes[i].data.length;
-                  return acc + Math.min(off, textNodes[idx].data.length);
-                };
-                const s = posOf(sel.anchorNode, sel.anchorOffset);
-                const e = posOf(sel.focusNode, sel.focusOffset);
-                if (s !== null && e !== null) {
-                  start = Math.min(Math.max(s, 0), snapshot.draft.length);
-                  end = Math.min(Math.max(e, start), snapshot.draft.length);
-                }
-              }
-            }
-          } else {
-            const ta = composer as HTMLTextAreaElement;
-            if (ta.value === snapshot.draft) {
-              const s = ta.selectionStart ?? snapshot.draft.length;
-              const e = ta.selectionEnd ?? s;
-              start = Math.min(s, snapshot.draft.length);
-              end = Math.min(e, snapshot.draft.length);
-            }
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-      const reference = toReference(element);
-      // 插入后新 chip 的文本长度 = clipboardText（`@节点[n<id>]`）+ 分隔空格（尾部已有空格则无）
-      const gap = snapshot.draft.slice(end)[0] === " " ? 0 : 1;
-      const insertedLen = reference.clipboardText.length + gap;
-      // 前置空格：dsh 气泡高亮要求 @ 标记前是行首或空白（/(^|\s)@[^\s]+/），
-      // 紧贴文字（如"的@节点[n...]"）不会高亮；插入点前一个字符非空白时先补一个空格。
-      let leadingSpace = 0;
-      let rev = snapshot.draftRev;
-      // rc.2 类型未含 insertText（运行时存在），按运行态形状收窄
-      const insertable = input as unknown as {
-        insertText?: (
-          text: string,
-          opts: { start: number; end: number; draftRev: unknown },
-        ) => boolean;
-      };
-      if (start > 0 && !/\s/.test(snapshot.draft[start - 1])) {
-        try {
-          if (insertable.insertText?.(" ", { start, end, draftRev: rev })) {
-            const next = input.state?.getSnapshot?.();
-            if (next) {
-              leadingSpace = 1;
-              start += 1;
-              end += 1;
-              rev = next.draftRev;
-            }
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-      input.insertReference(reference, { start, end, draftRev: rev });
-      // 把焦点放回输入框，并把光标定位到新插入 chip 之后（等渲染提交后再设置 selection）
-      requestAnimationFrame(() => {
-        try {
-          const el = document.querySelector<HTMLElement>(
-            '[role="textbox"][contenteditable="true"], textarea[data-phase]',
-          );
-          if (!el) return;
-          const caret = start + insertedLen + leadingSpace;
-          if (el.isContentEditable) {
-            const textNodes: Text[] = [];
-            const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-            let n: Node | null = walker.nextNode();
-            while (n) {
-              textNodes.push(n as Text);
-              n = walker.nextNode();
-            }
-            let target: Text | null = textNodes[textNodes.length - 1] ?? null;
-            let off = target ? target.data.length : 0;
-            let remaining = Math.max(0, caret);
-            if (target) {
-              for (const t of textNodes) {
-                if (remaining <= t.data.length) {
-                  target = t;
-                  off = remaining;
-                  break;
-                }
-                remaining -= t.data.length;
-              }
-            }
-            if (target) {
-              const range = document.createRange();
-              range.setStart(target, Math.min(off, target.data.length));
-              range.collapse(true);
-              const sel = window.getSelection();
-              sel?.removeAllRanges();
-              sel?.addRange(range);
-            }
-            el.focus();
-          } else {
-            const ta = el as HTMLTextAreaElement;
-            ta.focus();
-            ta.setSelectionRange(Math.min(caret, ta.value.length), Math.min(caret, ta.value.length));
-          }
-        } catch {
-          /* ignore */
-        }
-      });
-    } catch {
-      // 注入失败静默：仍可从 @aipanel 菜单手动插入
-    }
-  };
-  window.addEventListener(INSERT_ELEMENT_EVENT, insertElementListener as EventListener);
-  ctx.effect(
-    () => () =>
-      window.removeEventListener(INSERT_ELEMENT_EVENT, insertElementListener as EventListener),
-    "aipanel: insert-element listener",
-  );
 }

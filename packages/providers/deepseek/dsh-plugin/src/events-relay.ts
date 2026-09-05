@@ -18,12 +18,9 @@
  * 定时器全部 unref + 自调度，事件静止后无残留定时器。
  */
 import type { Context } from "@deepseek-ai/cordis";
-import { createLogger } from "@aipanel/core/node";
+import { createLogger, HOST_EVENTS_API_PATH } from "@aipanel/core/node";
 
 const log = createLogger("DshEventRelay");
-
-/** 事件推送路径兜底（与 @aipanel/core 的 HOST_EVENTS_API_PATH 保持一致；优先取 config 注入值） */
-const DEFAULT_EVENTS_API_PATH = "/__aipanel_host_events__";
 
 /** session/event 总线的最小对象形态（避免引入 @deepseek-ai/dsh-session 运行时依赖） */
 interface RelaySession {
@@ -87,7 +84,7 @@ export function setupEventRelay(
   const vitePort = config.vitePort ?? 0;
   const token = config.eventsToken;
   if (!token || vitePort <= 0) return;
-  const eventsPath = config.eventsPath ?? DEFAULT_EVENTS_API_PATH;
+  const eventsPath = config.eventsPath ?? HOST_EVENTS_API_PATH;
   const eventsUrl = `http://127.0.0.1:${vitePort}${eventsPath}`;
 
   const states = new Map<string, SessionUiState>();

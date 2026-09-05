@@ -10,6 +10,13 @@
 import fs from 'fs'
 import http from 'http'
 import path from 'path'
+import {
+  DEFAULT_HOSTNAME,
+  ENV_VSCODE_PORT,
+  VSCODE_EXTENSION_PORT,
+  VSCODE_ROUTE_FORMAT,
+  VSCODE_ROUTE_HEALTH,
+} from '@aipanel/core'
 
 const filePath = process.argv[2]
 if (!filePath) {
@@ -18,7 +25,7 @@ if (!filePath) {
 }
 
 const absPath = path.resolve(filePath)
-const PORT = parseInt(process.env.AIPANEL_VSCODE_PORT || '', 10) || 51939
+const PORT = parseInt(process.env[ENV_VSCODE_PORT] || '', 10) || VSCODE_EXTENSION_PORT
 
 function touchFile(): void {
   const now = new Date()
@@ -27,7 +34,7 @@ function touchFile(): void {
 
 function probeHealth(): Promise<boolean> {
   return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${PORT}/health`, (res) => {
+    const req = http.get(`http://${DEFAULT_HOSTNAME}:${PORT}${VSCODE_ROUTE_HEALTH}`, (res) => {
       res.resume()
       resolve(res.statusCode === 200)
     })
@@ -48,9 +55,9 @@ function formatViaExtension(): Promise<FormatResult> {
     const body = JSON.stringify({ filePath: absPath })
     const req = http.request(
       {
-        hostname: '127.0.0.1',
+        hostname: DEFAULT_HOSTNAME,
         port: PORT,
-        path: '/format',
+        path: VSCODE_ROUTE_FORMAT,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         timeout: 5000,

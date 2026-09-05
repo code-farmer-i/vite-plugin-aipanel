@@ -89,6 +89,10 @@ export interface SelectedElement {
   innerText: string;
   /** 元素描述（标签名+选择器） */
   description?: string;
+  /** 用户选中节点时的页面 URL（AIPanel 附加；host 端上下文注入用） */
+  previewPageUrl?: string;
+  /** 用户选中节点时的页面标题（AIPanel 附加） */
+  previewPageTitle?: string;
 }
 
 /**
@@ -199,6 +203,25 @@ export interface AIPanelSelectedElement {
   column: number | null;
   innerText: string;
   description?: string;
+  /** 用户选中节点时的页面 URL（AIPanel 附加；host 端上下文注入用） */
+  previewPageUrl?: string;
+  /** 用户选中节点时的页面标题（AIPanel 附加） */
+  previewPageTitle?: string;
+}
+
+/**
+ * 单条代码诊断（1-based 行列坐标）——AIPanel 诊断工具（run_diagnostics 等）的
+ * canonical 持久化/展示共用协议：宿主插件写 tool/result.meta，client 插件据此渲染卡片。
+ */
+export interface AIPanelDiagnosticEntry {
+  /** 所属文件（绝对路径） */
+  file: string;
+  /** 1-based 行号 */
+  line: number;
+  /** 1-based 列号 */
+  column: number;
+  severity: "error" | "warning";
+  message: string;
 }
 
 /**
@@ -233,6 +256,23 @@ export interface AIPanelSelectedElementItem {
   bubbleFileText: string;
   panelFileText: string;
   element: AIPanelSelectedElement;
+}
+
+/**
+ * 服务实例信息（Chrome 扩展 Background ↔ Side Panel 共享的服务载荷；
+ * 由 widget 的 SERVICE_INFO 上报与 vite start 端点探测归一化而来）。
+ */
+export interface AIPanelServiceInfo {
+  /** 代理端口 */
+  proxyPort: number;
+  /** Vite 开发服务端口（字符串；可能来自 widget 上报或探测 origin） */
+  vitePort: string;
+  /** 项目根目录 */
+  projectRoot: string;
+  /** 服务实例唯一 id（多实例隔离） */
+  serviceInstanceId: string;
+  /** 是否开启 verbose（可选） */
+  verbose?: boolean;
 }
 
 /**

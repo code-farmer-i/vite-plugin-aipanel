@@ -1,4 +1,4 @@
-import { EXT_MSG, WIDGET_MSG } from "@aipanel/core";
+import { EXT_MSG, SESSION_ID_KEY, WIDGET_MSG } from "@aipanel/core";
 import { createLogger } from "@aipanel/core/client";
 
 const log = createLogger("AIPanel CS");
@@ -30,7 +30,7 @@ if (win[INIT_MARKER]) {
         ctx: {
           url: location.href,
           title: document.title,
-          sessionId: sessionStorage.getItem("_aipanel_pk") || undefined,
+          sessionId: sessionStorage.getItem(SESSION_ID_KEY) || undefined,
         },
       })
       .catch(() => {});

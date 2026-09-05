@@ -1,4 +1,5 @@
-import { EXT_MSG, setVerbose } from "@aipanel/core";
+import { DEFAULT_HOSTNAME, EXT_MSG, setVerbose } from "@aipanel/core";
+import type { AIPanelServiceInfo, WidgetOptions } from "@aipanel/core";
 import { createLogger } from "@aipanel/core/client";
 
 const log = createLogger("AIPanel SP");
@@ -14,18 +15,10 @@ log.info("Side Panel 入口已加载");
 
 import "@aipanel/client/styles.css";
 
-interface ServiceInfo {
-  proxyPort: number;
-  vitePort: string;
-  projectRoot: string;
-  serviceInstanceId: string;
-  verbose?: boolean;
-}
-
 /** 从 Background 获取当前 active tab 的服务信息（触发立即轮询） */
-async function fetchServiceInfo(): Promise<ServiceInfo | null> {
+async function fetchAIPanelServiceInfo(): Promise<AIPanelServiceInfo | null> {
   try {
-    return await chrome.runtime.sendMessage({ type: "FORCE_POLL" });
+    return await chrome.runtime.sendMessage({ type: EXT_MSG.FORCE_POLL });
   } catch {
     return null;
   }
@@ -104,7 +97,7 @@ async function initContainers() {
 }
 
 /** 为指定服务创建并挂载新的 Vue App */
-async function createAppInstance(info: ServiceInfo): Promise<AppInstance> {
+async function createAppInstance(info: AIPanelServiceInfo): Promise<AppInstance> {
   // 立即占位，防止并发 SERVICE_APPEARED 重复创建
   const placeholder: AppInstance = {
     rootEl: null!,
@@ -124,9 +117,9 @@ async function createAppInstance(info: ServiceInfo): Promise<AppInstance> {
   rootEl.style.cssText = "position:absolute;top:0;left:-10000px;width:100%;height:100%;";
   wrapperEl!.appendChild(rootEl);
 
-  const config = {
+  const config: Partial<WidgetOptions> = {
     proxyPort: info.proxyPort,
-    proxyHost: "127.0.0.1",
+    proxyHost: DEFAULT_HOSTNAME,
     vitePort: info.vitePort,
     serviceInstanceId: info.serviceInstanceId,
     projectRoot: info.projectRoot,
@@ -182,7 +175,7 @@ function destroyAppInstance(serviceInstanceId: string) {
 
 /** 为当前 active tab 挂载 App（从 Background 获取服务信息） */
 async function mountAppForActiveTab(): Promise<boolean> {
-  const info = await fetchServiceInfo();
+  const info = await fetchAIPanelServiceInfo();
   if (!info) {
     showNoServiceOverlay();
     return false;
@@ -193,7 +186,7 @@ async function mountAppForActiveTab(): Promise<boolean> {
 }
 
 /** 处理服务上线 */
-function handleServiceAppeared(info: ServiceInfo) {
+function handleServiceAppeared(info: AIPanelServiceInfo) {
   const existingInst = appInstances.get(info.serviceInstanceId);
 
   if (existingInst) {
@@ -233,7 +226,7 @@ function handleServiceGone(serviceInstanceId: string) {
 }
 
 /** 处理 Tab 切换 */
-function handleTabSwitched(info: ServiceInfo | null) {
+function handleTabSwitched(info: AIPanelServiceInfo | null) {
   log.info(`handleTabSwitched info=${info?.serviceInstanceId || "null"}`);
   if (!info) {
     log.info("显示无服务覆盖层");

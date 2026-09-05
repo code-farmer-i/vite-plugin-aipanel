@@ -23,17 +23,6 @@ export const DSH_LOOPBACK_HOST = "127.0.0.1";
 /** dsh web 默认端口（未显式指定时） */
 export const DSH_DEFAULT_PORT = 3080;
 
-/** ==================== dsh localStorage 键 ==================== */
-
-export const DSH_STORAGE_KEYS = {
-  /** 当前选中会话（SPA 启动时据此恢复选中，无 URL 深链） */
-  CURRENT_SESSION: "dsh.sessions.current",
-  /** 选中的页面元素（bridge 写入，dsh-client 的 @aipanel source 读取） */
-  SELECTION: "dsh.bridge.selection",
-  /** 诊断功能开关标记（bridge 按 provider 配置写入，dsh-client 据此决定是否注册诊断视图） */
-  DIAGNOSTICS_ENABLED: "dsh.bridge.diagnostics.enabled",
-} as const;
-
 /** ==================== Provider 专属配置默认值 ==================== */
 
 export const DEFAULT_DEEPSEEK_PROVIDER_OPTIONS: DeepSeekProviderOptions = {

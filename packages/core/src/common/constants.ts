@@ -87,6 +87,9 @@ export const INIT_MARKER = "__AIPANEL_INITIALIZED__";
 /** 选中元素存储键 */
 export const SELECTED_ELEMENTS_KEY = "__aipanel_selected_elements__";
 
+/** 页面会话标识键（sessionStorage，跨导航标识同一 Tab 的页面上下文） */
+export const SESSION_ID_KEY = "_aipanel_pk";
+
 /** ==================== 缓存目录 ==================== */
 
 /**
@@ -122,6 +125,8 @@ export const EXT_MSG = {
   SELECTION_START: "SELECTION_START",
   SELECTION_STOP: "SELECTION_STOP",
   CS_QUERY_WINDOW: "__CS_QUERY_WINDOW__",
+  /** Side Panel → Background：立即轮询一次并回传当前服务信息 */
+  FORCE_POLL: "FORCE_POLL",
 } as const;
 
 /** ==================== Widget PostMessage 类型 ==================== */
@@ -188,6 +193,12 @@ export const SEVERITY_WARN = 2;
 
 /** VS Code 扩展 HTTP 服务端口（vscode-extension ↔ provider 通信协议） */
 export const VSCODE_EXTENSION_PORT = 51939;
+
+/** VS Code 扩展 HTTP 路由：健康检查 */
+export const VSCODE_ROUTE_HEALTH = "/health";
+
+/** VS Code 扩展 HTTP 路由：文件格式化 */
+export const VSCODE_ROUTE_FORMAT = "/format";
 
 /** VS Code 扩展相关环境变量名 */
 export const ENV_VSCODE_MODE = "AIPANEL_VSCODE_MODE";

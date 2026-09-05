@@ -1,5 +1,5 @@
 import { createApp } from "vue";
-import { CONFIG_DATA_ATTR, WIDGET_MSG, setVerbose } from "@aipanel/core";
+import { CONFIG_DATA_ATTR, INIT_MARKER, WIDGET_MSG, setVerbose } from "@aipanel/core";
 import { createLogger } from "@aipanel/core/client";
 import type { WidgetOptions } from "@aipanel/core";
 
@@ -26,7 +26,6 @@ if (scriptTag) {
   }
 }
 
-const INIT_MARKER = "__AIPANEL_INITIALIZED__";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 if (!(window as any)[INIT_MARKER]) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

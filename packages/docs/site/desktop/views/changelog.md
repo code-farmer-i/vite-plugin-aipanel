@@ -1,5 +1,38 @@
 # 更新日志
 
+## v1.2.9
+
+`2026-09-05`
+
+### vite-plugin
+
+#### ✨ 新增
+
+- 新增 `chromeMcp` 透传配置：支持向 chrome-devtools-mcp 进程追加 CLI 参数（`args`）与额外环境变量（`env`）；`auto-connect` / `usage-statistics` / `performance-crux` / `page-id-routing` 等核心受保护参数不可覆盖，冲突项自动剔除并告警，保证代理页面路由等核心行为稳定
+
+### core
+
+#### ⚡ 改进
+
+- 核心包代码按运行环境拆分：新增 `common`（跨环境常量/类型/工具）、`node`（Node 专属）、`client`（浏览器端）目录及 `@aipanel/core/client` 导出入口，各环境按需引用，避免浏览器端误引入 Node 依赖
+
+### deepseek
+
+#### ⚡ 改进
+
+- 移除选中元素的 @ 菜单候选列表：点选元素后直接以文件 chip 插入输入框（官方 `insertReference`，codec 序列化为 `@节点[n<id>]`），本地候选存储等辅助逻辑一并清理，引用流程更简洁
+- 精简选中元素注入上下文：源码行列号直接并入文件路径（如 `index.vue:53:11`），并移除「页面标题」字段及其端到端传递（core 类型定义、client 选中处理、扩展消息转发同步清理），减少注入冗余
+- 重构 provider 与宿主插件，落地 AGENTS.md 代码规范：会话 ID 统一引用 `SESSION_ID_KEY`、跨包接口收敛至 core 单一来源、provider 设置（agentPreset / permissionPreset / busyEnter）改由插件启动期写入 dsh settings（替代启动后的 RPC 变更）
+- 事件中继改用官方权威信号：`session.status` 以 `@deepseek-ai/dsh-agent` 的 `agent/status`（running ⇄ idle）为准，thinking / 标题事件直接引用 `@deepseek-ai/dsh-session` 官方类型，移除自定义结构副本并简化状态更新逻辑
+
+#### 🐛 修复
+
+- 修复连续点选多个元素时文件碎片插入失效与光标错位：改为调用官方 `SessionInput.caretSpan()` 获取插入坐标（替代自算 draft 投影长度），并在输入机过渡阶段（claimed/adjudicating）带限重试，保证后续引用不丢失
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.9/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.8
 
 `2026-09-04`

@@ -35,6 +35,24 @@ export function isJsFile(filePath: string): boolean {
   return JS_EXTENSIONS.has(path.extname(filePath));
 }
 
+/**
+ * run_diagnostics 工具描述（单一来源，供 opencode / dsh 两侧插件引用）：
+ * 只声明能力与支持的文件类型，不涉及内部使用的检查工具。
+ */
+export const DIAGNOSTICS_TOOL_DESCRIPTION = [
+  "运行 ESLint 与 TypeScript 类型诊断，返回诊断结果。",
+  "",
+  "**支持的文件类型**：",
+  `- ESLint：JavaScript / TypeScript / Vue 源码（${[...JS_EXTENSIONS].map((e) => `*${e}`).join(" ")}）`,
+  "- TypeScript 类型检查：*.ts *.tsx *.vue",
+  "",
+  "**何时使用此工具**：",
+  "- 刚完成代码修改，想验证是否有 ESLint 错误或类型错误",
+  "- 在提交代码前进行质量检查",
+  "- 排查编辑器未显示但实际存在的类型问题",
+  "- 不传参数可全量诊断整个项目",
+].join("\n");
+
 // ESLint severity: 2=error, 1=warn → LSP DiagnosticSeverity: 1=Error, 2=Warning
 // 参考 eslint/lib/shared/severity.js、shared/constants.ts
 

@@ -20,6 +20,7 @@ import {
   runProjectDiagnostics,
   formatDiagnosticsSections,
   isJsFile,
+  DIAGNOSTICS_TOOL_DESCRIPTION,
   type DiagnosticItem,
 } from "@aipanel/core/node";
 
@@ -40,17 +41,7 @@ export default {
 
     // 定义 run_diagnostics 工具，让 agent 可以主动触发诊断
     const runDiagnosticsTool = tool({
-      description: `运行 ESLint 和 vue-tsc 类型检查，返回诊断结果。
-
-**何时使用此工具**：
-- 刚完成代码修改，想验证是否有 ESLint 错误或类型错误
-- 在提交代码前进行质量检查
-- 排查编辑器未显示但实际存在的类型问题
-- 不传参数可全量诊断整个项目
-
-**诊断内容**：
-- ESLint 规则检查（error 和 warning）
-- vue-tsc 类型检查（TypeScript 类型错误和警告）`,
+      description: DIAGNOSTICS_TOOL_DESCRIPTION,
       args: {
         filePath: tool.schema
           .string()

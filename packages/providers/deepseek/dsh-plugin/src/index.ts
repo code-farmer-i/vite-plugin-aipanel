@@ -34,6 +34,7 @@ import {
   SEVERITY_ERROR,
   CONTEXT_API_PATH,
   createLogger,
+  DIAGNOSTICS_TOOL_DESCRIPTION,
   type DiagnosticItem,
   type EslintOutput,
   type TscResult,
@@ -257,16 +258,7 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
     // 手写 ToolDefinition（等价于 defineTool 产物），避免运行时依赖 @deepseek-ai/dsh-tools
     const diagnosticsTool: ToolDefinition = {
       name: "run_diagnostics",
-      description:
-        "运行 ESLint 和 vue-tsc 类型检查，返回诊断结果。\n\n" +
-        "**何时使用此工具**：\n" +
-        "- 刚完成代码修改，想验证是否有 ESLint 错误或类型错误\n" +
-        "- 在提交代码前进行质量检查\n" +
-        "- 排查编辑器未显示但实际存在的类型问题\n" +
-        "- 不传参数可全量诊断整个项目\n\n" +
-        "**诊断内容**：\n" +
-        "- ESLint 规则检查（error 和 warning）\n" +
-        "- vue-tsc 类型检查（TypeScript 类型错误和警告）",
+      description: DIAGNOSTICS_TOOL_DESCRIPTION,
       parameters: {
         type: "object",
         additionalProperties: false,

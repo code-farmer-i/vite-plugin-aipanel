@@ -17,6 +17,8 @@ export default tseslint.config(
       "**/dist/**",
       "**/es/**",
       "**/lib/**",
+      "**/site-dist/**",
+      "**/.pnpm-store/**",
       "**/node_modules/**",
       "**/*.d.ts",
     ],
@@ -50,10 +52,7 @@ export default tseslint.config(
     },
   },
   {
-    extends: [
-      eslint.configs.recommended,
-      ...tseslint.configs.recommended,
-    ],
+    extends: [eslint.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,mts,cts}"],
     languageOptions: {
       ecmaVersion: "latest",

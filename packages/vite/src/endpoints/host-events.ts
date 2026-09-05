@@ -1,9 +1,7 @@
 import type { ViteDevServer } from "vite";
 import { HOST_EVENTS_API_PATH, type ProviderEvent } from "@aipanel/core";
-import { RequestContext, createLogger } from "@aipanel/core/node";
+import { RequestContext } from "@aipanel/core/node";
 import type { EndpointContext } from "./types";
-
-const log = createLogger("Endpoints:HostEvents");
 
 /**
  * 宿主侧事件推送端点（dsh-plugin 等 Host 插件 → core → SSE 广播）。

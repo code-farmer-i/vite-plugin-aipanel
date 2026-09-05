@@ -4,9 +4,10 @@
  * 经 dsh 的 dsh.client 契约被 __DSH_BOOT__ 自动激活。AIPanel × dsh 的“页内”
  * 全部行为都由本插件承载（不再向 HTML 注入 bridge 脚本）：
  *
- *  1. @aipanel 引用 source（@ 菜单 chip）：candidates 读本地最近选中元素，
- *     onPick 铸造 appearance:'file' 的 ReferenceInsert，codec 序列化为 `@节点[n<id>]`；
- *     完整节点上下文不进会话文本，由 host 端 dsh-plugin 在 agent/pre-step 反查注入。
+ *  1. 选中元素引用：AIPanel 点选后经 INSERT_FILE_PART 直接以 chip 插入输入框
+ *     （appearance:'file'，官方 SessionInput.insertReference）；本插件保留一个
+ *     @aipanel source 仅作 chip 的 codec（提交序列化为 `@节点[n<id>]`）——不再提供
+ *     @ 菜单候选列表（已移除）。完整节点上下文由 host 端 dsh-plugin 在 agent/pre-step 反查注入。
  *  2. 会话聚焦（FOCUS_SESSION）：直接走官方 ctx.sessions.open() —— 无 reload、
  *     无 localStorage 握手；激活稳定后把 SESSION_READY 上报父窗（放行 loading）。
  *  3. 主题同步（SET_THEME）：ctx.theme.setTheme()（官方持久化偏好 + 呈现器落 DOM）。
@@ -19,7 +20,6 @@
  */
 import type { Context } from "@deepseek-ai/cordis";
 import type {
-  InputTriggerCandidate,
   InputTriggerSource,
   ReferenceInsert,
 } from "@deepseek-ai/dsh-client-ui-input-trigger/client";
@@ -65,9 +65,6 @@ export interface AipanelClientPluginConfig {
  */
 export const inject = ["slots", "sessions", "inputTriggers", "conversation"];
 
-/** 最近选中元素的本地存储键（插件自持；跨页面刷新保留 @ 菜单候选） */
-const SELECTION_STORAGE_KEY = "aipanel.selection";
-
 /** 会话就绪确认所需的最小稳态时长（毫秒）：current 在该窗口内不变视为“已稳定” */
 const SESSION_SETTLE_MS = 400;
 
@@ -88,14 +85,6 @@ function ensureNodeId(e: AIPanelSelectedElement): string {
       : Math.random().toString(36).slice(2, 10);
   e.id = `n${random}`;
   return e.id;
-}
-
-/** 短标签（chip / @ 菜单展示，不含完整的 filePath:line 长尾） */
-function elementLabel(e: AIPanelSelectedElement): string {
-  if (e.description) return e.description;
-  const text = e.innerText?.trim();
-  if (text) return text.slice(0, 40);
-  return "元素";
 }
 
 /** 不透明引用：携带完整元素上下文（提交时由 codec.serialize 还原成全文） */
@@ -124,48 +113,6 @@ function toReference(e: AIPanelSelectedElement): ReferenceInsert {
     appearance: "file",
     clipboardText: `@${mark}`,
   };
-}
-
-/** 把选中元素铸成候选（@ 菜单项） */
-function toCandidate(e: AIPanelSelectedElement): InputTriggerCandidate {
-  return {
-    name: elementLabel(e),
-    description: e.description || e.innerText || undefined,
-    value: elementContextRef(e),
-  };
-}
-
-/** 读取本地最近选中元素候选（@ 菜单数据源） */
-function readSelectionCandidates(): InputTriggerCandidate[] {
-  try {
-    const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
-    if (!raw) return [];
-    const elements = JSON.parse(raw) as AIPanelSelectedElement[];
-    if (!Array.isArray(elements)) return [];
-    return elements
-      .filter((e): e is AIPanelSelectedElement => !!e && typeof e === "object")
-      .slice(0, 20)
-      .map(toCandidate);
-  } catch {
-    return [];
-  }
-}
-
-/** 记录一条最近选中元素（去重，最多 20 条，供 @ 菜单候选与刷新后恢复） */
-function pushSelection(element: AIPanelSelectedElement): void {
-  if (!element) return;
-  try {
-    const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
-    const list: AIPanelSelectedElement[] = raw ? ((JSON.parse(raw) as AIPanelSelectedElement[]) ?? []) : [];
-    if (!Array.isArray(list)) return;
-    if (!list.some((e) => e.filePath === element.filePath && e.line === element.line)) {
-      list.unshift(element);
-      if (list.length > 20) list.length = 20;
-      localStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(list));
-    }
-  } catch {
-    /* ignore */
-  }
 }
 
 /** 是否嵌入在父文档（AIPanel 挂件 iframe）中：仅嵌入式才做 AIPanel 专属 UI 行为 */
@@ -482,7 +429,7 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
         }
         focusComposer();
       } catch {
-        // 注入失败静默：仍可从 @aipanel 菜单手动插入
+        // 注入失败静默：用户可再次点选触发插入
       }
     };
 
@@ -503,7 +450,6 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
       } else if (data.type === MSG.FOCUS_SESSION && typeof data.sessionId === "string") {
         handleFocus(data.sessionId as SessionId);
       } else if (data.type === MSG.INSERT_FILE_PART && data.element) {
-        pushSelection(data.element);
         insertElement(data.element);
       } else if (data.type === MSG.SELECT_MODE_CHANGE) {
         selectModeActive = data.selectMode === true;
@@ -530,66 +476,23 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
   }
 
   // ============================================================
-  // 3) @aipanel 引用 source（@ 菜单 chip 高亮）
+  // 3) @aipanel 引用 codec source（无候选列表）
   // ============================================================
+  // 元素统一由 AIPanel 点选后经 INSERT_FILE_PART 直接插入 chip，不再提供 @ 菜单候选。
+  // 本 source 保留的唯一职责：chip 提交时的 codec（clipboard 投影 + @节点[id] 模型序列化）。
   const inputTriggers = ctx.get("inputTriggers");
   if (!inputTriggers) return;
 
   const source: InputTriggerSource = {
     trigger: "@",
     name: "aipanel",
-    order: 300,
-    showGroupTitle: false,
-
-    // 候选 = 最近选中元素（本地存储，由 INSERT_FILE_PART 写入），按输入查询过滤
-    candidates: async (_session, req) => {
-      const all = readSelectionCandidates();
-      const query = req.query.trim().toLowerCase();
-      if (!query) return all;
-      return all.filter(
-        (c) =>
-          c.name.toLowerCase().includes(query) ||
-          (c.description ?? "").toLowerCase().includes(query),
-      );
-    },
-
-    // 选定 → 铸造 file 引用：ref/label 分离（label 短，ref 携带完整元素 + 节点 id）
-    onPick: (pick) => {
-      try {
-        const parsed = JSON.parse(pick.candidate.value ?? "null") as AIPanelSelectedElement | null;
-        if (parsed) {
-          ensureNodeId(parsed);
-          return {
-            insert: {
-              source: "aipanel",
-              ref: JSON.stringify(parsed),
-              label: pick.candidate.name,
-              appearance: "file",
-              // clipboardText 以 @ 开头（dsh backdrop 取首字符作 chip 触发 glyph）
-              clipboardText: `@${pick.candidate.name}`,
-            },
-          };
-        }
-      } catch {
-        /* ignore */
-      }
-      return {
-        insert: {
-          source: "aipanel",
-          ref: pick.candidate.value ?? pick.candidate.name,
-          label: pick.candidate.name,
-          appearance: "file",
-          clipboardText: `@${pick.candidate.name}`,
-        },
-      };
-    },
-
-    // 模型投影
+    candidates: async () => [],
+    onPick: () => undefined,
     codec: {
       clipboardText: (ref) => ref,
       serialize: async (ref) => serializeElement(ref),
     },
   };
 
-  ctx.effect(() => inputTriggers.registerSource(source), "aipanel: @ source");
+  ctx.effect(() => inputTriggers.registerSource(source), "aipanel: @ codec source");
 }

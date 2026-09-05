@@ -143,7 +143,12 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
 
   const sseClients: Set<http.ServerResponse> = new Set();
 
-  const mcpProxy = new McpProxy({ idleTimeout: 5 * 60 * 1000 });
+  const mcpProxy = new McpProxy({
+    idleTimeout: 5 * 60 * 1000,
+    // 用户 chrome MCP 透传：追加 args/env（核心受保护参数不可覆盖，由 McpProxy 过滤）
+    userArgs: config.chromeMcp?.args,
+    env: config.chromeMcp?.env,
+  });
 
   let provider: WebProvider | null = null;
   const service = new AIPanelService(

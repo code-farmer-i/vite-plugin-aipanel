@@ -6,6 +6,21 @@ import type { DisplayMode, LogFileConfig, SplitModeOptions } from "./types";
 import { CHROME_DEVTOOLS_PORT, DEFAULT_HOSTNAME, DEFAULT_WEB_PORT } from "./constants";
 
 /**
+ * chrome-devtools-mcp 进程的用户透传配置。
+ * 只允许“追加”，不允许覆盖核心受保护参数（由 McpProxy 统一过滤）。
+ */
+export interface ChromeMcpOptions {
+  /**
+   * 追加的 CLI 参数（先于核心参数注入）。
+   * 与核心受保护项（auto-connect / usage-statistics / performance-crux /
+   * page-id-routing 及其反义）冲突的参数会被剔除并告警。
+   */
+  args?: string[];
+  /** 透传给 chrome-devtools-mcp 进程的额外环境变量（合并到 process.env 之上） */
+  env?: Record<string, string>;
+}
+
+/**
  * 插件配置选项
  * @typeParam P - 当前 Provider 的专属配置段（schema 由具体 Provider 声明）
  */
@@ -36,6 +51,8 @@ export interface PluginOptions<P extends Record<string, unknown> = Record<string
   warmupChromeMcp?: boolean;
   /** Chrome DevTools Protocol 端口，默认 9222 */
   chromeDevtoolsPort?: number;
+  /** chrome-devtools-mcp 进程透传配置（只可追加，不可覆盖核心受保护参数） */
+  chromeMcp?: ChromeMcpOptions;
   /** 展示模式，默认 'bubble' */
   displayMode?: DisplayMode;
   /** 分屏模式配置 */

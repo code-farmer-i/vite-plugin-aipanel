@@ -10,6 +10,42 @@ import { createLogger, createPackageRequire, resolvePackageDir } from "@aipanel/
 
 const log = createLogger("McpProxy");
 
+/** chrome-devtools-mcp 的核心受保护参数（用户不可覆盖；始终最后注入确保生效） */
+export const CORE_MCP_ARGS = [
+  "--auto-connect",
+  "--no-usage-statistics",
+  "--no-performance-crux",
+  // chrome-devtools-mcp >=1.8.0 默认开启 pageIdRouting（要求每个页面级工具都传 pageId）。
+  // 代理层已自行校验 pageId 并用 select_page 选中目标页面后再转发，故显式关闭，
+  // 避免底层工具 schema 强制必填 pageId 导致转发时的参数校验失败。
+  "--no-page-id-routing",
+] as const;
+
+/** 核心参数对应受保护的 canonical 名（含正反义：用户传 --page-id-routing 也会被剔除） */
+const PROTECTED_FLAGS = new Set([
+  "auto-connect",
+  "usage-statistics",
+  "performance-crux",
+  "page-id-routing",
+]);
+
+/** 把 argv 项归一化为 canonical flag 名（去 -/no- 前缀、去 =value）；非 flag 返回 null */
+function canonicalFlagName(arg: string): string | null {
+  let flag = arg.trim();
+  if (!flag.startsWith("-")) return null;
+  flag = flag.replace(/^--?/, "").split("=")[0] ?? "";
+  if (flag.startsWith("no-")) flag = flag.slice(3);
+  return flag || null;
+}
+
+/** 过滤用户透传参数：剔除与核心受保护 flag 冲突的项，其余原样保留 */
+export function filterUserMcpArgs(userArgs: readonly string[]): string[] {
+  return userArgs.filter((arg) => {
+    const name = canonicalFlagName(arg);
+    return name === null || !PROTECTED_FLAGS.has(name);
+  });
+}
+
 /** 通过 require.resolve 解析 chrome-devtools-mcp 的实际可执行文件路径 */
 function resolveChromeDevToolsMcpBin(): string {
   // 从插件自身位置解析，确保 npm/yarn/pnpm（strict mode）都能正确找到传递依赖
@@ -24,7 +60,10 @@ function resolveChromeDevToolsMcpBin(): string {
 }
 
 export interface McpProxyOptions {
-  args?: string[];
+  /** 用户透传的额外 CLI 参数（追加；与核心受保护项冲突的会被剔除） */
+  userArgs?: string[];
+  /** 用户透传的额外环境变量（合并到 process.env 之上） */
+  env?: Record<string, string>;
   idleTimeout?: number;
 }
 
@@ -36,6 +75,7 @@ export class McpProxy {
   #internalIdBase = 1_000_000;
   #pending = new Map<number, (msg: unknown) => void>();
   #args: string[];
+  #env: Record<string, string> | undefined;
   #startPromise: Promise<void> | null = null;
   /** 最近一次进程退出信息，用于生成精确错误（无退出记录时为 null） */
   #lastExit: { code: number | null; signal: string | null; stderrTail: string } | null = null;
@@ -46,15 +86,15 @@ export class McpProxy {
   readonly sessionId: string;
 
   constructor(options: McpProxyOptions = {}) {
-    this.#args = options.args ?? [
-      "--auto-connect",
-      "--no-usage-statistics",
-      "--no-performance-crux",
-      // chrome-devtools-mcp >=1.8.0 默认开启 pageIdRouting（要求每个页面级工具都传 pageId）。
-      // 代理层已自行校验 pageId 并用 select_page 选中目标页面后再转发，故显式关闭，
-      // 避免底层工具 schema 强制必填 pageId 导致转发时的参数校验失败。
-      "--no-page-id-routing",
-    ];
+    // 用户参数在前、核心受保护参数在后：既保留透传能力，又保证核心配置永远生效。
+    const userArgs = options.userArgs ?? [];
+    const filtered = filterUserMcpArgs(userArgs);
+    if (filtered.length !== userArgs.length) {
+      const dropped = userArgs.filter((a) => !filtered.includes(a));
+      log.warn("chrome MCP 用户参数与核心受保护项冲突，已忽略", { dropped });
+    }
+    this.#args = [...filtered, ...CORE_MCP_ARGS];
+    this.#env = options.env;
     this.#idleTimeout = options.idleTimeout ?? 0;
     this.sessionId = crypto.randomUUID();
   }
@@ -86,6 +126,7 @@ export class McpProxy {
       this.#stderrTail = [];
       this.#proc = spawn(process.execPath, [binPath, ...this.#args], {
         stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, ...this.#env },
       });
       log.debug("Using local chrome-devtools-mcp");
     } catch {

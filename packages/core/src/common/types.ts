@@ -91,8 +91,6 @@ export interface SelectedElement {
   description?: string;
   /** 用户选中节点时的页面 URL（AIPanel 附加；host 端上下文注入用） */
   previewPageUrl?: string;
-  /** 用户选中节点时的页面标题（AIPanel 附加） */
-  previewPageTitle?: string;
 }
 
 /**
@@ -205,8 +203,6 @@ export interface AIPanelSelectedElement {
   description?: string;
   /** 用户选中节点时的页面 URL（AIPanel 附加；host 端上下文注入用） */
   previewPageUrl?: string;
-  /** 用户选中节点时的页面标题（AIPanel 附加） */
-  previewPageTitle?: string;
 }
 
 /**

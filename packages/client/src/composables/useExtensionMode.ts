@@ -10,7 +10,6 @@ interface ExtensionMessage {
   innerText?: string;
   description?: string;
   pageUrl?: string;
-  pageTitle?: string;
   serviceInstanceId?: string;
   theme?: AIPanelWidgetTheme;
 }
@@ -21,7 +20,6 @@ interface UseExtensionModeOptions {
   onElementSelected: (
     element: AIPanelSelectedElement,
     pageUrl?: string,
-    pageTitle?: string,
   ) => void;
   onThemeChange?: (theme: AIPanelWidgetTheme) => void;
 }
@@ -48,7 +46,6 @@ export function useExtensionMode(options: UseExtensionModeOptions) {
             description: msg.description,
           },
           msg.pageUrl,
-          msg.pageTitle,
         );
         break;
       case WIDGET_MSG.SELECTION_CANCELLED:

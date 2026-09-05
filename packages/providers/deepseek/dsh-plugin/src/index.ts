@@ -97,13 +97,12 @@ function collectNodeIds(text: string): string[] {
 /** 把单个选中元素组织成注入给 agent 的上下文文本块；开头带节点 id 供 agent 与消息标记关联 */
 function buildNodeContext(e: SelectedElement): string {
   const lines: string[] = [`节点 ID：${e.id ?? ""}`];
-  if (e.filePath) lines.push(`源码文件路径：${e.filePath}${e.line ? `:${e.line}` : ""}`);
-  if (e.line) lines.push(`代码所在行号：${e.line}`);
-  if (e.column) lines.push(`代码所在列号：${e.column}`);
+  // 行列直接跟在文件路径后（形如 index.vue:53:11），不单独成行
+  const loc = e.line ? (e.column ? `:${e.line}:${e.column}` : `:${e.line}`) : "";
+  if (e.filePath) lines.push(`源码文件路径：${e.filePath}${loc}`);
   if (e.description) lines.push(`DOM 元素选择器：${e.description}`);
   if (e.innerText) lines.push(`DOM 元素内部文本：${e.innerText.slice(0, 200)}`);
   if (e.previewPageUrl) lines.push(`用户选中节点时的页面 URL：${e.previewPageUrl}`);
-  if (e.previewPageTitle) lines.push(`页面标题：${e.previewPageTitle}`);
   return lines.join("\n");
 }
 

@@ -557,7 +557,7 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
       return;
     }
 
-    const { filePath, line, column, description, innerText, previewPageUrl, previewPageTitle } = element;
+    const { filePath, line, column, description, innerText, previewPageUrl } = element;
 
     const selector = description || 'element';
     let textPreview = '';

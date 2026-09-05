@@ -413,7 +413,7 @@ const handleToggle = async (val: boolean) => {
   if (val) updateContext();
 };
 
-const handleSelectNode = async (element: AIPanelSelectedElement, pageUrl?: string, pageTitle?: string) => {
+const handleSelectNode = async (element: AIPanelSelectedElement, pageUrl?: string) => {
   if (isExtensionSelectorMode) {
 
     ext.notifySelectionResult?.(element);
@@ -431,7 +431,6 @@ const handleSelectNode = async (element: AIPanelSelectedElement, pageUrl?: strin
     ...element,
     id,
     previewPageUrl: isExtensionMode && pageUrl ? pageUrl : window.location.href,
-    previewPageTitle: isExtensionMode && pageTitle ? pageTitle : document.title,
   };
 
   // 写入选中元素列表并同步到核心层 context 端点（携带 id），供 host 端按 @节点[id] 反查注入

@@ -92,12 +92,13 @@ if (win[INIT_MARKER]) {
       type === WIDGET_MSG.SELECTOR_START ||
       type === WIDGET_MSG.SELECTOR_STOP
     ) {
+      const payload: Record<string, unknown> = {
+        ...event.data,
+        pageUrl: event.data.pageUrl ?? location.href,
+      };
+      delete payload.pageTitle;
       chrome.runtime
-        .sendMessage({
-          ...event.data,
-          pageUrl: event.data.pageUrl ?? location.href,
-          pageTitle: event.data.pageTitle ?? document.title,
-        })
+        .sendMessage(payload)
         .catch(() => {});
     }
   });

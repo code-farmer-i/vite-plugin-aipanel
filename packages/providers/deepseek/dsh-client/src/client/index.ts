@@ -325,7 +325,7 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
       });
     };
 
-    // ---- 选中元素：INSERT_FILE_PART → 记录候选 + 立即以 chip 插入输入框 ----
+    // ---- 选中元素：INSERT_FILE_PART → 立即以 file chip 插入输入框 ----
     // 走官方 SessionInput.insertReference()，避免手写 Lexical/DOM 编辑。
     const focusComposer = () => {
       try {
@@ -338,99 +338,67 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
       }
     };
 
-    /** 计算当前插入点（投影坐标 span）：输入框文本与 draft 一致时取真实光标，否则取文末 */
-    const caretSpan = (snapshot: InputState | undefined): TokenSpan | null => {
+    /**
+     * 计算插入 span（官方 detect 坐标）。
+     * 关键：insertReference 的坐标基于 detect 投影（projection.detectText），
+     * 而 InputState.draft 是 clipboard 投影——chip 存在时两者会错位。
+     * 因此必须用官方 SessionInput.caretSpan()（无选区时坍缩到文档末尾），
+     * 不能自己拿 draft.length 当文末（会导致第一个 chip 之后每次插入都越界失败）。
+     */
+    const detectSpan = (
+      inputFor: SessionInput,
+      snapshot: InputState | undefined,
+    ): TokenSpan | null => {
       if (!snapshot) return null;
-      const draft = snapshot.draft;
-      const rev = snapshot.draftRev;
-      let start = draft.length;
-      let end = draft.length;
-      try {
-        const composer = document.querySelector<HTMLElement>(
-          '[role="textbox"][contenteditable="true"], textarea[data-phase]',
-        );
-        if (composer) {
-          if (composer.isContentEditable) {
-            const draftInComposer = (composer.innerText ?? "").replace(/\n$/, "");
-            if (draftInComposer === draft) {
-              const sel = window.getSelection();
-              if (
-                sel &&
-                sel.rangeCount > 0 &&
-                sel.anchorNode &&
-                sel.focusNode &&
-                composer.contains(sel.anchorNode) &&
-                composer.contains(sel.focusNode)
-              ) {
-                const textNodes: Text[] = [];
-                const walker = document.createTreeWalker(composer, NodeFilter.SHOW_TEXT);
-                let n: Node | null = walker.nextNode();
-                while (n) {
-                  textNodes.push(n as Text);
-                  n = walker.nextNode();
-                }
-                const posOf = (node: Node, off: number): number | null => {
-                  const idx = textNodes.indexOf(node as Text);
-                  if (idx < 0) return null;
-                  let acc = 0;
-                  for (let i = 0; i < idx; i++) acc += textNodes[i].data.length;
-                  return acc + Math.min(off, textNodes[idx].data.length);
-                };
-                const s = posOf(sel.anchorNode, sel.anchorOffset);
-                const e = posOf(sel.focusNode, sel.focusOffset);
-                if (s !== null && e !== null) {
-                  start = Math.min(Math.max(s, 0), draft.length);
-                  end = Math.min(Math.max(e, start), draft.length);
-                }
-              }
-            }
-          } else {
-            const ta = composer as HTMLTextAreaElement;
-            if (ta.value === draft) {
-              const s = ta.selectionStart ?? draft.length;
-              const e = ta.selectionEnd ?? s;
-              start = Math.min(s, draft.length);
-              end = Math.min(e, draft.length);
-            }
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-      return { start, end, draftRev: rev };
+      const caret = (inputFor as { caretSpan?: () => { start: number; end: number } }).caretSpan?.();
+      return caret ? { start: caret.start, end: caret.end, draftRev: snapshot.draftRev } : null;
     };
+
+    // 连续点选多个元素时，上一次 chip 插入可能仍处于输入机的非 plain 阶段
+    // （claimed/adjudicating），insertReference 会短暂返回 false。这里带有限重试，
+    // 每次用最新快照重算 span，确保后续元素不会丢。
+    const INSERT_RETRY_MAX = 5;
+    const INSERT_RETRY_DELAY_MS = 80;
 
     const insertElement = (element: AIPanelSelectedElement) => {
       if (!element) return;
       const current = sessions.list.getSnapshot().current;
       if (!current) return;
+      let inputFor: SessionInput | undefined;
       try {
         const actx = sessions.scope(current);
         if (!actx) return;
         const conversation = ctx.get("conversation") as IConversation | undefined;
         if (!conversation) return;
         // 官方 SessionInputResolver：scope 会话 → per-session 输入机
-        const inputFor: SessionInput = conversation.input.for(actx as Context);
-
-        const reference = toReference(element);
-        const span1 = caretSpan(inputFor.state.getSnapshot());
-        if (!span1) return;
-        // 官方 insertReference：chip 后自动补分隔空格（如需），无需手工处理
-        const applied = inputFor.insertReference(reference, span1);
-        if (!applied) {
-          // span 校验失败（draftRev 过期 / 输入处于 claimed 等）→ 用最新状态在文末重试一次
-          const snap2 = inputFor.state.getSnapshot();
-          if (!snap2) return;
-          inputFor.insertReference(reference, {
-            start: snap2.draft.length,
-            end: snap2.draft.length,
-            draftRev: snap2.draftRev,
-          });
-        }
-        focusComposer();
+        inputFor = conversation.input.for(actx as Context);
       } catch {
-        // 注入失败静默：用户可再次点选触发插入
+        return;
       }
+      if (!inputFor) return;
+      const reference = toReference(element);
+
+      const attempt = (left: number) => {
+        let applied = false;
+        try {
+          const snap = inputFor!.state.getSnapshot();
+          if (snap) {
+            const span = detectSpan(inputFor!, snap);
+            if (span) applied = inputFor!.insertReference(reference, span);
+          }
+        } catch {
+          applied = false;
+        }
+        if (applied) {
+          focusComposer();
+          return;
+        }
+        // 阶段未就绪 / span 校验失败：稍后以最新快照重试
+        if (left > 0) {
+          setTimeout(() => attempt(left - 1), INSERT_RETRY_DELAY_MS);
+        }
+      };
+      attempt(INSERT_RETRY_MAX);
     };
 
     // ---- 页内消息监听（替代 bridge 的 window message 处理）----

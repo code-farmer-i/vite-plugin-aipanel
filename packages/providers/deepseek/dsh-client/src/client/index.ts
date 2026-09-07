@@ -71,6 +71,12 @@ const SESSION_SETTLE_MS = 400;
 /** 等待会话列表基线/会员资格就绪后再 open 的最大重试次数 */
 const FOCUS_OPEN_MAX_ATTEMPTS = 3;
 
+/**
+ * 在途聚焦的超时窗口（毫秒）。FOCUS_SESSION 请求到达后，若目标会话在该窗口内
+ * 仍未稳定成为 current，则放弃补聚焦（父窗另有 loading 兜底放行），避免 refocus
+ * 长期对抗用户/系统在 dsh 内的自由切换（如切到子代理会话）。
+ */
+const FOCUS_INFLIGHT_TIMEOUT_MS = 10000;
 
 /** 不透明引用：携带完整元素上下文（提交时由 codec.serialize 还原成全文） */
 function elementContextRef(e: AIPanelSelectedElement): string {
@@ -140,8 +146,10 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
   if (sessions) {
     let lastCurrent: SessionId | undefined;
     let settleTimer: ReturnType<typeof setTimeout> | null = null;
-    /** 当前聚焦目标：仅在收到 FOCUS_SESSION 时使用 */
+    /** 当前聚焦目标：仅在收到 FOCUS_SESSION 时使用，目标稳定到达或超时后清空 */
     let targetSessionId: SessionId | undefined;
+    /** 在途聚焦的过期时间戳：超时后不再补聚焦（避免长期干扰 dsh 内部会话切换） */
+    let focusDeadline = 0;
     /** FOCUS_SESSION 在列表基线就绪前到达时排队 */
     let pendingFocusId: SessionId | undefined;
     let focusAttempts = 0;
@@ -169,6 +177,11 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
       if (!id) return;
       const snap = sessions.list.getSnapshot();
       if (!hasBaseline(snap)) return; // 等下一次订阅回调
+      // 排队期间在途窗口已超时：放弃本次聚焦，不再 open
+      if (Date.now() >= focusDeadline) {
+        clearFocusTarget();
+        return;
+      }
       pendingFocusId = undefined;
       focusAttempts = 0;
       void tryOpenTarget(id);
@@ -179,7 +192,12 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
       if (focusAttempts >= FOCUS_OPEN_MAX_ATTEMPTS) return;
       focusAttempts += 1;
       const snap = sessions.list.getSnapshot();
-      if (snap.current === id) return; // 已就位（探针会负责上报）
+      if (snap.current === id) {
+        // 目标会话已就位（无需 open）：立即解除在途状态，避免 target 残留导致
+        // 后续 dsh 内部/用户切换（如进入子代理会话）被 refocus 强制拉回
+        clearFocusTarget();
+        return; // 已就位（探针会负责上报）
+      }
       if (!listContains(snap, id) && !refreshing) {
         refreshing = true;
         try {
@@ -203,9 +221,21 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
       }
     };
 
-    /** 收到父窗聚焦指令 */
-    const handleFocus = (sessionId: SessionId) => {
+    /** 清空在途聚焦状态（目标已到达/超时/被新请求取代） */
+    const clearFocusTarget = () => {
+      targetSessionId = undefined;
+      focusDeadline = 0;
+      pendingFocusId = undefined;
+    };
+
+    /** 收到父窗聚焦指令（source: "host"=AIPanel FOCUS_SESSION；"refocus"=探针补聚焦） */
+    const handleFocus = (sessionId: SessionId, source: "host" | "refocus" = "host") => {
       targetSessionId = sessionId;
+      // 仅在父窗发来新聚焦请求（host）时武装在途窗口；refocus 延续原窗口，
+      // 避免补聚焦自身反复续期导致窗口永不超时
+      if (source === "host") {
+        focusDeadline = Date.now() + FOCUS_INFLIGHT_TIMEOUT_MS;
+      }
       const snap = sessions.list.getSnapshot();
       if (!hasBaseline(snap)) {
         pendingFocusId = sessionId;
@@ -234,9 +264,19 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
         settleTimer = null;
         if (sessions.list?.getSnapshot?.()?.current === current) {
           notifyReady(current);
-          if (targetSessionId && targetSessionId !== current) {
-            // 目标会话聚焦失败/迟到：当前稳定的是别的会话 → 补一次聚焦
-            handleFocus(targetSessionId);
+          if (targetSessionId) {
+            if (current === targetSessionId) {
+              // 目标会话已稳定到达 → 本次聚焦完成，解除在途状态；
+              // 此后 dsh 内部/用户自由切换（如进入子代理会话）不再被强制回切
+              clearFocusTarget();
+            } else if (Date.now() < focusDeadline) {
+              // 目标会话聚焦失败/迟到（仍在在途窗口内）→ 补一次聚焦
+              handleFocus(targetSessionId, "refocus");
+            } else {
+              // 在途窗口已超时仍未到达：放弃补聚焦（父窗另有 loading 兜底放行），
+              // 避免 refocus 长期干扰 dsh 内部会话切换（如用户主动切到子代理会话）
+              clearFocusTarget();
+            }
           }
         }
       }, SESSION_SETTLE_MS);
@@ -335,7 +375,9 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
       snapshot: InputState | undefined,
     ): TokenSpan | null => {
       if (!snapshot) return null;
-      const caret = (inputFor as { caretSpan?: () => { start: number; end: number } }).caretSpan?.();
+      const caret = (
+        inputFor as { caretSpan?: () => { start: number; end: number } }
+      ).caretSpan?.();
       return caret ? { start: caret.start, end: caret.end, draftRev: snapshot.draftRev } : null;
     };
 
@@ -401,7 +443,7 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
       if (data.type === MSG.SET_THEME && typeof data.theme === "string") {
         applyThemeFromHost(data.theme);
       } else if (data.type === MSG.FOCUS_SESSION && typeof data.sessionId === "string") {
-        handleFocus(data.sessionId as SessionId);
+        handleFocus(data.sessionId as SessionId, "host");
       } else if (data.type === MSG.INSERT_FILE_PART && data.element) {
         insertElement(data.element);
       } else if (data.type === MSG.SELECT_MODE_CHANGE) {

@@ -55,7 +55,10 @@ const notificationVisible = ref(false);
 const notificationMode = ref<"widget" | "page">("widget");
 let notificationTimer: ReturnType<typeof setTimeout> | null = null;
 
-const showNotification = (message: string, options?: { duration?: number; mode?: "widget" | "page"; }) => {
+const showNotification = (
+  message: string,
+  options?: { duration?: number; mode?: "widget" | "page" },
+) => {
   const { duration = NOTIFICATION_DURATION, mode = "widget" } = options || {};
   notificationMessage.value = message;
   notificationVisible.value = true;
@@ -97,9 +100,7 @@ const sendMessageToIframe = (type: string, data?: Record<string, unknown>) => {
 
 const localSessionListCollapsed = ref(props.sessionListCollapsed);
 const localDisplayMode = ref(props.displayMode);
-const localSplitPosition = ref<"left" | "right">(
-  props.splitMode?.position ?? "right"
-);
+const localSplitPosition = ref<"left" | "right">(props.splitMode?.position ?? "right");
 const minimized = ref(false);
 const promptDockVisible = ref(true);
 const reviewPanelVisible = ref(false);
@@ -145,7 +146,8 @@ watch(
 );
 
 const handleToggleDisplayMode = () => {
-  if (localDisplayMode.value === "extension" || localDisplayMode.value === "extension-selector") return;
+  if (localDisplayMode.value === "extension" || localDisplayMode.value === "extension-selector")
+    return;
   const modes: ("bubble" | "split" | "auto")[] = ["bubble", "split", "auto"];
   const currentIndex = modes.indexOf(localDisplayMode.value);
   const nextIndex = (currentIndex + 1) % modes.length;
@@ -312,7 +314,10 @@ usePersistState({
       emit("update:theme", state.theme);
       emit("toggle-theme", state.theme);
     }
-    if (state.sessionListCollapsed !== undefined && state.sessionListCollapsed !== props.sessionListCollapsed) {
+    if (
+      state.sessionListCollapsed !== undefined &&
+      state.sessionListCollapsed !== props.sessionListCollapsed
+    ) {
       localSessionListCollapsed.value = state.sessionListCollapsed;
       emit("update:sessionListCollapsed", state.sessionListCollapsed);
     }
@@ -430,12 +435,18 @@ const chatPositionStyle = computed(() => {
   if (typeof window === "undefined") return {};
 
   const chatWidth = minimized.value ? 300 : 700;
-  const chatHeight = minimized.value ? 300 : Math.min(windowHeight.value * 0.86, windowHeight.value - 40);
+  const chatHeight = minimized.value
+    ? 300
+    : Math.min(windowHeight.value * 0.86, windowHeight.value - 40);
   const gap = 24;
   const bubbleSize = 44;
   const screenMargin = 20;
 
-  const effectiveOffset = triggerRef.value?.offset ?? bubbleOffset.value ?? { x: windowWidth.value - bubbleSize - gap, y: windowHeight.value - bubbleSize - gap };
+  const effectiveOffset = triggerRef.value?.offset ??
+    bubbleOffset.value ?? {
+      x: windowWidth.value - bubbleSize - gap,
+      y: windowHeight.value - bubbleSize - gap,
+    };
 
   const style: Record<string, string> = {};
 
@@ -730,11 +741,15 @@ defineExpose({
           <button
             class="aipanel-dialog-btn cancel"
             @click="handleDialogCancel"
-          >取消</button>
+          >
+            取消
+          </button>
           <button
             class="aipanel-dialog-btn confirm"
             @click="handleDialogConfirm"
-          >确认</button>
+          >
+            确认
+          </button>
         </div>
       </div>
     </div>
@@ -780,6 +795,11 @@ defineExpose({
   --ap-danger-active: #b91c1c;
 
   --ap-success: #10b981;
+
+  /* 会话状态指示器：对齐官方 —— pending=amber-500 / completed=green-500 / ongoing=deepseek-450 #5686fe */
+  --ap-state-pending: #f59e0b;
+  --ap-state-completed: #22c55e;
+  --ap-state-ongoing: #5686fe;
 
   --ap-overlay: rgba(0, 0, 0, 0.5);
   --ap-tooltip-bg: #1e1e1e;
@@ -839,6 +859,11 @@ defineExpose({
 
   --ap-success: #10b981;
 
+  /* 会话状态指示器：对齐官方 —— pending=amber-500 / completed=green-500 / ongoing=deepseek-450 #5686fe */
+  --ap-state-pending: #fbbf24;
+  --ap-state-completed: #22c55e;
+  --ap-state-ongoing: #5686fe;
+
   --ap-overlay: rgba(26, 26, 26, 0.9);
   --ap-tooltip-bg: #282828;
   --ap-dialog-overlay: rgba(0, 0, 0, 0.7);
@@ -879,7 +904,8 @@ defineExpose({
   overflow: hidden;
   opacity: 0;
   visibility: hidden;
-  transform: translate3d(v-bind("chatAnimationOrigin.x"), v-bind("chatAnimationOrigin.y"), 0) scale(0.95);
+  transform: translate3d(v-bind("chatAnimationOrigin.x"), v-bind("chatAnimationOrigin.y"), 0)
+    scale(0.95);
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;

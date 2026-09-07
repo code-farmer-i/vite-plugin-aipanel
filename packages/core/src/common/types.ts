@@ -2,7 +2,7 @@
  * 通用类型（Provider 无关）
  * Provider 专属类型已下沉至 @aipanel/provider-opencode。
  */
-import type { SessionStatus } from "./provider";
+import type { SessionPendingKind, SessionStatus } from "./provider";
 
 /**
  * 展示模式类型
@@ -171,12 +171,24 @@ export type ServiceStatus = "idle" | "starting" | "ready" | "partial" | "failed"
 export type AIPanelSessionStatusType = SessionStatus;
 
 /**
+ * Session 交互状态（单一来源：./types.ts 定义，事件载荷类型见 ./provider.ts 的 SessionPendingKind）
+ */
+export type AIPanelSessionPendingKind = SessionPendingKind;
+
+/**
  * Session 思考状态
  */
 export interface AIPanelSessionThinkingState {
   thinking: boolean;
   statusType: AIPanelSessionStatusType;
+  /** 是否存在待用户交互（审批/提问/计划评审）；pending 优先级高于 thinking */
   hasPending: boolean;
+  /** 待交互类型（hasPending=true 时有值；单一来源 ./provider.ts） */
+  pendingKind?: AIPanelSessionPendingKind;
+  /** 是否刚运行完成（client 端由 running→idle 边沿且非当前选中推导；对齐官方 completed 提醒语义） */
+  completed?: boolean;
+  /** 进行中的子代理数（>0 时即使自身 idle 也视为"在跑"；源：session.subagents） */
+  subagentsRunning?: number;
 }
 
 /**

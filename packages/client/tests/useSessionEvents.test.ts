@@ -116,4 +116,94 @@ describe("useSessionEvents", () => {
     api.handleEvent({ type: "session.status", sessionId: "s1", status: "running" });
     expect(api.currentSessionState.value).toBeNull();
   });
+
+  it("completed：非当前会话 running→idle 边沿置位；当前会话自身/再次运行不置位", () => {
+    const currentSessionId = ref<string | null>("s1");
+    const api = useSessionEvents({ currentSessionId });
+
+    // 非当前会话 s2 从 running → idle：置 completed 提醒
+    api.handleEvent({ type: "session.status", sessionId: "s2", status: "running" });
+    expect(api.sessionStates.value.s2.completed).toBeUndefined();
+    api.handleEvent({ type: "session.status", sessionId: "s2", status: "idle" });
+    expect(api.sessionStates.value.s2.completed).toBe(true);
+
+    // 当前会话 s1 自身 idle：不置 completed（对齐官方：selected 会话不提醒）
+    api.handleEvent({ type: "session.status", sessionId: "s1", status: "running" });
+    api.handleEvent({ type: "session.status", sessionId: "s1", status: "idle" });
+    expect(api.sessionStates.value.s1.completed).toBeUndefined();
+
+    // 再次 running 清除 completed
+    api.handleEvent({ type: "session.status", sessionId: "s2", status: "running" });
+    expect(api.sessionStates.value.s2.completed).toBeUndefined();
+  });
+
+  it("completed：非当前会话由 completed 状态（非 idle）到达也走边沿", () => {
+    const currentSessionId = ref<string | null>("s1");
+    const api = useSessionEvents({ currentSessionId });
+    api.handleEvent({ type: "session.status", sessionId: "s2", status: "running" });
+    api.handleEvent({ type: "session.status", sessionId: "s2", status: "completed" });
+    expect(api.sessionStates.value.s2.completed).toBe(true);
+    expect(api.sessionStates.value.s2.thinking).toBe(false);
+  });
+
+  it("markSessionActive 清除 completed（对齐官方 select 后完成提醒消失）", () => {
+    const currentSessionId = ref<string | null>("s1");
+    const api = useSessionEvents({ currentSessionId });
+    api.handleEvent({ type: "session.status", sessionId: "s2", status: "running" });
+    api.handleEvent({ type: "session.status", sessionId: "s2", status: "idle" });
+    expect(api.sessionStates.value.s2.completed).toBe(true);
+
+    api.markSessionActive("s2");
+    expect(api.sessionStates.value.s2.completed).toBeUndefined();
+    // 其它字段保留
+    expect(api.sessionStates.value.s2.statusType).toBe("idle");
+  });
+
+  it("session.pending：置位/清除 pending 与 kind，且不破坏 thinking 字段", () => {
+    const currentSessionId = ref<string | null>("s1");
+    const api = useSessionEvents({ currentSessionId });
+    api.handleEvent({ type: "session.status", sessionId: "s1", status: "running" });
+
+    api.handleEvent({ type: "session.pending", sessionId: "s1", pending: true, kind: "approval" });
+    expect(api.sessionStates.value.s1.hasPending).toBe(true);
+    expect(api.sessionStates.value.s1.pendingKind).toBe("approval");
+    expect(api.sessionStates.value.s1.thinking).toBe(true); // 不被 pending 覆盖
+
+    api.handleEvent({ type: "session.pending", sessionId: "s1", pending: false });
+    expect(api.sessionStates.value.s1.hasPending).toBe(false);
+    expect(api.sessionStates.value.s1.pendingKind).toBeUndefined();
+    expect(api.sessionStates.value.s1.thinking).toBe(true);
+  });
+
+  it("session.pending：无 kind 时兜底为 question；未知会话安全创建", () => {
+    const currentSessionId = ref<string | null>(null);
+    const api = useSessionEvents({ currentSessionId });
+    api.handleEvent({ type: "session.pending", sessionId: "s9", pending: true });
+    expect(api.sessionStates.value.s9.hasPending).toBe(true);
+    expect(api.sessionStates.value.s9.pendingKind).toBe("question");
+  });
+
+  it("session.subagents：>0 记录子代理数并清除 completed；0 移除标记", () => {
+    const currentSessionId = ref<string | null>("s1");
+    const api = useSessionEvents({ currentSessionId });
+
+    // 先制造非当前会话 s2 的 completed 提醒
+    api.handleEvent({ type: "session.status", sessionId: "s2", status: "running" });
+    api.handleEvent({ type: "session.status", sessionId: "s2", status: "idle" });
+    expect(api.sessionStates.value.s2.completed).toBe(true);
+
+    // 父会话 s1 有 1 个子代理在跑：记录计数并清除 completed（子代理期间不提示"已完成"）
+    api.handleEvent({ type: "session.subagents", sessionId: "s2", running: 1 });
+    expect(api.sessionStates.value.s2.subagentsRunning).toBe(1);
+    expect(api.sessionStates.value.s2.completed).toBeUndefined();
+
+    // 子代理结束 → 计数清除
+    api.handleEvent({ type: "session.subagents", sessionId: "s2", running: 0 });
+    expect(api.sessionStates.value.s2.subagentsRunning).toBeUndefined();
+
+    // 不影响其它字段
+    api.handleEvent({ type: "session.status", sessionId: "s2", status: "running" });
+    expect(api.sessionStates.value.s2.thinking).toBe(true);
+    expect(api.sessionStates.value.s2.subagentsRunning).toBeUndefined();
+  });
 });

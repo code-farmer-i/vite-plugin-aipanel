@@ -72,11 +72,16 @@ export function setupHostEventsEndpoint(server: ViteDevServer, ctx: EndpointCont
   });
 }
 
-/** 轻量校验：只信任 ProviderEvent 三种形态并做必填字段检查（不引入运行时 schema） */
+/** 轻量校验：只信任 ProviderEvent 各形态并做必填字段检查（不引入运行时 schema） */
 function isProviderEvent(value: unknown): value is ProviderEvent {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
-  if (v.type === "session.status" || v.type === "thinking") {
+  if (
+    v.type === "session.status" ||
+    v.type === "thinking" ||
+    v.type === "session.pending" ||
+    v.type === "session.subagents"
+  ) {
     return typeof v.sessionId === "string" && v.sessionId.length > 0;
   }
   if (v.type === "session.updated") {

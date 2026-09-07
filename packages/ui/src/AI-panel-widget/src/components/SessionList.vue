@@ -31,10 +31,70 @@ const showSkeleton = computed(() => {
   return false;
 });
 
-// 判断指定 session 是否正在思考
-function isSessionThinking(sessionId: string): boolean {
-  if (!sessionStates?.value || !sessionId) return false;
-  return sessionStates.value[sessionId]?.thinking ?? false;
+/** 会话行交互状态：单一来源 AIPanelSessionThinkingState；优先级 pending > thinking > running > completed > idle */
+type SessionRowStatus = "pending" | "thinking" | "running" | "completed" | "idle";
+
+/** 官方 StateDot ongoing 矩阵：3×3 外圈 8 个 2px 格（中心空）。坐标为官方 MATRIX_CELLS 原序；
+ *   delay 取官方 (index - 8) * 125ms 的负延迟，等价第 0 格相位 0、逐格 +125ms 顺时针追逐。 */
+const ONGOING_CELLS: ReadonlyArray<{ x: number; y: number; delay: string }> = [
+  { x: 0, y: 0, delay: "-1000ms" },
+  { x: 4, y: 0, delay: "-875ms" },
+  { x: 8, y: 0, delay: "-750ms" },
+  { x: 8, y: 4, delay: "-625ms" },
+  { x: 8, y: 8, delay: "-500ms" },
+  { x: 4, y: 8, delay: "-375ms" },
+  { x: 0, y: 8, delay: "-250ms" },
+  { x: 0, y: 4, delay: "-125ms" },
+];
+
+/** pending 类型的可读标签（title 提示） */
+const PENDING_LABELS: Record<string, string> = {
+  approval: "等待审批",
+  "plan-review": "等待计划确认",
+  question: "等待回复",
+};
+
+/** running 状态的说明：自身在跑 或 子代理在跑 */
+function runningLabel(sessionId: string): string {
+  const n = sessionStates?.value?.[sessionId]?.subagentsRunning ?? 0;
+  return n > 0 ? "子代理运行中 (" + n + ")" : "运行中";
+}
+
+function sessionRowStatus(sessionId: string): SessionRowStatus {
+  const state = sessionStates?.value?.[sessionId];
+  if (!state) return "idle";
+  if (state.hasPending) return "pending";
+  // 有子代理在跑：父会话即使自身 idle 也视为进行中（官方 subagent-running 语义）
+  const subagentsRunning = (state.subagentsRunning ?? 0) > 0;
+  if (subagentsRunning) return "running";
+  // 思考中（thinking 事件权威：step/assistant 输出阶段）优先于纯运行；
+  // 纯运行（agent/status running 整段保持，无思考事件时）显示转圈。
+  if (state.thinking) return "thinking";
+  const running = state.statusType === "running" || state.statusType === "streaming";
+  if (running) return "running";
+  if (state.completed) return "completed";
+  return "idle";
+}
+
+function pendingLabel(sessionId: string): string {
+  const kind = sessionStates?.value?.[sessionId]?.pendingKind;
+  return (kind && PENDING_LABELS[kind]) || "等待用户";
+}
+
+// 活跃态（思考中/运行中/子代理在跑）统一用转圈 loading 指示
+function isSessionActive(sessionId: string): boolean {
+  const status = sessionRowStatus(sessionId);
+  return status === "thinking" || status === "running";
+}
+
+// 判断指定 session 是否有待用户交互（审批/提问/计划评审）
+function isSessionPending(sessionId: string): boolean {
+  return sessionRowStatus(sessionId) === "pending";
+}
+
+// 判断指定 session 是否刚运行完成（仅非当前会话显示提醒）
+function isSessionCompleted(sessionId: string): boolean {
+  return sessionRowStatus(sessionId) === "completed";
 }
 </script>
 
@@ -103,18 +163,45 @@ function isSessionThinking(sessionId: string): boolean {
           v-for="item in sessions"
           :key="item[sessionKey]"
           class="aipanel-session-item"
-          :class="{ active: item.active, thinking: isSessionThinking(item.id) }"
+          :class="{ active: item.active, thinking: isSessionActive(item.id) }"
           role="option"
           :aria-selected="item.active"
           @click="handleSelectSession(item)"
         >
           <div class="aipanel-session-header">
             <div class="aipanel-session-title">
+              <!-- 状态指示：pending=琥珀点 > 活跃(thinking/running/子代理)=转圈 > completed=绿点 > idle -->
               <span
-                v-if="isSessionThinking(item.id)"
-                class="aipanel-thinking-loading"
+                v-if="isSessionPending(item.id)"
+                class="aipanel-session-state aipanel-session-state-pending"
+                :title="pendingLabel(item.id)"
               />
-              {{ item.title }}
+              <svg
+                v-else-if="isSessionActive(item.id)"
+                class="aipanel-session-state aipanel-session-state-ongoing"
+                :title="runningLabel(item.id)"
+                viewBox="0 0 10 10"
+                width="10"
+                height="10"
+                aria-hidden="true"
+              >
+                <rect
+                  v-for="c in ONGOING_CELLS"
+                  :key="c.x + '-' + c.y"
+                  :x="c.x"
+                  :y="c.y"
+                  width="2"
+                  height="2"
+                  :style="{ animationDelay: c.delay }"
+                  class="aipanel-session-ongoing-cell"
+                />
+              </svg>
+              <span
+                v-else-if="isSessionCompleted(item.id)"
+                class="aipanel-session-state aipanel-session-state-completed"
+                title="已完成"
+              />
+              <span class="aipanel-session-title-text">{{ item.title }}</span>
             </div>
             <button
               class="aipanel-session-delete-btn"
@@ -236,12 +323,20 @@ function isSessionThinking(sessionId: string): boolean {
 }
 
 .aipanel-session-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
   font-size: 14px;
   font-weight: 500;
   margin-bottom: 4px;
+}
+
+/* 标题文本独占省略容器：状态点（含 glow）不参与裁切，避免左侧被遮挡 */
+.aipanel-session-title-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .aipanel-session-meta {
@@ -365,33 +460,88 @@ function isSessionThinking(sessionId: string): boolean {
   font-size: 13px;
 }
 
-/* Thinking loading icon - 黑白灰配色 */
-.aipanel-thinking-loading {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
+/* 状态指示共用尺寸：pending/completed 为圆点（span），ongoing 为矩阵（svg，官方 StateDot） */
+.aipanel-session-state {
+  position: relative;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
   margin-right: 6px;
-  border: 2px solid var(--ap-border-secondary);
-  border-top-color: var(--ap-text-secondary);
+}
+
+/* 圆点（span）：官方 .dot —— :before 0.1 光晕，:after inset 20% 实心核（等效 10px 中 6px 点） */
+.aipanel-session-state-pending::before,
+.aipanel-session-state-completed::before {
+  content: "";
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
-  animation: thinking-spin 0.8s linear infinite;
-  vertical-align: middle;
+  background: currentColor;
+  opacity: 0.1;
 }
 
-/* 激活状态下 loading 颜色 */
-.aipanel-session-item.active .aipanel-thinking-loading {
-  border-color: rgba(255, 255, 255, 0.3);
-  border-top-color: rgba(255, 255, 255, 0.9);
+.aipanel-session-state-pending::after,
+.aipanel-session-state-completed::after {
+  content: "";
+  position: absolute;
+  inset: 20%;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-@keyframes thinking-spin {
-  0% {
-    transform: rotate(0deg);
+.aipanel-session-state-pending {
+  color: var(--ap-state-pending);
+}
+
+.aipanel-session-state-completed {
+  color: var(--ap-state-completed);
+}
+
+/* ongoing 矩阵（svg）：官方 StateDot 3×3 追逐（2px 格，10px 画布），DeepSeek 蓝 */
+.aipanel-session-state-ongoing {
+  color: var(--ap-state-ongoing);
+}
+
+.aipanel-session-ongoing-cell {
+  fill: currentColor;
+  opacity: 0.15;
+  animation: aipanel-ongoing-chase 1s infinite;
+}
+
+@keyframes aipanel-ongoing-chase {
+  0%,
+  12.4% {
+    opacity: 1;
   }
 
+  12.5%,
+  24.9% {
+    opacity: 0.6;
+  }
+
+  25%,
+  37.4% {
+    opacity: 0.35;
+  }
+
+  37.5%,
   100% {
-    transform: rotate(360deg);
+    opacity: 0.15;
   }
+}
+
+/* 指示器始终用主题语义色，不随 active 行改色 */
+.aipanel-session-item.active .aipanel-session-state-pending {
+  color: var(--ap-state-pending);
+}
+
+.aipanel-session-item.active .aipanel-session-state-completed {
+  color: var(--ap-state-completed);
+}
+
+/* active（当前会话，主色底）行的 ongoing 矩阵提亮保证对比度 */
+.aipanel-session-item.active .aipanel-session-state-ongoing {
+  color: rgba(255, 255, 255, 0.95);
 }
 
 @keyframes skeleton-loading {

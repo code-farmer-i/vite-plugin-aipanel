@@ -29,6 +29,9 @@ export interface ChatSession {
 /** 会话运行状态 */
 export type SessionStatus = "idle" | "running" | "streaming" | "completed";
 
+/** 会话等待用户交互的类型（对齐 dsh host approval/request 与 user-questions/request） */
+export type SessionPendingKind = "approval" | "plan-review" | "question";
+
 /** Provider 事件（Provider 私有事件 → 归一化，客户端只消费这些事件） */
 export type ProviderEvent =
   | { type: "connected" }
@@ -37,7 +40,16 @@ export type ProviderEvent =
   /** 会话运行状态变化 */
   | { type: "session.status"; sessionId: string; status: SessionStatus }
   /** 会话思考状态（由 adapter 自行推导） */
-  | { type: "thinking"; sessionId: string; thinking: boolean };
+  | { type: "thinking"; sessionId: string; thinking: boolean }
+  /** 会话等待用户交互（审批/提问/计划评审）开始或结束 */
+  | {
+      type: "session.pending";
+      sessionId: string;
+      pending: boolean;
+      kind?: SessionPendingKind;
+    }
+  /** 父会话的进行中子代理数（>0 表示有子代理在跑；自身 idle 时 UI 仍显示进行中） */
+  | { type: "session.subagents"; sessionId: string; running: number };
 
 /** Provider 环境检查结果 */
 export interface ProviderEnvironmentInfo {

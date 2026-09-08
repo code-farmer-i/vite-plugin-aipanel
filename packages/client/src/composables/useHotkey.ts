@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted } from "vue";
 
-interface HotkeyConfig {
+export interface HotkeyConfig {
   ctrl: boolean;
   shift: boolean;
   alt: boolean;

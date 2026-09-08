@@ -34,21 +34,20 @@ describe("createPackageRequire", () => {
 describe("resolvePackageDir", () => {
   it("resolves the package root two dirs above its main entry", () => {
     const entry = path.join("/proj", "node_modules", "pkg-a", "lib", "index.js");
-    const fakeRequire = ((id: string) => {
-      throw new Error("unexpected require: " + id);
-    }) as unknown as NodeRequire & {
-      resolve: (id: string) => string;
-    };
-    fakeRequire.resolve = vi.fn((id: string) => {
+    const resolveMock = vi.fn((id: string) => {
       expect(id).toBe("pkg-a");
       return entry;
     });
-    mockedCreateRequire.mockReturnValue(fakeRequire as unknown as NodeRequire);
+    const fakeRequire = ((id: string) => {
+      throw new Error("unexpected require: " + id);
+    }) as unknown as NodeRequire;
+    fakeRequire.resolve = resolveMock as unknown as NodeRequire["resolve"];
+    mockedCreateRequire.mockReturnValue(fakeRequire);
 
     expect(resolvePackageDir("pkg-a", "/proj/app")).toBe(
       path.join("/proj", "node_modules", "pkg-a"),
     );
-    expect(fakeRequire.resolve).toHaveBeenCalledWith("pkg-a");
+    expect(resolveMock).toHaveBeenCalledWith("pkg-a");
   });
 });
 

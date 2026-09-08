@@ -15,7 +15,7 @@ afterEach(() => unmountAll());
 
 function setup(overrides: Partial<Parameters<typeof useSplitMode>[0]> = {}) {
   const opts: Parameters<typeof useSplitMode>[0] = {
-    displayMode: ref<DisplayMode>("web"),
+    displayMode: ref<DisplayMode>("auto"),
     splitMode: ref<SplitModeOptions | undefined>(undefined),
     open: ref(false),
     ...overrides,

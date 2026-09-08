@@ -23,7 +23,7 @@
   },
   "scripts": {
     "build": "pnpm --filter @aipanel/core build && pnpm --filter @aipanel/provider-opencode build && pnpm --filter @aipanel/provider-deepseek build && pnpm --filter @aipanel/ui build && pnpm --filter vite-plugin-aipanel build && pnpm --filter @aipanel/extension build",
-    "build:ui": "pnpm --filter @aipanel/ui build   && pnpm --filter @aipanel/extension build",
+    "build:ui": "pnpm --filter @aipanel/ui build && pnpm --filter @aipanel/extension build",
     "dev:components": "pnpm --filter @aipanel/ui dev:site",
     "dev:docs": "pnpm --filter @aipanel/docs dev",
     "build:docs": "pnpm --filter @aipanel/docs build",
@@ -32,7 +32,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r --if-present run typecheck",
+    "typecheck": "pnpm -r --if-present run typecheck && tsc -p tsconfig.json --noEmit",
     "release": "node scripts/release.js",
     "deploy:docs": "node scripts/deploy-docs.js"
   },

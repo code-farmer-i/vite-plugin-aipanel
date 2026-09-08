@@ -8,7 +8,7 @@
  * - node:module（createRequire）与 node:child_process（exec）整体替换为可控 mock，
  *   禁止真实解析/执行 vue-tsc、eslint。
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { exec } from "node:child_process";
 import { createRequire } from "node:module";
 import fs from "node:fs";
@@ -73,15 +73,15 @@ const fakeRequire = ((id: string) => {
     return { ESLint: FakeESLint };
   }
   throw new Error("Cannot find module '" + id + "'");
-}) as NodeRequire & { resolve: (id: string) => string };
+}) as unknown as NodeRequire;
 
-fakeRequire.resolve = (id: string) => {
+fakeRequire.resolve = ((id: string) => {
   if (id === "vue-tsc/bin/vue-tsc.js") {
     if (!vueTscResolvable) throw new Error("Cannot find module 'vue-tsc/bin/vue-tsc.js'");
     return "/fake-bin/vue-tsc.js";
   }
   throw new Error("Cannot resolve '" + id + "'");
-};
+}) as unknown as NodeRequire["resolve"];
 
 function silenceConsole(): void {
   for (const method of ["log", "warn", "error"] as const) {

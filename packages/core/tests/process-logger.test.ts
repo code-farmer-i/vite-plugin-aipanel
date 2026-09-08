@@ -5,7 +5,6 @@
  * console 为静默 mock（捕获原始引用）后于 afterEach 恢复。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProcessLogEntry } from "../src/node/process-logger";
 
 type ProcLoggerModule = typeof import("../src/node/process-logger");
 
@@ -16,7 +15,6 @@ const originalConsole: Record<string, unknown> = {};
 beforeEach(() => {
   for (const method of ["log", "info", "warn", "error", "debug"] as const) {
     originalConsole[method] = console[method];
-    // @ts-expect-error 运行时替换 console 方法以静默真实输出
     console[method] = vi.fn();
   }
 });
@@ -154,14 +152,12 @@ describe("buffer semantics", () => {
 });
 
 describe("getLogs filtering", () => {
-  async function seed(): Promise<{ mod: ProcLoggerModule; buffer: unknown }> {
+  async function seed(): Promise<{
+    mod: ProcLoggerModule;
+    buffer: ReturnType<ProcLoggerModule["initProcessLogCapture"]>;
+  }> {
     const mod = await freshModule();
-    const buffer = mod.initProcessLogCapture() as unknown as {
-      addProviderStdout: (m: string) => void;
-      addProviderStderr: (m: string) => void;
-      addEntry: (e: ProcessLogEntry) => void;
-      getLogs: (o?: unknown) => ProcessLogEntry[];
-    };
+    const buffer = mod.initProcessLogCapture();
     buffer.addProviderStdout("stdout-a");
     buffer.addProviderStderr("stderr-b");
     buffer.addEntry({

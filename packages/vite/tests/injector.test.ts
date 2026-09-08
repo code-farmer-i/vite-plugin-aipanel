@@ -21,13 +21,13 @@ function extractScriptTag(html: string): string {
 }
 
 describe("injectWidget", () => {
-  const options = {
+  const options: Parameters<typeof injectWidget>[0] = {
     theme: "dark",
     open: true,
     hotkey: "alt+a",
     proxyPort: 8081,
     proxyHost: "localhost",
-    displayMode: "overlay",
+    displayMode: "auto",
     serviceInstanceId: "svc-test-1",
     projectRoot: "/repo",
     verbose: true,
@@ -64,7 +64,7 @@ describe("injectWidget", () => {
   });
 
   it("多 optional 字段的 options 也能无损往返（含中文字符）", () => {
-    const richOptions = {
+    const richOptions: Parameters<typeof injectWidget>[0] = {
       theme: "auto",
       open: false,
       hotkey: undefined,

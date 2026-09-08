@@ -186,7 +186,7 @@ describe("resolveChromePageId", () => {
   const OPERATIONS_ORIGINS = ["https://app.example.com"];
 
   /** 构造 sessionStorage 查询型 mcp：按当前 select 的 pageId 返回 sessionId */
-  function sessionStorageStub(sessionByPage: Map<number, string | null>): McpProxy {
+  function sessionStorageStub(sessionByPage: Map<number, string | null>): McpStub {
     let selected = -1;
     const callChromeDevTool = vi.fn(async (name: string, args: Record<string, unknown>) => {
       if (name === "select_page") {
@@ -203,7 +203,7 @@ describe("resolveChromePageId", () => {
       }
       return { result: {} };
     });
-    return asMcp({ isRunning: true, callChromeDevTool });
+    return { isRunning: true, callChromeDevTool };
   }
 
   it("mcp 未初始化时返回明确原因", async () => {
@@ -245,7 +245,7 @@ describe("resolveChromePageId", () => {
       ]),
     );
     const result = await resolveChromePageId(
-      mcp,
+      mcp as unknown as McpProxy,
       "https://app.example.com/x",
       "App",
       OPERATIONS_ORIGINS,
@@ -267,7 +267,7 @@ describe("resolveChromePageId", () => {
       ]),
     );
     const result = await resolveChromePageId(
-      mcp,
+      mcp as unknown as McpProxy,
       "https://app.example.com/",
       "App",
       OPERATIONS_ORIGINS,
@@ -285,7 +285,7 @@ describe("resolveChromePageId", () => {
   it("无 sessionId 时不做 URL 降级，返回缺失会话标识错误", async () => {
     const mcp = asMcp({ isRunning: true, callChromeDevTool: vi.fn() });
     const result = await resolveChromePageId(
-      mcp,
+      mcp as unknown as McpProxy,
       "https://app.example.com/",
       "App",
       OPERATIONS_ORIGINS,
@@ -305,7 +305,7 @@ describe("resolveChromePageId", () => {
       ]),
     );
     const result = await resolveChromePageId(
-      mcp,
+      mcp as unknown as McpProxy,
       "https://app.example.com/",
       "App",
       OPERATIONS_ORIGINS,

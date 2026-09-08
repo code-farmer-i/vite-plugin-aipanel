@@ -3,5 +3,11 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["packages/*/src", "packages/*/site", "packages/*/test", "client.js"]
+  "include": [
+    "packages/*/src",
+    "packages/*/site",
+    "packages/*/tests",
+    "packages/providers/*/tests",
+    "client.js"
+  ]
 }

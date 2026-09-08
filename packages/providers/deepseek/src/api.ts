@@ -172,10 +172,13 @@ export class DeepSeekAPI {
   /**
    * 列出当前项目目录下的会话（可见性口径与 dsh UI 对齐）。
    * 取 workspace/follow baseline（workspace.list 在 dsh 0.1.2+ 已移除）按 path 匹配工作区，
-   * 得 sessionIds 与全局 archivedSessionIds，再结合 session/list 的 cwd 过滤去重；
+   * 得 sessionIds 与全局 archivedSessionIds；归属以该工作区 sessionIds 为准，
    * 过滤规则同 dsh-client-ui-workspace 的 sessionVisible：
    *   排除 origin=subagent 的子代理会话（UI 不单列）、排除归档；blank（未开过回合）仅当
    *   sessionId === activeSessionId（当前选中会话，对应 UI 的 New Session 占位行）时展示。
+   * 说明：0.1.3 起磁盘上会残留大量未挂载任何工作区的旧会话（早期 blank/测试产生），
+   * 官方 UI 不会把它们归入任何工作区分组，因此不能仅凭 cwd 并入项目列表——cwd 兜底
+   * 只在匹配不到该目录工作区（如全新目录尚未建档）时启用，避免把此类残留会话带进列表。
    */
   async listSessions(
     projectDir: string,
@@ -194,21 +197,24 @@ export class DeepSeekAPI {
         // dsh 归档会话仍留在 workspace.sessionIds 账户里（只有分组 UI 才隐藏），这里按全局归档集显式排除
         const archived = new Set(workspaces.archivedSessionIds);
 
-        // 2) session/list：全量 + 按 cwd 过滤做兜底（value 同样是 {items:[...]} 容器）。
+        // 2) session/list：全量枚举（value 同样是 {items:[...]} 容器）。
         // descriptor 的 args 参数 wire 名为 _request，故 args = { _request: { cursor? } }。
         const sessions = await this.call<SessionListResult>("session/list", { _request: {} });
         const all = sessions.items;
 
-        // 可见性规则与 dsh 0.1.2 UI（dsh-client-ui-workspace 的 sessionVisible）对齐：
+        // 可见性规则与 dsh UI（dsh-client-ui-workspace 的 sessionVisible）对齐：
         //  - origin=subagent 子代理不单列（UI 渲染在父会话内部，不在侧边栏占行）
         //  - 全局 archivedSessionIds → 排除
         //  - blank（尚未开过回合）仅当前选中会话可见（UI 只保留一条 New Session 占位行）
+        //  - 目录归属以匹配工作区 sessionIds 为准（官方按工作区分组），cwd 仅作匹配失败时兜底
         const filtered = all.filter((s) => {
           if (s.origin === "subagent") return false;
           if (s.blank && s.sessionId !== activeSessionId) return false;
           if (archived.has(s.sessionId)) return false;
           if (ownedByWorkspace.has(s.sessionId)) return true;
-          if (s.cwd && s.cwd === projectDir) return true;
+          // cwd 兜底仅在匹配不到该目录工作区时启用：0.1.3 起工作区注册表（sessionIds）才是
+          // 会话归属的权威，磁盘上残留的未挂载工作区的历史/blank 会话不能凭 cwd 全量并入。
+          if (matchedWorkspace === undefined && s.cwd && s.cwd === projectDir) return true;
           return false;
         });
 

@@ -19,7 +19,9 @@ const {
     <div
       v-if="items.length === 0"
       class="aipanel-bubble-empty"
-    >暂无选中元素</div>
+    >
+      暂无选中元素
+    </div>
 
     <div
       v-for="(item, index) in items"
@@ -80,8 +82,8 @@ const {
 }
 
 .aipanel-selected-bubble:hover {
-  border-color: var(--ap-primary);
-  box-shadow: var(--ap-shadow-primary);
+  border-color: var(--ap-accent);
+  box-shadow: var(--ap-shadow-accent);
 }
 
 .aipanel-bubble-text {

@@ -616,7 +616,7 @@ const splitPositionIconLabel = computed(() => {
   padding: 0 12px;
   height: 40px;
   background: var(--ap-bg-secondary);
-  border-bottom: 1px solid var(--ap-border-primary);
+  border-bottom: 1px solid var(--ap-border-faint);
   z-index: 5;
 }
 
@@ -643,10 +643,10 @@ const splitPositionIconLabel = computed(() => {
 .aipanel-header-btn {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: 8px;
   border: none;
   background: transparent;
-  color: var(--ap-text-placeholder);
+  color: var(--ap-text-tertiary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -655,7 +655,7 @@ const splitPositionIconLabel = computed(() => {
 }
 
 .aipanel-header-btn:hover {
-  background: var(--ap-bg-tertiary);
+  background: var(--ap-hover-bg);
   color: var(--ap-text-primary);
 }
 
@@ -667,7 +667,7 @@ const splitPositionIconLabel = computed(() => {
 .aipanel-header-btn.select-btn.active,
 .aipanel-header-btn.session-toggle.active,
 .aipanel-header-btn.review-panel.active {
-  background: var(--ap-primary);
-  color: white;
+  background: var(--ap-accent-bg);
+  color: var(--ap-accent);
 }
 </style>

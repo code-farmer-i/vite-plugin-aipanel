@@ -103,12 +103,13 @@ export function useSelection(options: UseSelectionOptions) {
       highlightOverlay.className = "aipanel-element-highlight-temp";
 
       const widget = document.querySelector(".aipanel-widget");
-      let primary = "#3b82f6";
-      let primaryBg = "rgba(59, 130, 246, 0.1)";
+      let primary = "#4176e6";
+      let primaryBg = "rgba(65, 118, 230, 0.1)";
       if (widget) {
         const style = getComputedStyle(widget);
-        primary = style.getPropertyValue("--ap-primary").trim() || primary;
-        primaryBg = style.getPropertyValue("--ap-primary-bg").trim() || primaryBg;
+        // 选择高亮用品牌强调色（deepseek 蓝），不用主操作 CTA 色
+        primary = style.getPropertyValue("--ap-accent").trim() || primary;
+        primaryBg = style.getPropertyValue("--ap-accent-bg").trim() || primaryBg;
       }
 
       highlightOverlay.style.border = `2px solid ${primary}`;

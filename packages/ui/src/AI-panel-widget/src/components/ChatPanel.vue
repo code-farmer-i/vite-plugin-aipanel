@@ -310,13 +310,13 @@ const panelClasses = computed(() => [
 
 .aipanel-chat.split-mode.split-right {
   right: 0;
-  border-left: 1px solid var(--ap-border-primary);
+  border-left: 1px solid var(--ap-border-faint);
   transform: translateX(100%);
 }
 
 .aipanel-chat.split-mode.split-left {
   left: 0;
-  border-right: 1px solid var(--ap-border-primary);
+  border-right: 1px solid var(--ap-border-faint);
   transform: translateX(-100%);
 }
 
@@ -401,15 +401,16 @@ const panelClasses = computed(() => [
   transform: translateY(-50%);
   width: 20px;
   height: 48px;
-  background: #fff;
-  border: none;
+  background: var(--ap-bg-main);
+  border: 1px solid var(--ap-border-faint);
+  border-right: none;
   border-radius: 8px 0 0 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #667eea;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  color: var(--ap-accent);
+  box-shadow: var(--ap-shadow-sm);
   transition: all 0.3s ease;
   z-index: 5;
   transform-origin: right center;
@@ -419,128 +420,35 @@ const panelClasses = computed(() => [
   left: auto;
   right: -21px;
   border-radius: 0 8px 8px 0;
+  border-right: 1px solid var(--ap-border-faint);
+  border-left: none;
   transform-origin: left center;
 }
 
 .aipanel-split-toggle-btn:hover {
   transform: translateY(-50%) scale(1.1);
-  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.5);
+  color: var(--ap-accent-hover);
+  box-shadow: var(--ap-shadow-md);
 }
 
 .aipanel-split-toggle-btn.split-left:hover {
   transform: translateY(-50%) scale(1.1);
 }
 
-.aipanel-split-toggle-btn.aipanel-theme-dark {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-}
-
-.aipanel-split-toggle-btn.aipanel-theme-dark::before {
-  content: "";
-  position: absolute;
-  left: -2px;
-  top: -2px;
-  right: 0;
-  bottom: -2px;
-  border-radius: 8px 0 0 8px;
-  background: linear-gradient(135deg, #8b9cf5 0%, #9d6bc7 100%);
-  z-index: -1;
-}
-
-.aipanel-split-toggle-btn.aipanel-theme-dark.split-left::before {
-  left: 0;
-  right: -2px;
-  border-radius: 0 8px 8px 0;
-}
-
-.aipanel-split-toggle-btn.aipanel-theme-dark:hover {
-  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
-}
-
+/* thinking：对齐 DeepSeek —— deepseek 蓝底 + 蓝光晕（官方 ongoing=deepseek-450 系） */
 .aipanel-split-toggle-btn.thinking {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--ap-accent);
   color: #fff;
-  animation:
-    split-thinking-glow 2s ease-in-out infinite,
-    split-thinking-pulse 2s ease-in-out infinite;
+  animation: split-thinking-pulse 2s ease-in-out infinite;
   box-shadow:
-    0 0 20px rgba(102, 126, 234, 0.6),
-    0 0 40px rgba(118, 75, 162, 0.4),
-    0 0 60px rgba(102, 126, 234, 0.2);
+    0 0 12px var(--ap-thinking-glow-strong),
+    0 0 28px var(--ap-thinking-glow);
 }
 
-.aipanel-split-toggle-btn.thinking::before {
-  content: "";
-  position: absolute;
-  left: -2px;
-  top: -2px;
-  right: 0;
-  bottom: -2px;
-  border-radius: 8px 0 0 8px;
-  background: linear-gradient(135deg, #8b9cf5 0%, #9d6bc7 100%);
-  z-index: -1;
-}
-
-.aipanel-split-toggle-btn.thinking.split-left::before {
-  left: 0;
-  right: -2px;
-  border-radius: 0 8px 8px 0;
-}
-
-.aipanel-split-toggle-btn.thinking::after {
-  content: "";
-  position: absolute;
-  left: -3px;
-  top: -3px;
-  right: -1px;
-  bottom: -3px;
-  border-radius: 8px 0 0 8px;
-  background: conic-gradient(
-    from 180deg,
-    transparent,
-    rgba(102, 126, 234, 0.3),
-    transparent,
-    rgba(118, 75, 162, 0.3),
-    transparent
-  );
-  z-index: -2;
-  animation: split-thinking-rotate 2s linear infinite reverse;
-  filter: blur(8px);
-}
-
-.aipanel-split-toggle-btn.thinking.split-left::after {
-  left: -1px;
-  right: -3px;
-  border-radius: 0 8px 8px 0;
-}
-
-@keyframes split-thinking-glow {
-  0%,
-  100% {
-    box-shadow:
-      0 0 20px rgba(102, 126, 234, 0.6),
-      0 0 40px rgba(118, 75, 162, 0.4),
-      0 0 60px rgba(102, 126, 234, 0.2);
-  }
-
-  50% {
-    box-shadow:
-      0 0 30px rgba(102, 126, 234, 0.8),
-      0 0 60px rgba(118, 75, 162, 0.6),
-      0 0 90px rgba(102, 126, 234, 0.3);
-  }
-}
-
-@keyframes split-thinking-rotate {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
-  }
+.aipanel-split-toggle-btn.thinking:hover {
+  box-shadow:
+    0 0 16px var(--ap-thinking-glow-strong),
+    0 0 36px var(--ap-thinking-glow);
 }
 
 @keyframes split-thinking-pulse {

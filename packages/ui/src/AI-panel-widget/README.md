@@ -157,7 +157,6 @@ interface AIPanelRemoveSelectedPayload {
 | `--ap-border-primary` | 主边框色       |
 | `--ap-primary`        | 主色调（蓝色） |
 | `--ap-danger`         | 危险色（红色） |
-| `--ap-success`        | 成功色（绿色） |
 
 ## 位置配置
 

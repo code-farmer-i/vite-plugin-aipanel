@@ -127,7 +127,7 @@ defineExpose({
   width: 40px;
   height: 40px;
   border: 3px solid var(--ap-border-primary);
-  border-top-color: var(--ap-primary);
+  border-top-color: var(--ap-accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -154,7 +154,9 @@ defineExpose({
   display: flex;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    visibility 0.2s ease;
 }
 
 .aipanel-error-overlay.visible {
@@ -176,7 +178,9 @@ defineExpose({
   display: flex;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    visibility 0.2s ease;
 }
 
 .aipanel-empty-state-overlay.visible {
@@ -198,21 +202,19 @@ defineExpose({
 
 .aipanel-empty-state-btn {
   padding: 10px 24px;
-  border-radius: 8px;
+  border-radius: 999px;
   border: none;
   background: var(--ap-primary);
-  color: white;
+  color: var(--ap-on-primary);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-  box-shadow: var(--ap-shadow-primary);
 }
 
 .aipanel-empty-state-btn:hover {
   background: var(--ap-primary-hover);
   transform: translateY(-1px);
-  box-shadow: var(--ap-shadow-primary-hover);
 }
 
 .aipanel-empty-state-btn:active {

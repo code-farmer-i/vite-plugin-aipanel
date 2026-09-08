@@ -52,7 +52,9 @@ const handleRetry = () => {
         <p
           v-if="errorMessage"
           class="aipanel-chrome-warmup-error-detail"
-        >{{ errorMessage }}</p>
+        >
+          {{ errorMessage }}
+        </p>
       </div>
     </template>
 
@@ -62,7 +64,9 @@ const handleRetry = () => {
         <p
           v-if="errorMessage"
           class="aipanel-chrome-warmup-error-detail"
-        >{{ errorMessage }}</p>
+        >
+          {{ errorMessage }}
+        </p>
         <p v-else>连接失败，请重试</p>
       </div>
     </template>
@@ -73,7 +77,7 @@ const handleRetry = () => {
         :disabled="retrying"
         @click="handleRetry"
       >
-        {{ retrying ? '连接中...' : '重试连接' }}
+        {{ retrying ? "连接中..." : "重试连接" }}
       </button>
     </div>
   </div>
@@ -85,7 +89,7 @@ const handleRetry = () => {
   padding: 8px 12px;
   background: var(--ap-bg-tertiary);
   border-radius: 6px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 12px;
   color: var(--ap-text-secondary);
   word-break: break-word;
@@ -108,7 +112,7 @@ const handleRetry = () => {
 
 .aipanel-chrome-warmup-failed-btn.primary {
   background: var(--ap-primary);
-  color: white;
+  color: var(--ap-on-primary);
 }
 
 .aipanel-chrome-warmup-failed-btn.primary:hover:not(:disabled) {

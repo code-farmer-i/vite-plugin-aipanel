@@ -808,125 +808,201 @@ defineExpose({
 
 <style>
 .aipanel-widget {
-  --ap-bg-main: #ffffff;
-  --ap-bg-secondary: #f8f9fa;
-  --ap-bg-tertiary: #f3f4f6;
-  --ap-overlay-bg: rgba(255, 255, 255, 0.9);
-  --ap-bg-inverse: #1e1e1e;
+  --ap-bg-main: #ffffff; /* dsw alias-bg-base = neutral-bluish-00 */
+  --ap-bg-secondary: #f9fafb; /* bluish-50（侧栏/工具带等弱浮起面） */
+  --ap-bg-tertiary: #ebeef2; /* bluish-100（代码片/弱浮起实底） */
+  --ap-overlay-bg: rgba(249, 250, 251, 0.92);
 
-  --ap-text-primary: #282828;
-  --ap-text-secondary: #4b5563;
-  --ap-text-tertiary: #6b7280;
-  --ap-text-placeholder: #9ca3af;
-  --ap-text-inverse: #ffffff;
+  --ap-text-primary: #0f1115; /* bluish-1000 */
+  --ap-text-secondary: #61666b; /* bluish-700 */
+  --ap-text-tertiary: #81858c; /* bluish-600 */
+  --ap-text-placeholder: #adb2b8; /* bluish-400 */
 
-  --ap-border-primary: #e5e7eb;
-  --ap-border-secondary: #d1d5db;
+  /* 边框分层：faint=l1(分隔线) / primary=l2(卡片描边) / secondary=l3(按钮描边) */
+  --ap-border-faint: rgba(15, 17, 21, 0.04); /* alias-border-l1 */
+  --ap-border-primary: rgba(15, 17, 21, 0.1); /* alias-border-l2 */
+  --ap-border-secondary: rgba(15, 17, 21, 0.12); /* alias-border-l3 */
 
-  --ap-primary: #3b82f6;
-  --ap-primary-hover: #2563eb;
-  --ap-primary-bg: rgba(59, 130, 246, 0.1);
+  /* 交互覆盖层（official interactive-bg-hover = #2631480f） */
+  --ap-hover-bg: rgba(38, 49, 72, 0.06);
 
-  --ap-danger: #ef4444;
-  --ap-danger-hover: #dc2626;
-  --ap-danger-active: #b91c1c;
+  /* 浮起按钮（新建会话等）：official button-elevated-fill / button-floating-hover */
+  --ap-elevated-fill: #ffffff;
+  --ap-elevated-hover: #f1f3f5;
 
-  --ap-success: #10b981;
+  /* 按下态（official interactive-bg-active = #2631481a） */
+  --ap-press-bg: rgba(38, 49, 72, 0.1);
 
-  /* 会话状态指示器：对齐官方 —— pending=amber-500 / completed=green-500 / ongoing=deepseek-450 #5686fe */
+  /* 主操作 CTA：官方 primary = 近黑高对比 */
+  --ap-primary: #0f1115; /* bluish-1000 */
+  --ap-primary-hover: #43454a; /* bluish-750 */
+  --ap-on-primary: #ffffff;
+
+  /* 品牌强调：deepseek 蓝（链接 / 进行中 / 焦点 / 加载） */
+  --ap-accent: #4176e6; /* deepseek-500 */
+  --ap-accent-hover: #5686fe; /* deepseek-450 */
+  --ap-accent-bg: rgba(65, 118, 230, 0.1);
+
+  --ap-danger: #ec1313; /* red-600 = 官方 light error-primary */
+  --ap-danger-hover: #c40f0f;
+
+  /* 会话状态指示器（官方同值）：pending=amber-500 / completed=green-500 / ongoing=deepseek-450 #5686fe */
   --ap-state-pending: #f59e0b;
   --ap-state-completed: #22c55e;
   --ap-state-ongoing: #5686fe;
 
-  --ap-overlay: rgba(0, 0, 0, 0.5);
-  --ap-tooltip-bg: #1e1e1e;
-  --ap-dialog-overlay: rgba(0, 0, 0, 0.5);
+  --ap-tooltip-bg: #1e1e1e; /* 保留原样式 */
+  /* 弹窗：mask 用 dsw bg-mask-1，卡片面 = layer-2 */
+  --ap-dialog-overlay: rgba(0, 0, 0, 0.24);
+  --ap-dialog-bg: #ffffff;
 
-  --ap-thinking-gradient-1: #10b981;
-  --ap-thinking-gradient-2: #059669;
-  --ap-thinking-glow: rgba(16, 185, 129, 0.3);
-  --ap-thinking-glow-strong: rgba(16, 185, 129, 0.6);
+  /* 滚动条：dsw scrollbar-bg-l1 / hover-l1（light = neutral-200 / 300） */
+  --ap-scrollbar-thumb: #e5e5e5;
+  --ap-scrollbar-thumb-hover: #d4d4d4;
 
-  --ap-skeleton-bg: #e5e7eb;
-  --ap-skeleton-gradient: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+  /* thinking 光效：DeepSeek 蓝（deepseek-400/450） */
+  --ap-thinking-glow: rgba(86, 134, 254, 0.3);
+  --ap-thinking-glow-strong: rgba(86, 134, 254, 0.55);
 
-  --ap-shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
-  --ap-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
-  --ap-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
-  --ap-shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.3);
-  --ap-shadow-primary: 0 2px 4px rgba(59, 130, 246, 0.2);
-  --ap-shadow-primary-hover: 0 4px 6px rgba(59, 130, 246, 0.3);
-  --ap-shadow-danger: 0 4px 12px rgba(239, 68, 68, 0.3);
+  --ap-skeleton-bg: rgba(15, 17, 21, 0.06);
+  --ap-skeleton-gradient: linear-gradient(
+    90deg,
+    rgba(15, 17, 21, 0.04) 25%,
+    rgba(15, 17, 21, 0.1) 50%,
+    rgba(15, 17, 21, 0.04) 75%
+  );
 
-  --ap-trigger-bg: #3b82f6;
-  --ap-trigger-bg-hover: #2563eb;
-  --ap-trigger-bg-active: #1d4ed8;
-  --ap-trigger-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-  --ap-trigger-shadow-hover: 0 4px 12px rgba(59, 130, 246, 0.4);
-  --ap-trigger-shadow-active: 0 4px 12px rgba(59, 130, 246, 0.5);
+  --ap-shadow-sm: 0 1px 2px rgba(15, 17, 21, 0.04), 0 1px 3px rgba(15, 17, 21, 0.06);
+  --ap-shadow-md: 0 2px 8px rgba(15, 17, 21, 0.06), 0 4px 16px rgba(15, 17, 21, 0.06);
+  --ap-shadow-lg:
+    0 0 0 0.5px rgba(15, 17, 21, 0.06), 0 4px 16px rgba(15, 17, 21, 0.08),
+    0 16px 48px rgba(15, 17, 21, 0.1);
+  --ap-shadow-xl:
+    0 0 0 0.5px rgba(15, 17, 21, 0.08), 0 8px 32px rgba(15, 17, 21, 0.12),
+    0 24px 72px rgba(15, 17, 21, 0.14);
+  --ap-shadow-accent: 0 1px 2px rgba(65, 118, 230, 0.14), 0 0 0 1px rgba(65, 118, 230, 0.18);
 
   position: fixed;
   z-index: 999999;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .aipanel-widget.aipanel-theme-dark {
-  --ap-bg-main: #1a1a1a;
-  --ap-bg-secondary: #1e1e1e;
-  --ap-bg-tertiary: #282828;
-  --ap-overlay-bg: rgba(26, 26, 26, 0.9);
-  --ap-bg-inverse: #ffffff;
+  --ap-bg-main: #151517; /* alias-bg-base = neutral-bluish-950 */
+  --ap-bg-secondary: #1b1b1c; /* bluish-900（sidebar-fill / code-block） */
+  --ap-bg-tertiary: #2c2c2e; /* bluish-850（hover-solid / input-major） */
+  --ap-overlay-bg: rgba(21, 21, 23, 0.92);
 
-  --ap-text-primary: #f3f4f6;
-  --ap-text-secondary: #d1d5db;
-  --ap-text-tertiary: #9ca3af;
-  --ap-text-placeholder: #6b7280;
-  --ap-text-inverse: #282828;
+  --ap-text-primary: #f9fafb; /* bluish-50 */
+  --ap-text-secondary: #cfd3d6; /* bluish-300 */
+  --ap-text-tertiary: #adb2b8; /* bluish-400 */
+  --ap-text-placeholder: #81858c; /* bluish-600 */
 
-  --ap-border-primary: #282828;
-  --ap-border-secondary: #4b5563;
+  /* 边框分层：faint=l1(分隔线) / primary=l2(卡片描边) / secondary=l3(按钮描边) */
+  --ap-border-faint: rgba(255, 255, 255, 0.06); /* alias-border-l1 */
+  --ap-border-primary: rgba(255, 255, 255, 0.12); /* alias-border-l2 */
+  --ap-border-secondary: rgba(255, 255, 255, 0.16); /* alias-border-l3 */
 
-  --ap-primary: #3b82f6;
-  --ap-primary-hover: #2563eb;
-  --ap-primary-bg: rgba(59, 130, 246, 0.15);
+  /* 交互覆盖层（official interactive-bg-hover = #ffffff14） */
+  --ap-hover-bg: rgba(255, 255, 255, 0.08);
 
-  --ap-danger: #ef4444;
-  --ap-danger-hover: #dc2626;
-  --ap-danger-active: #b91c1c;
+  /* 浮起按钮（新建会话等）：official button-elevated-fill / button-floating-hover */
+  --ap-elevated-fill: #43454a;
+  --ap-elevated-hover: #353638;
 
-  --ap-success: #10b981;
+  /* 按下态（official interactive-bg-active = #ffffff24） */
+  --ap-press-bg: rgba(255, 255, 255, 0.14);
 
-  /* 会话状态指示器：对齐官方 —— pending=amber-500 / completed=green-500 / ongoing=deepseek-450 #5686fe */
-  --ap-state-pending: #fbbf24;
+  /* 主操作 CTA：官方 primary = 白底高亮 */
+  --ap-primary: #f9fafb; /* bluish-50 */
+  --ap-primary-hover: #ebeef2; /* bluish-100 */
+  --ap-on-primary: #0f1115;
+
+  /* 品牌强调：deepseek 蓝 */
+  --ap-accent: #679efe; /* deepseek-400 */
+  --ap-accent-hover: #5686fe; /* deepseek-450 */
+  --ap-accent-bg: rgba(103, 158, 254, 0.16);
+
+  --ap-danger: #f25a5a; /* red-400 = 官方 dark error-primary */
+  --ap-danger-hover: #ff8383;
+
+  /* 会话状态指示器（官方同值）：pending=amber-500 / completed=green-500 / ongoing=deepseek-450 #5686fe */
+  --ap-state-pending: #f59e0b;
   --ap-state-completed: #22c55e;
   --ap-state-ongoing: #5686fe;
 
-  --ap-overlay: rgba(26, 26, 26, 0.9);
-  --ap-tooltip-bg: #282828;
-  --ap-dialog-overlay: rgba(0, 0, 0, 0.7);
+  --ap-tooltip-bg: #282828; /* 保留原样式 */
+  /* 弹窗：mask 用 dsw bg-mask-1，卡片面 = layer-2 */
+  --ap-dialog-overlay: rgba(0, 0, 0, 0.5);
+  --ap-dialog-bg: #2c2c2e;
 
-  --ap-thinking-gradient-1: #34d399;
-  --ap-thinking-gradient-2: #10b981;
-  --ap-thinking-glow: rgba(52, 211, 153, 0.3);
-  --ap-thinking-glow-strong: rgba(52, 211, 153, 0.6);
+  /* 滚动条：dsw scrollbar-bg-l1 / hover-l1（dark = neutral-700 / 600） */
+  --ap-scrollbar-thumb: #3c3c3d;
+  --ap-scrollbar-thumb-hover: #545557;
 
-  --ap-skeleton-bg: #151515;
-  --ap-skeleton-gradient: linear-gradient(90deg, #282828 25%, #4b5563 50%, #282828 75%);
+  /* thinking 光效：DeepSeek 蓝 */
+  --ap-thinking-glow: rgba(103, 158, 254, 0.35);
+  --ap-thinking-glow-strong: rgba(103, 158, 254, 0.6);
 
-  --ap-shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
-  --ap-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --ap-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
-  --ap-shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.6);
-  --ap-shadow-primary: 0 2px 4px rgba(59, 130, 246, 0.3);
-  --ap-shadow-primary-hover: 0 4px 6px rgba(59, 130, 246, 0.4);
-  --ap-shadow-danger: 0 4px 12px rgba(239, 68, 68, 0.4);
+  --ap-skeleton-bg: rgba(255, 255, 255, 0.07);
+  --ap-skeleton-gradient: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.05) 75%
+  );
 
-  --ap-trigger-bg: #60a5fa;
-  --ap-trigger-bg-hover: #3b82f6;
-  --ap-trigger-bg-active: #2563eb;
-  --ap-trigger-shadow: 0 2px 8px rgba(96, 165, 250, 0.4);
-  --ap-trigger-shadow-hover: 0 4px 12px rgba(96, 165, 250, 0.5);
-  --ap-trigger-shadow-active: 0 4px 12px rgba(96, 165, 250, 0.6);
+  --ap-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.24);
+  --ap-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.2);
+  --ap-shadow-lg:
+    0 0 0 0.5px rgba(255, 255, 255, 0.06), 0 4px 16px rgba(0, 0, 0, 0.3),
+    0 16px 48px rgba(0, 0, 0, 0.25);
+  --ap-shadow-xl:
+    0 0 0 0.5px rgba(255, 255, 255, 0.08), 0 8px 32px rgba(0, 0, 0, 0.36),
+    0 24px 72px rgba(0, 0, 0, 0.3);
+  --ap-shadow-accent: 0 1px 2px rgba(103, 158, 254, 0.2), 0 0 0 1px rgba(103, 158, 254, 0.25);
+}
+
+/* 滚动条皮肤：对齐 DeepSeek ui-theme/src/styles/scrollbar.css。
+   仅作用于 widget 子树，避免污染宿主页面；track/corner 透明，thumb 8px 圆角 4，
+   hover 用 hover-l1 加深。FF/无 webkit 路径走标准 scrollbar-width/color。 */
+@supports not selector(::-webkit-scrollbar) {
+  .aipanel-widget,
+  .aipanel-widget * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ap-scrollbar-thumb) transparent;
+  }
+}
+
+.aipanel-widget ::-webkit-scrollbar,
+.aipanel-widget *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.aipanel-widget ::-webkit-scrollbar-track,
+.aipanel-widget *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.aipanel-widget ::-webkit-scrollbar-thumb,
+.aipanel-widget *::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: var(--ap-scrollbar-thumb);
+}
+
+.aipanel-widget ::-webkit-scrollbar-thumb:hover,
+.aipanel-widget *::-webkit-scrollbar-thumb:hover {
+  background: var(--ap-scrollbar-thumb-hover);
+}
+
+.aipanel-widget ::-webkit-scrollbar-corner,
+.aipanel-widget *::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .aipanel-chat {
@@ -1008,6 +1084,9 @@ defineExpose({
   right: 0;
   bottom: 0;
   background: var(--ap-dialog-overlay);
+  /* 对齐 DS Modal.mask：bg-mask-1 + blur(2px) */
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1026,11 +1105,11 @@ defineExpose({
 }
 
 .aipanel-dialog {
-  background: var(--ap-bg-main);
-  border-radius: 12px;
-  padding: 24px;
-  min-width: 320px;
-  max-width: 400px;
+  /* 对齐 DS Modal.dialog：layer-2 面、r24、min(380px,100%)、elevation-prominent */
+  width: min(380px, 100%);
+  background: var(--ap-dialog-bg);
+  border-radius: 24px;
+  padding: 24px 24px 20px;
   box-shadow: var(--ap-shadow-xl);
   animation: scaleIn 0.2s ease;
 }
@@ -1052,40 +1131,45 @@ defineExpose({
 }
 
 .aipanel-dialog-message {
-  font-size: 15px;
+  /* 对齐 DS Modal.description：14px / 22 / 400 */
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
   color: var(--ap-text-primary);
-  line-height: 1.5;
 }
 
 .aipanel-dialog-actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
 .aipanel-dialog-btn {
-  padding: 10px 20px;
-  border-radius: 8px;
-  border: none;
+  height: 36px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid transparent;
   font-size: 14px;
+  line-height: 22px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .aipanel-dialog-btn.cancel {
-  background: var(--ap-bg-tertiary);
-  color: var(--ap-text-primary);
+  background: transparent;
+  border-color: var(--ap-border-primary);
+  color: var(--ap-text-secondary);
 }
 
 .aipanel-dialog-btn.cancel:hover {
-  background: var(--ap-text-primary);
-  color: var(--ap-bg-main);
+  background: var(--ap-hover-bg);
+  color: var(--ap-text-primary);
 }
 
 .aipanel-dialog-btn.confirm {
   background: var(--ap-danger);
-  color: white;
+  color: #fff;
 }
 
 .aipanel-dialog-btn.confirm:hover {

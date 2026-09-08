@@ -108,7 +108,11 @@ function isSessionCompleted(sessionId: string): boolean {
       v-if="!showSkeleton"
       class="aipanel-session-list-header"
     >
-      <span id="aipanel-session-list-title">会话列表</span>
+      <span
+        id="aipanel-session-list-title"
+        class="aipanel-session-list-title"
+        >会话列表</span
+      >
       <button
         class="aipanel-new-session-btn"
         type="button"
@@ -116,7 +120,18 @@ function isSessionCompleted(sessionId: string): boolean {
         aria-label="新建会话"
         @click="handleCreateSession"
       >
-        +
+        <svg
+          viewBox="0 0 16 16"
+          width="12"
+          height="12"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M8 3v10M3 8h10" />
+        </svg>
       </button>
     </div>
 
@@ -168,51 +183,54 @@ function isSessionCompleted(sessionId: string): boolean {
           :aria-selected="item.active"
           @click="handleSelectSession(item)"
         >
-          <div class="aipanel-session-header">
-            <div class="aipanel-session-title">
-              <!-- 状态指示：pending=琥珀点 > 活跃(thinking/running/子代理)=转圈 > completed=绿点 > idle -->
-              <span
-                v-if="isSessionPending(item.id)"
-                class="aipanel-session-state aipanel-session-state-pending"
-                :title="pendingLabel(item.id)"
-              />
-              <svg
-                v-else-if="isSessionActive(item.id)"
-                class="aipanel-session-state aipanel-session-state-ongoing"
-                :title="runningLabel(item.id)"
-                viewBox="0 0 10 10"
-                width="10"
-                height="10"
-                aria-hidden="true"
-              >
-                <rect
-                  v-for="c in ONGOING_CELLS"
-                  :key="c.x + '-' + c.y"
-                  :x="c.x"
-                  :y="c.y"
-                  width="2"
-                  height="2"
-                  :style="{ animationDelay: c.delay }"
-                  class="aipanel-session-ongoing-cell"
-                />
-              </svg>
-              <span
-                v-else-if="isSessionCompleted(item.id)"
-                class="aipanel-session-state aipanel-session-state-completed"
-                title="已完成"
-              />
-              <span class="aipanel-session-title-text">{{ item.title }}</span>
-            </div>
-            <button
-              class="aipanel-session-delete-btn"
-              type="button"
-              :aria-label="`删除会话: ${item.title}`"
-              @click.stop="handleDeleteSession(item)"
-            >
-              ×
-            </button>
-          </div>
-          <div class="aipanel-session-meta">{{ item.meta }}</div>
+          <!-- 状态指示：pending=琥珀点 > 活跃(thinking/running/子代理)=转圈 > completed=绿点 > idle -->
+          <span
+            v-if="isSessionPending(item.id)"
+            class="aipanel-session-state aipanel-session-state-pending"
+            :title="pendingLabel(item.id)"
+          />
+          <svg
+            v-else-if="isSessionActive(item.id)"
+            class="aipanel-session-state aipanel-session-state-ongoing"
+            :title="runningLabel(item.id)"
+            viewBox="0 0 10 10"
+            width="10"
+            height="10"
+            aria-hidden="true"
+          >
+            <rect
+              v-for="c in ONGOING_CELLS"
+              :key="c.x + '-' + c.y"
+              :x="c.x"
+              :y="c.y"
+              width="2"
+              height="2"
+              :style="{ animationDelay: c.delay }"
+              class="aipanel-session-ongoing-cell"
+            />
+          </svg>
+          <span
+            v-else-if="isSessionCompleted(item.id)"
+            class="aipanel-session-state aipanel-session-state-completed"
+            title="已完成"
+          />
+
+          <span class="aipanel-session-title-text">{{ item.title }}</span>
+
+          <span
+            v-if="item.meta"
+            class="aipanel-session-meta"
+            >{{ item.meta }}</span
+          >
+
+          <button
+            class="aipanel-session-delete-btn"
+            type="button"
+            :aria-label="`删除会话: ${item.title}`"
+            @click.stop="handleDeleteSession(item)"
+          >
+            ×
+          </button>
         </div>
       </template>
 
@@ -226,9 +244,9 @@ function isSessionCompleted(sessionId: string): boolean {
 
 <style>
 .aipanel-session-list {
-  width: 240px;
+  width: 236px;
   background: var(--ap-bg-secondary);
-  border-right: 1px solid var(--ap-border-primary);
+  border-right: 1px solid var(--ap-border-faint);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -245,42 +263,76 @@ function isSessionCompleted(sessionId: string): boolean {
   display: none;
 }
 
+/* Header：小字号分组标签 + 圆形新建按钮 */
 .aipanel-session-list-header {
-  padding: 16px;
-  border-bottom: 1px solid var(--ap-border-primary);
+  padding: 10px 8px 8px 12px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--ap-bg-secondary);
+  border-bottom: 1px solid var(--ap-border-faint);
+}
+
+.aipanel-session-list-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
   font-weight: 600;
-  font-size: 14px;
-  color: var(--ap-text-primary);
+  letter-spacing: 0.02em;
+  line-height: 18px;
+  color: var(--ap-text-tertiary);
 }
 
 .aipanel-new-session-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: none;
-  background: var(--ap-primary);
-  color: white;
-  font-size: 18px;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  /* 对齐 DS newSession：elevated-fill + border-l3 发丝边 */
+  border: 1px solid var(--ap-border-secondary);
+  background: var(--ap-elevated-fill);
+  color: var(--ap-text-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.aipanel-new-session-btn svg {
+  display: block;
 }
 
 .aipanel-new-session-btn:hover {
-  background: var(--ap-primary-hover);
-  transform: scale(1.05);
+  background: var(--ap-elevated-hover);
+  color: var(--ap-text-primary);
+}
+
+/* 按下态对齐 DS ghost:active = interactive-bg-active */
+.aipanel-new-session-btn:active {
+  background: var(--ap-press-bg);
+}
+
+.aipanel-new-session-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ap-accent-bg);
 }
 
 .aipanel-session-list-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 8px;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .aipanel-session-list-loading-overlay {
@@ -303,173 +355,108 @@ function isSessionCompleted(sessionId: string): boolean {
   border-width: 2px;
 }
 
+/* 会话行：单行（状态点 + 标题 + 右侧时间），hover 淡覆盖层 */
 .aipanel-session-item {
-  padding: 12px;
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
   border-radius: 8px;
   cursor: pointer;
-  transition: transform 0.2s;
-  margin-bottom: 4px;
   color: var(--ap-text-primary);
+  transition: background-color 0.15s ease;
+}
+
+/* 深色主题：标题用浅灰，不用纯白，避免扎眼（浅色仍用近黑） */
+.aipanel-widget.aipanel-theme-dark .aipanel-session-item {
+  color: var(--ap-text-secondary);
 }
 
 .aipanel-session-item:hover {
-  background: var(--ap-bg-tertiary);
+  background: var(--ap-hover-bg);
 }
 
+/* 点击/按下瞬间：interactive-bg-active（对齐 DS） */
+.aipanel-session-item:active {
+  background: var(--ap-press-bg);
+}
+
+/* 当前会话：对齐 DS sessionRow.selected = interactive-bg-hover（与 hover 同款淡覆盖层） */
 .aipanel-session-item.active {
-  background: var(--ap-primary);
-  color: white;
-  transition: none;
+  background: var(--ap-hover-bg);
 }
 
-.aipanel-session-title {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-
-/* 标题文本独占省略容器：状态点（含 glow）不参与裁切，避免左侧被遮挡 */
 .aipanel-session-title-text {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
 }
 
 .aipanel-session-meta {
+  flex: none;
+  margin-left: auto;
   font-size: 12px;
-  opacity: 0.6;
+  line-height: 20px;
+  color: var(--ap-text-placeholder);
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
 }
 
-.aipanel-session-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
+.aipanel-session-item:hover .aipanel-session-meta {
+  opacity: 0;
 }
 
 .aipanel-session-delete-btn {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
   border: none;
+  border-radius: 6px;
   background: transparent;
   color: var(--ap-text-placeholder);
   font-size: 16px;
+  line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
   opacity: 0;
-  flex-shrink: 0;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .aipanel-session-item:hover .aipanel-session-delete-btn {
   opacity: 1;
 }
 
+/* 对齐 DS .iconButton:hover：行删除 hover 变为 label-primary 主色，不用红 */
 .aipanel-session-delete-btn:hover {
-  background: var(--ap-danger);
-  color: white;
-}
-
-.aipanel-session-item.active .aipanel-session-delete-btn {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.aipanel-session-item.active .aipanel-session-delete-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-}
-
-.aipanel-session-header-skeleton {
-  padding: 16px;
-  border-bottom: 1px solid var(--ap-border-primary);
-  display: none;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.aipanel-session-header-skeleton.visible {
-  display: flex;
-}
-
-.aipanel-skeleton-header-title {
-  height: 18px;
-  width: 80px;
-  background: var(--ap-skeleton-gradient);
-  background-size: 200% 100%;
-  animation: skeleton-loading 1.5s ease-in-out infinite;
-  border-radius: 4px;
-}
-
-.aipanel-skeleton-header-btn {
-  width: 28px;
-  height: 28px;
-  background: var(--ap-skeleton-gradient);
-  background-size: 200% 100%;
-  animation: skeleton-loading 1.5s ease-in-out infinite;
-  border-radius: 6px;
-}
-
-.aipanel-session-skeleton {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-  display: none;
-}
-
-.aipanel-session-skeleton.visible {
-  display: block;
-}
-
-.aipanel-skeleton-item {
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 4px;
-  background: var(--ap-skeleton-bg);
-}
-
-.aipanel-skeleton-title {
-  height: 16px;
-  background: var(--ap-skeleton-gradient);
-  background-size: 200% 100%;
-  animation: skeleton-loading 1.5s ease-in-out infinite;
-  border-radius: 4px;
-  margin-bottom: 8px;
-  width: 70%;
-}
-
-.aipanel-skeleton-meta {
-  height: 12px;
-  background: var(--ap-skeleton-gradient);
-  background-size: 200% 100%;
-  animation: skeleton-loading 1.5s ease-in-out infinite;
-  border-radius: 4px;
-  width: 50%;
-}
-
-.aipanel-session-empty {
-  padding: 32px 16px;
-  text-align: center;
-  color: var(--ap-text-placeholder);
-  font-size: 13px;
+  background: transparent;
+  color: var(--ap-text-primary);
 }
 
 /* 状态指示共用尺寸：pending/completed 为圆点（span），ongoing 为矩阵（svg，官方 StateDot） */
 .aipanel-session-state {
   position: relative;
-  flex: 0 0 auto;
+  flex: none;
   width: 10px;
   height: 10px;
-  margin-right: 6px;
+  margin-right: -2px;
 }
 
-/* 圆点（span）：官方 .dot —— :before 0.1 光晕，:after inset 20% 实心核（等效 10px 中 6px 点） */
 .aipanel-session-state-pending::before,
 .aipanel-session-state-completed::before {
   content: "";
@@ -497,7 +484,6 @@ function isSessionCompleted(sessionId: string): boolean {
   color: var(--ap-state-completed);
 }
 
-/* ongoing 矩阵（svg）：官方 StateDot 3×3 追逐（2px 格，10px 画布），DeepSeek 蓝 */
 .aipanel-session-state-ongoing {
   color: var(--ap-state-ongoing);
 }
@@ -530,7 +516,6 @@ function isSessionCompleted(sessionId: string): boolean {
   }
 }
 
-/* 指示器始终用主题语义色，不随 active 行改色 */
 .aipanel-session-item.active .aipanel-session-state-pending {
   color: var(--ap-state-pending);
 }
@@ -539,9 +524,91 @@ function isSessionCompleted(sessionId: string): boolean {
   color: var(--ap-state-completed);
 }
 
-/* active（当前会话，主色底）行的 ongoing 矩阵提亮保证对比度 */
+/* 当前会话的 ongoing 矩阵沿用 deepseek 蓝（提示进行中） */
 .aipanel-session-item.active .aipanel-session-state-ongoing {
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--ap-accent);
+}
+
+/* Header Skeleton */
+.aipanel-session-header-skeleton {
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--ap-border-faint);
+  display: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.aipanel-session-header-skeleton.visible {
+  display: flex;
+}
+
+.aipanel-skeleton-header-title {
+  flex: 1;
+  height: 12px;
+  width: 48px;
+  background: var(--ap-skeleton-gradient);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.aipanel-skeleton-header-btn {
+  width: 24px;
+  height: 24px;
+  background: var(--ap-skeleton-gradient);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+  border-radius: 50%;
+}
+
+.aipanel-session-skeleton {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  display: none;
+}
+
+.aipanel-session-skeleton.visible {
+  display: block;
+}
+
+.aipanel-skeleton-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-bottom: 2px;
+  background: var(--ap-skeleton-bg);
+}
+
+.aipanel-skeleton-title {
+  flex: 1 1 auto;
+  height: 13px;
+  background: var(--ap-skeleton-gradient);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.aipanel-skeleton-meta {
+  flex: none;
+  width: 32px;
+  height: 12px;
+  background: var(--ap-skeleton-gradient);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.aipanel-session-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--ap-text-tertiary);
+  font-size: 12px;
 }
 
 @keyframes skeleton-loading {

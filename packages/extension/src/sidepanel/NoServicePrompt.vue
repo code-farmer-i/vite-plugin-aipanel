@@ -56,27 +56,32 @@ async function handleRefresh() {
         <polyline points="23,4 23,10 17,10" />
         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
       </svg>
-      {{ checking ? '检测中...' : '重新检测' }}
+      {{ checking ? "检测中..." : "重新检测" }}
     </button>
     <p
       v-if="resultMsg"
       class="aipanel-no-service-result"
-    >{{ resultMsg }}</p>
+    >
+      {{ resultMsg }}
+    </p>
   </div>
 </template>
 
 <style scoped>
 .aipanel-no-service {
-  --ns-bg: #f8f9fa;
+  /* 配色对齐 DeepSeek Harness 官方主题（neutral-bluish / deepseek 蓝） */
+  --ns-bg: #f9fafb;
   --ns-card-bg: #fff;
-  --ns-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
-  --ns-title: #1a1a1a;
-  --ns-text: #4b5563;
-  --ns-sub: #6b7280;
-  --ns-hint: #9ca3af;
-  --ns-code-bg: #e5e7eb;
-  --ns-code: #3b82f6;
-  --ns-border: #e5e7eb;
+  --ns-card-shadow: 0 1px 2px rgba(15, 17, 21, 0.04), 0 1px 3px rgba(15, 17, 21, 0.06);
+  --ns-title: #0f1115;
+  --ns-text: #61666b;
+  --ns-sub: #81858c;
+  --ns-hint: #adb2b8;
+  --ns-code-bg: #ebeef2;
+  --ns-code: #4176e6;
+  --ns-border: rgba(15, 17, 21, 0.1);
+  --ns-accent: #4176e6;
+  --ns-accent-glow: rgba(65, 118, 230, 0.15);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -91,16 +96,18 @@ async function handleRefresh() {
 
 @media (prefers-color-scheme: dark) {
   .aipanel-no-service {
-    --ns-bg: #1a1a1a;
-    --ns-card-bg: #252525;
-    --ns-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    --ns-title: #f3f4f6;
-    --ns-text: #d1d5db;
-    --ns-sub: #9ca3af;
-    --ns-hint: #6b7280;
-    --ns-code-bg: #333;
-    --ns-code: #60a5fa;
-    --ns-border: #333;
+    --ns-bg: #151517;
+    --ns-card-bg: #1b1b1c;
+    --ns-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.24);
+    --ns-title: #f9fafb;
+    --ns-text: #cfd3d6;
+    --ns-sub: #adb2b8;
+    --ns-hint: #81858c;
+    --ns-code-bg: #2c2c2e;
+    --ns-code: #679efe;
+    --ns-border: rgba(255, 255, 255, 0.12);
+    --ns-accent: #679efe;
+    --ns-accent-glow: rgba(103, 158, 254, 0.18);
   }
 }
 
@@ -111,7 +118,6 @@ async function handleRefresh() {
 }
 
 @keyframes aipanel-ns-float {
-
   0%,
   100% {
     transform: translateY(0);
@@ -189,9 +195,9 @@ async function handleRefresh() {
 }
 
 .aipanel-no-service-refresh:hover {
-  border-color: #667eea;
-  color: #667eea;
-  box-shadow: 0 1px 4px rgba(102, 126, 234, 0.15);
+  border-color: var(--ns-accent);
+  color: var(--ns-accent);
+  box-shadow: 0 1px 4px var(--ns-accent-glow);
 }
 
 .aipanel-no-service-refresh svg {

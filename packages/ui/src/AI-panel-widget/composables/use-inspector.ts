@@ -317,10 +317,9 @@ export function useInspector(options: UseInspectorOptions) {
   const tooltipStyle = ref({ top: "0px", left: "0px" });
   const tooltipContent = ref({ description: "", fileInfo: "" });
 
-  
   let inspectorCheckTimer: number | null = null;
-  let currentPrimary = "#3b82f6";
-  let currentPrimaryBg = "rgba(59, 130, 246, 0.1)";
+  let currentPrimary = "#4176e6";
+  let currentPrimaryBg = "rgba(65, 118, 230, 0.1)";
 
   function setPointerEventsNone(elements: (Element | null)[]) {
     elements.forEach((el) => {
@@ -354,8 +353,9 @@ export function useInspector(options: UseInspectorOptions) {
       const widget = document.querySelector(".aipanel-widget");
       if (widget) {
         const style = getComputedStyle(widget);
-        currentPrimary = style.getPropertyValue("--ap-primary").trim() || currentPrimary;
-        currentPrimaryBg = style.getPropertyValue("--ap-primary-bg").trim() || currentPrimaryBg;
+        // 选择高亮用品牌强调色（deepseek 蓝），不用主操作 CTA 色
+        currentPrimary = style.getPropertyValue("--ap-accent").trim() || currentPrimary;
+        currentPrimaryBg = style.getPropertyValue("--ap-accent-bg").trim() || currentPrimaryBg;
       }
 
       const description = getElementDescription(elementToHighlight);

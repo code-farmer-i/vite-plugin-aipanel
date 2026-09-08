@@ -63,7 +63,7 @@ const {
 .aipanel-right-toolbar {
   width: 140px;
   background: var(--ap-bg-secondary);
-  border-left: 1px solid var(--ap-border-primary);
+  border-left: 1px solid var(--ap-border-faint);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -84,7 +84,7 @@ const {
 
 .aipanel-selected-nodes-header {
   padding: 12px 8px 8px;
-  border-bottom: 1px solid var(--ap-border-primary);
+  border-bottom: 1px solid var(--ap-border-faint);
 }
 
 .aipanel-selected-nodes-title {
@@ -131,8 +131,8 @@ const {
 }
 
 .aipanel-selected-node:hover {
-  border-color: var(--ap-primary);
-  box-shadow: var(--ap-shadow-primary);
+  border-color: var(--ap-accent);
+  box-shadow: var(--ap-shadow-accent);
 }
 
 .aipanel-node-content {

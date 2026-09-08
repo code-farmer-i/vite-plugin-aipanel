@@ -17,7 +17,7 @@ const props = withDefaults(
     minWidth: 400,
     maxWidth: 800,
     position: "right",
-  }
+  },
 );
 
 const emit = defineEmits<{
@@ -102,11 +102,11 @@ onUnmounted(() => {
 }
 
 .aipanel-resize-handle:hover {
-  background: var(--ap-primary-bg);
+  background: var(--ap-accent-bg);
 }
 
 .aipanel-resize-handle.resizing {
-  background: var(--ap-primary-bg);
+  background: var(--ap-accent-bg);
 }
 
 .aipanel-resize-handle::after {
@@ -117,7 +117,7 @@ onUnmounted(() => {
   transform: translateY(-50%);
   width: 2px;
   height: 40px;
-  background: var(--ap-border-secondary);
+  background: var(--ap-border-faint);
   border-radius: 1px;
   opacity: 0;
   transition: opacity 0.2s ease;

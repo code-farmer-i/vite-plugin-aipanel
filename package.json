@@ -32,7 +32,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r --if-present run typecheck && tsc -p tsconfig.json --noEmit",
+    "typecheck": "pnpm -r --if-present run typecheck && vue-tsc -p tsconfig.json --noEmit",
     "release": "node scripts/release.js",
     "deploy:docs": "node scripts/deploy-docs.js"
   },

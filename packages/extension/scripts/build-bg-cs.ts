@@ -1,12 +1,12 @@
 // 单独构建 content.js 和 background.js（IIFE 格式，Chrome 扩展要求自包含）
-import { build } from "vite";
+import { build, type InlineConfig } from "vite";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, "..");
 
-const sharedOptions = {
+const sharedOptions: InlineConfig = {
   configFile: false,
   build: {
     target: "es2020" as const,

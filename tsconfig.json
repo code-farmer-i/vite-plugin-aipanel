@@ -5,9 +5,14 @@
   },
   "include": [
     "packages/*/src",
+    "packages/providers/*/src",
     "packages/*/site",
     "packages/*/tests",
     "packages/providers/*/tests",
-    "client.js"
+    "packages/*/scripts",
+    "packages/providers/*/scripts",
+    "packages/*/*.config.ts",
+    "packages/providers/*/*.config.ts",
+    "packages/*/vitest.setup.ts"
   ]
 }

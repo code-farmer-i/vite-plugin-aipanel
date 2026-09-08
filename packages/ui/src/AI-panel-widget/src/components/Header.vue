@@ -14,6 +14,8 @@ const {
   promptDockVisible,
   reviewPanelVisible,
   reviewPanelEnabled,
+  providerSidebar,
+  sidebarCollapseControl,
   mode,
   displayMode,
   splitPosition,
@@ -40,6 +42,16 @@ const DISPLAY_MODE_LABELS: Record<string, string> = {
 const DISPLAY_CYCLE = ["bubble", "split", "auto"] as const;
 
 const isSplitMode = computed(() => mode.value === "split");
+
+/** 侧栏折叠开关（左上角按钮）可见性：原生会话栏，或 Provider 接管且折叠开关归宿主 */
+const showSidebarToggle = computed(
+  () => !providerSidebar.value || sidebarCollapseControl.value === "host",
+);
+
+/** 「新建会话」快捷入口：非接管时仅扩展模式可见；Provider 接管后常驻（原生列表的 + 已随接管隐藏） */
+const showNewSessionButton = computed(
+  () => displayMode.value === "extension" || providerSidebar.value,
+);
 
 const themeIconTitle = computed(() => {
   const themeLabels = {
@@ -87,6 +99,7 @@ const splitPositionIconLabel = computed(() => {
   <div class="aipanel-chat-header">
     <div class="aipanel-chat-header-left">
       <button
+        v-if="showSidebarToggle"
         class="aipanel-header-btn session-toggle"
         :class="{ active: !sessionListCollapsed }"
         type="button"
@@ -424,7 +437,7 @@ const splitPositionIconLabel = computed(() => {
         </svg>
       </button>
       <button
-        v-if="displayMode === 'extension'"
+        v-if="showNewSessionButton"
         class="aipanel-header-btn new-session-btn"
         type="button"
         title="新建会话"
@@ -547,7 +560,9 @@ const splitPositionIconLabel = computed(() => {
             stroke-width="2"
             aria-hidden="true"
           >
-            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+            <path
+              d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"
+            />
           </svg>
           <svg
             v-else
@@ -559,7 +574,9 @@ const splitPositionIconLabel = computed(() => {
             stroke-width="2"
             aria-hidden="true"
           >
-            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+            <path
+              d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"
+            />
           </svg>
         </slot>
       </button>

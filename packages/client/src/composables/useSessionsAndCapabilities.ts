@@ -1,7 +1,12 @@
 import { ref, computed, nextTick, type Ref } from "vue";
 import { SESSIONS_API_PATH } from "@aipanel/core";
 import { createLogger } from "@aipanel/core/client";
-import type { ChatSession, AIPanelWidgetSession } from "@aipanel/core";
+import type {
+  ChatSession,
+  AIPanelWidgetSession,
+  ProviderCapabilities,
+  ProviderSidebarCollapseControl,
+} from "@aipanel/core";
 
 const log = createLogger("AIPanel");
 
@@ -46,6 +51,12 @@ export function useSessionsAndCapabilities(options: UseSessionsAndCapabilitiesOp
   /** Provider 是否支持代码审查面板（右上角 </> 按钮）；缺省不支持，随会话列表响应校正 */
   const reviewPanelEnabled = ref(false);
 
+  /** Provider 是否接管会话侧栏（隐藏原生会话列表，Provider 自家侧栏渲染）；缺省否，随会话列表响应校正 */
+  const providerSidebar = ref(false);
+
+  /** 侧栏折叠开关归属（host=宿主左上角按钮 / provider=Provider 自带开关）；缺省 host */
+  const sidebarCollapseControl = ref<ProviderSidebarCollapseControl>("host");
+
   /** 是否支持会话 URL 深链（默认 true） */
   const isDeepLink = () => deepLink.value;
 
@@ -83,11 +94,13 @@ export function useSessionsAndCapabilities(options: UseSessionsAndCapabilitiesOp
       const response = await fetch(basePath(SESSIONS_API_PATH + query));
       const data = (await response.json()) as {
         sessions: ChatSession[];
-        capabilities?: { deepLink?: boolean; reviewPanel?: boolean };
+        capabilities?: ProviderCapabilities;
       };
       // 先校正能力再赋值会话，保证 iframeSrc 计算时 deepLink 已就绪（能力随会话响应下发，无需独立 /capabilities 往返）
       deepLink.value = data.capabilities?.deepLink !== false;
       reviewPanelEnabled.value = data.capabilities?.reviewPanel === true;
+      providerSidebar.value = data.capabilities?.sidebar?.takeover === true;
+      sidebarCollapseControl.value = data.capabilities?.sidebar?.collapseControl ?? "host";
       sessions.value = data.sessions.map(toWidgetSession);
 
       if (!sessions.value.length) {
@@ -181,6 +194,8 @@ export function useSessionsAndCapabilities(options: UseSessionsAndCapabilitiesOp
     currentSessionId,
     deepLink,
     reviewPanelEnabled,
+    providerSidebar,
+    sidebarCollapseControl,
     iframeSrc,
     iframeLoading,
     isDeepLink,

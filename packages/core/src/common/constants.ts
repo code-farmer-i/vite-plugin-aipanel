@@ -146,6 +146,12 @@ export const WIDGET_MSG = {
   MINIMIZE_STATE: "MINIMIZE_STATE_CHANGE",
   PROMPT_DOCK_VISIBILITY: "PROMPT_DOCK_VISIBILITY_CHANGE",
   REVIEW_PANEL_TOGGLE: "REVIEW_PANEL_TOGGLE",
+  /** 宿主 → iframe：告知侧栏归属期望（mode: "host" | "provider"），Provider 据此决定是否展示自家侧栏 */
+  SIDEBAR_MODE: "AIPANEL_SIDEBAR_MODE",
+  /** 宿主 → iframe：host 折叠开关驱动 Provider 收起/展开自家侧栏（{ collapsed }） */
+  SIDEBAR_COLLAPSE: "AIPANEL_SIDEBAR_COLLAPSE",
+  /** iframe → 宿主（可选）：Provider 内部折叠变化回传（{ collapsed }），供宿主同步左上角开关状态 */
+  SIDEBAR_STATE: "AIPANEL_SIDEBAR_STATE",
   /** 无 deepLink 能力的 Provider：通知 iframe 聚焦指定会话 */
   FOCUS_SESSION: "AIPANEL_FOCUS_SESSION",
   /** 无 deepLink 能力的 Provider：iframe 确认目标会话已激活且渲染稳定（携带 sessionId） */

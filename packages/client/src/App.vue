@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { AIPanelWidget } from "@aipanel/ui";
-import type {
-  AIPanelWidgetTheme,
-  AIPanelSelectedElement,
-} from "@aipanel/core";
+import type { AIPanelWidgetTheme, AIPanelSelectedElement } from "@aipanel/core";
 import type { WidgetOptions } from "@aipanel/core";
 import {
   WIDGET_MSG,
@@ -65,10 +62,10 @@ const isExtensionMode = displayMode === "extension";
 const isExtensionSelectorMode = displayMode === "extension-selector";
 
 // 构建绝对 URL，用于绕过全局 monkey-patch（多实例场景下每个实例有独立的 vitePort）
-const viteBaseUrl = computed(() => vitePort ? `http://${DEFAULT_HOSTNAME}:${vitePort}` : "");
+const viteBaseUrl = computed(() => (vitePort ? `http://${DEFAULT_HOSTNAME}:${vitePort}` : ""));
 
 // 构建请求 URL（扩展模式下用绝对 URL，否则用相对路径走 monkey-patch）
-const apiPath = (path: string) => viteBaseUrl.value ? `${viteBaseUrl.value}${path}` : path;
+const apiPath = (path: string) => (viteBaseUrl.value ? `${viteBaseUrl.value}${path}` : path);
 
 // 扩展模式 composable 返回值（在 composable 调用后填充）
 const ext = {
@@ -80,7 +77,7 @@ const ext = {
 
 const showNotification = (
   msg: string,
-  options?: { duration?: number; mode?: "widget" | "page"; },
+  options?: { duration?: number; mode?: "widget" | "page" },
 ) => {
   // 扩展模式下通知渲染在实例内部，避免多实例间可见
   widgetRef.value?.showNotification?.(msg, {
@@ -100,7 +97,8 @@ const {
   setStarting,
 } = useServiceStatus();
 
-const { selectedElements, addElement, removeElement, clearElements } = useSelectedElements(serviceInstanceId);
+const { selectedElements, addElement, removeElement, clearElements } =
+  useSelectedElements(serviceInstanceId);
 
 const { theme, sendThemeToIframe } = useTheme(widgetTheme, widgetRef);
 
@@ -112,6 +110,8 @@ const {
   iframeLoading,
   isDeepLink,
   reviewPanelEnabled,
+  providerSidebar,
+  sidebarCollapseControl,
   loadSessions,
   createSession,
   deleteSession,
@@ -144,9 +144,16 @@ const serverSSE = useServerSSE({
   onStatusSync: (data) => {
     log.debug(`SSE STATUS_SYNC: ${JSON.stringify(data)} currentStatus: ${serviceStatus.value}`);
     // SSE 重连后如果服务仍在启动中，重置为 starting 以显示蒙层
-    if (justReconnected && data.task && data.task !== "ready" && data.task !== "chrome_mcp_failed" &&
-      data.task !== "session_creation_failed" && data.task !== "provider_not_installed" &&
-      data.task !== "web_start_timeout" && data.task !== "proxy_start_failed") {
+    if (
+      justReconnected &&
+      data.task &&
+      data.task !== "ready" &&
+      data.task !== "chrome_mcp_failed" &&
+      data.task !== "session_creation_failed" &&
+      data.task !== "provider_not_installed" &&
+      data.task !== "web_start_timeout" &&
+      data.task !== "proxy_start_failed"
+    ) {
       log.debug(`SSE 重连后服务仍在启动中(${data.task})，重置 status 为 starting`);
       currentTask.value = data.task;
       serviceStatus.value = "starting";
@@ -177,22 +184,26 @@ watch(serverSSE.isConnected, (connected, wasConnected) => {
   if (!connected && wasConnected && serviceInstanceId) {
     sseWasDown = true;
     log.debug(`SSE 断开，通知服务下线: ${serviceInstanceId}`);
-    chrome.runtime.sendMessage({
-      type: EXT_MSG.SERVICE_GONE,
-      serviceInstanceId,
-      windowId: myWindowId,
-    }).catch(() => { });
+    chrome.runtime
+      .sendMessage({
+        type: EXT_MSG.SERVICE_GONE,
+        serviceInstanceId,
+        windowId: myWindowId,
+      })
+      .catch(() => {});
   } else if (connected && !wasConnected && sseWasDown && serviceInstanceId) {
     sseWasDown = false;
     justReconnected = true;
     log.debug(`SSE 重连，通知服务上线: ${serviceInstanceId}`);
-    chrome.runtime.sendMessage({
-      type: EXT_MSG.SERVICE_APPEARED,
-      proxyPort,
-      vitePort,
-      serviceInstanceId,
-      windowId: myWindowId,
-    }).catch(() => { });
+    chrome.runtime
+      .sendMessage({
+        type: EXT_MSG.SERVICE_APPEARED,
+        proxyPort,
+        vitePort,
+        serviceInstanceId,
+        windowId: myWindowId,
+      })
+      .catch(() => {});
   }
 });
 
@@ -247,7 +258,9 @@ const ensureServicesStarted = async () => {
     const data = await res.json();
     // 防御性检查：fetch 期间 serviceStatus 可能已被其他流程改变（如 SSE），仅当仍为 idle 时才启动
     if (serviceStatus.value !== "idle") {
-      log.debug(`[ensureServicesStarted] fetch 完成但 serviceStatus 已变为 ${serviceStatus.value}，跳过启动`);
+      log.debug(
+        `[ensureServicesStarted] fetch 完成但 serviceStatus 已变为 ${serviceStatus.value}，跳过启动`,
+      );
       return true;
     }
     if (data.success) {
@@ -272,7 +285,7 @@ const toggleSelectMode = () => {
     return;
   }
 
-  const win = window as typeof window & { __VUE_INSPECTOR__?: unknown; };
+  const win = window as typeof window & { __VUE_INSPECTOR__?: unknown };
   if (win.__VUE_INSPECTOR__) {
     handleSelectModeChange(!selectMode.value);
   } else {
@@ -366,7 +379,9 @@ const cleanupSelectMode = () => {
 };
 
 onMounted(() => {
-  log.debug(`onMounted, sid=${serviceInstanceId}, serviceStatus=${serviceStatus.value}, config: ${JSON.stringify(props.config)}`);
+  log.debug(
+    `onMounted, sid=${serviceInstanceId}, serviceStatus=${serviceStatus.value}, config: ${JSON.stringify(props.config)}`,
+  );
   if (serviceStatus.value === "ready") {
     log.debug("onMounted: ready 分支，直接加载会话");
     loadSessions();
@@ -423,7 +438,6 @@ const handleToggle = async (val: boolean) => {
 
 const handleSelectNode = async (element: AIPanelSelectedElement, pageUrl?: string) => {
   if (isExtensionSelectorMode) {
-
     ext.notifySelectionResult?.(element);
     showNotification("元素已选中", { mode: "page" });
     return;
@@ -517,7 +531,7 @@ const handleSplitPanelWidthChange = (val: number) => {
   splitPanelWidth.value = val;
 };
 
-const handleRemoveSelectedNode = ({ index }: { index: number; }) => {
+const handleRemoveSelectedNode = ({ index }: { index: number }) => {
   removeElement(index);
   updateContext(true);
 };
@@ -550,6 +564,8 @@ const handleFrameLoaded = () => {
     :sessions="sessions"
     :session-states="sessionStates"
     :review-panel-enabled="reviewPanelEnabled"
+    :provider-sidebar="providerSidebar"
+    :sidebar-collapse-control="sidebarCollapseControl"
     session-key="id"
     :hotkey-label="hotkey"
     :thinking="thinking"

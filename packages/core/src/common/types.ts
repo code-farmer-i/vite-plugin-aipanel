@@ -2,7 +2,7 @@
  * 通用类型（Provider 无关）
  * Provider 专属类型已下沉至 @aipanel/provider-opencode。
  */
-import type { SessionPendingKind, SessionStatus } from "./provider";
+import type { ProviderSidebarCollapseControl, SessionPendingKind, SessionStatus } from "./provider";
 
 /**
  * 展示模式类型
@@ -312,6 +312,14 @@ export interface AIPanelWidgetProps {
   hideBubble?: boolean;
   /** 是否支持代码审查面板（右上角 </> 按钮）；由 Provider capabilities.reviewPanel 决定 */
   reviewPanelEnabled?: boolean;
+  /** Provider 接管会话侧栏（隐藏原生会话列表，Provider 自家侧栏在 iframe 内渲染）；由 Provider capabilities.sidebar.takeover 决定 */
+  providerSidebar?: boolean;
+  /**
+   * 侧栏折叠开关归属（默认 "host"）：
+   * host：宿主保留左上角开关并驱动折叠；provider：宿主隐藏左上角按钮，由 Provider 自带开关控制。
+   * 仅 providerSidebar=true 时生效；由 Provider capabilities.sidebar.collapseControl 决定。
+   */
+  sidebarCollapseControl?: ProviderSidebarCollapseControl;
 }
 
 /**

@@ -45,6 +45,8 @@ const props = withDefaults(defineProps<AIPanelWidgetProps>(), {
   splitPanelWidth: 500,
   hideBubble: false,
   reviewPanelEnabled: false,
+  providerSidebar: false,
+  sidebarCollapseControl: "host",
 });
 
 const emit = defineEmits<AIPanelWidgetEmits>();
@@ -113,6 +115,16 @@ const syncStateToIframe = () => {
   if (!iframeLoaded.value || !iframeReady.value) return;
   sendMessageToIframe(WIDGET_MSG.PROMPT_DOCK_VISIBILITY, { visible: promptDockVisible.value });
   sendMessageToIframe(WIDGET_MSG.MINIMIZE_STATE, { minimized: minimized.value });
+  // 侧栏归属期望（mode: host | provider）：单一事实来源下发，Provider 据此决定是否展示自家侧栏
+  sendMessageToIframe(WIDGET_MSG.SIDEBAR_MODE, {
+    mode: props.providerSidebar ? "provider" : "host",
+  });
+  // Provider 接管且折叠开关归宿主：同步驱动 Provider 自家侧栏折叠状态
+  if (props.providerSidebar && props.sidebarCollapseControl === "host") {
+    sendMessageToIframe(WIDGET_MSG.SIDEBAR_COLLAPSE, {
+      collapsed: localSessionListCollapsed.value,
+    });
+  }
   // 审查面板仅当 Provider 声明支持时下发，避免向无此能力的 iframe 发无效消息
   if (props.reviewPanelEnabled) {
     sendMessageToIframe(WIDGET_MSG.REVIEW_PANEL_TOGGLE, { visible: reviewPanelVisible.value });
@@ -142,6 +154,13 @@ watch(
   () => props.displayMode,
   (val) => {
     localDisplayMode.value = val;
+  },
+);
+
+watch(
+  () => [props.providerSidebar, props.sidebarCollapseControl] as const,
+  () => {
+    syncStateToIframe();
   },
 );
 
@@ -187,6 +206,10 @@ const {
     localSessionListCollapsed.value = collapsed;
     emit("update:sessionListCollapsed", collapsed);
     emit("toggle-session-list", collapsed);
+    // Provider 接管且折叠开关归宿主：左上角开关同时驱动 Provider 自家侧栏
+    if (props.providerSidebar && props.sidebarCollapseControl === "host") {
+      sendMessageToIframe(WIDGET_MSG.SIDEBAR_COLLAPSE, { collapsed });
+    }
   },
   onEmptyAction: () => {
     emit("empty-action");
@@ -388,6 +411,17 @@ const handleIframeMessage = (event: MessageEvent) => {
     iframeReady.value = true;
     syncStateToIframe();
   }
+  if (event.data?.type === WIDGET_MSG.SIDEBAR_STATE) {
+    // Provider 内部折叠变化回传：host 折叠开关下同步左上角状态；不回发消息避免环
+    if (props.providerSidebar && props.sidebarCollapseControl === "host") {
+      const collapsed = event.data.collapsed === true;
+      if (collapsed !== localSessionListCollapsed.value) {
+        localSessionListCollapsed.value = collapsed;
+        emit("update:sessionListCollapsed", collapsed);
+        emit("toggle-session-list", collapsed);
+      }
+    }
+  }
 };
 
 onMounted(() => {
@@ -565,6 +599,8 @@ provideAIPanelWidgetContext({
   promptDockVisible,
   reviewPanelVisible,
   reviewPanelEnabled: toRef(props, "reviewPanelEnabled"),
+  providerSidebar: toRef(props, "providerSidebar"),
+  sidebarCollapseControl: toRef(props, "sidebarCollapseControl"),
   bubbleOffset,
   mode: effectiveMode,
   displayMode: localDisplayMode,
@@ -642,6 +678,7 @@ defineExpose({
         :resolved-theme="resolvedTheme"
         :split-position="splitPosition"
         :extension="isExtensionMode"
+        :provider-sidebar="props.providerSidebar"
         @resize="handleResize"
         @resize-start="handleResizeStart"
         @resize-end="handleResizeEnd"

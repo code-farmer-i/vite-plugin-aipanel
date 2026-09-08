@@ -5,6 +5,7 @@ import type {
   AIPanelRemoveSelectedPayload,
   AIPanelSessionThinkingState,
   DisplayMode,
+  ProviderSidebarCollapseControl,
 } from "./types";
 import type { FloatingBubbleOffset } from "./components/FloatingBubble/types";
 
@@ -33,6 +34,10 @@ export interface AIPanelWidgetContext {
   reviewPanelVisible: Ref<boolean>;
   /** 是否支持代码审查面板（右上角 </> 按钮）；由 Provider capabilities.reviewPanel 决定 */
   reviewPanelEnabled: Ref<boolean>;
+  /** Provider 接管会话侧栏（隐藏原生会话列表，Provider 自家侧栏渲染）；由 capabilities.sidebar.takeover 决定 */
+  providerSidebar: Ref<boolean>;
+  /** 侧栏折叠开关归属（host=宿主左上角按钮驱动 / provider=Provider 自带开关）；由 capabilities.sidebar.collapseControl 决定 */
+  sidebarCollapseControl: Ref<ProviderSidebarCollapseControl>;
   bubbleOffset: Ref<FloatingBubbleOffset | undefined>;
   mode: Ref<"bubble" | "split">;
   displayMode: Ref<DisplayMode>;

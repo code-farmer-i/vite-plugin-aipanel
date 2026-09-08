@@ -10,5 +10,5 @@ export type {
   AIPanelSessionThinkingState,
   DisplayMode,
   SplitModeOptions,
+  ProviderSidebarCollapseControl,
 } from "@aipanel/core";
-

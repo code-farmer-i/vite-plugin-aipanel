@@ -16,7 +16,7 @@ const props = withDefaults(
     open?: boolean;
     minimized?: boolean;
     positionStyle?: Record<string, string>;
-    animationOrigin?: { x: string; y: string; };
+    animationOrigin?: { x: string; y: string };
     panelWidth?: number;
     resizable?: boolean;
     minWidth?: number;
@@ -27,6 +27,8 @@ const props = withDefaults(
     resolvedTheme?: "light" | "dark";
     splitPosition?: "left" | "right";
     extension?: boolean;
+    /** Provider 接管会话侧栏时隐藏原生 SessionList */
+    providerSidebar?: boolean;
   }>(),
   {
     mode: "bubble",
@@ -44,7 +46,8 @@ const props = withDefaults(
     resolvedTheme: "light",
     splitPosition: "right",
     extension: false,
-  }
+    providerSidebar: false,
+  },
 );
 
 const emit = defineEmits<{
@@ -129,7 +132,15 @@ const panelClasses = computed(() => [
     <button
       v-if="mode === 'split' && resizable"
       type="button"
-      :class="['aipanel-split-toggle-btn', { open: props.open, thinking: props.thinking, 'aipanel-theme-dark': resolvedTheme === 'dark', 'split-left': splitPosition === 'left' }]"
+      :class="[
+        'aipanel-split-toggle-btn',
+        {
+          open: props.open,
+          thinking: props.thinking,
+          'aipanel-theme-dark': resolvedTheme === 'dark',
+          'split-left': splitPosition === 'left',
+        },
+      ]"
       :aria-expanded="open"
       aria-label="切换面板"
       @click="handleToggle"
@@ -220,7 +231,7 @@ const panelClasses = computed(() => [
     </Header>
 
     <div class="aipanel-chat-content">
-      <SessionList>
+      <SessionList v-if="!providerSidebar">
         <template #empty>
           <slot name="sessions-empty">
             <div class="aipanel-session-empty">暂无会话</div>
@@ -451,7 +462,9 @@ const panelClasses = computed(() => [
 .aipanel-split-toggle-btn.thinking {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #fff;
-  animation: split-thinking-glow 2s ease-in-out infinite, split-thinking-pulse 2s ease-in-out infinite;
+  animation:
+    split-thinking-glow 2s ease-in-out infinite,
+    split-thinking-pulse 2s ease-in-out infinite;
   box-shadow:
     0 0 20px rgba(102, 126, 234, 0.6),
     0 0 40px rgba(118, 75, 162, 0.4),
@@ -484,12 +497,14 @@ const panelClasses = computed(() => [
   right: -1px;
   bottom: -3px;
   border-radius: 8px 0 0 8px;
-  background: conic-gradient(from 180deg,
-      transparent,
-      rgba(102, 126, 234, 0.3),
-      transparent,
-      rgba(118, 75, 162, 0.3),
-      transparent);
+  background: conic-gradient(
+    from 180deg,
+    transparent,
+    rgba(102, 126, 234, 0.3),
+    transparent,
+    rgba(118, 75, 162, 0.3),
+    transparent
+  );
   z-index: -2;
   animation: split-thinking-rotate 2s linear infinite reverse;
   filter: blur(8px);
@@ -502,7 +517,6 @@ const panelClasses = computed(() => [
 }
 
 @keyframes split-thinking-glow {
-
   0%,
   100% {
     box-shadow:
@@ -530,7 +544,6 @@ const panelClasses = computed(() => [
 }
 
 @keyframes split-thinking-pulse {
-
   0%,
   100% {
     transform: translateY(-50%) scale(1);

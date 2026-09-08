@@ -7,14 +7,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { flushPromises } from "@vue/test-utils";
 import { SESSIONS_API_PATH } from "@aipanel/core";
-import type { ChatSession } from "@aipanel/core";
+import type { ChatSession, ProviderCapabilities } from "@aipanel/core";
 import { useSessionsAndCapabilities } from "../src/composables/useSessionsAndCapabilities";
 
 const fetchMock = vi.fn();
 
 interface FetchState {
   sessions: ChatSession[];
-  caps: { deepLink?: boolean; reviewPanel?: boolean } | undefined;
+  caps: ProviderCapabilities | undefined;
 }
 
 function jsonReply(data: unknown) {
@@ -25,10 +25,7 @@ function session(partial: Partial<ChatSession>): ChatSession {
   return { id: "s1", title: "会话一", createdAt: 1, updatedAt: 1, url: "/chat/s1", ...partial };
 }
 
-function installFetch(
-  initial: ChatSession[],
-  caps?: { deepLink?: boolean; reviewPanel?: boolean },
-): FetchState {
+function installFetch(initial: ChatSession[], caps?: ProviderCapabilities): FetchState {
   const state: FetchState = { sessions: [...initial], caps };
   fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -72,6 +69,8 @@ describe("useSessionsAndCapabilities", () => {
     expect(api.currentSessionId.value).toBeNull();
     expect(api.deepLink.value).toBe(true);
     expect(api.reviewPanelEnabled.value).toBe(false);
+    expect(api.providerSidebar.value).toBe(false);
+    expect(api.sidebarCollapseControl.value).toBe("host");
     expect(api.iframeLoading.value).toBe(true);
     expect(api.iframeSrc.value).toBe("");
   });
@@ -96,6 +95,24 @@ describe("useSessionsAndCapabilities", () => {
     expect(onFocusSession).toHaveBeenCalledWith("s1");
   });
 
+  it("loadSessions 解析 sidebar takeover（provider 控制折叠）", async () => {
+    installFetch([session({ id: "s1", url: "/shell" })], {
+      sidebar: { takeover: true, collapseControl: "provider" },
+    });
+    const api = useSessionsAndCapabilities({ showNotification: vi.fn() });
+    await api.loadSessions();
+    expect(api.providerSidebar.value).toBe(true);
+    expect(api.sidebarCollapseControl.value).toBe("provider");
+  });
+
+  it("sidebar.takeover=true 且 collapseControl 缺省时折叠开关归 host", async () => {
+    installFetch([session({ id: "s1", url: "/shell" })], { sidebar: { takeover: true } });
+    const api = useSessionsAndCapabilities({ showNotification: vi.fn() });
+    await api.loadSessions();
+    expect(api.providerSidebar.value).toBe(true);
+    expect(api.sidebarCollapseControl.value).toBe("host");
+  });
+
   it("capabilities 缺省时 deepLink=true / reviewPanel=false", async () => {
     installFetch([session({ id: "s1", url: "/chat/s1" })]);
     const onFocusSession = vi.fn();
@@ -103,6 +120,8 @@ describe("useSessionsAndCapabilities", () => {
     await api.loadSessions();
     expect(api.deepLink.value).toBe(true);
     expect(api.reviewPanelEnabled.value).toBe(false);
+    expect(api.providerSidebar.value).toBe(false);
+    expect(api.sidebarCollapseControl.value).toBe("host");
     expect(api.iframeSrc.value).toBe("/chat/s1");
     expect(onFocusSession).not.toHaveBeenCalled();
   });

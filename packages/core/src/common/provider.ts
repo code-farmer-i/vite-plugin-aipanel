@@ -146,6 +146,32 @@ export interface ProviderCapabilities {
    * 缺省/false：不支持，客户端隐藏该按钮，避免展示无功能的入口。
    */
   reviewPanel?: boolean;
+  /**
+   * Provider 是否接管会话侧栏（会话列表栏）。
+   * 缺省/false：宿主渲染原生会话列表（现状）；true：宿主隐藏原生列表，
+   * Provider 自家侧栏接管会话导航，折叠开关归属见 ProviderSidebarCapability.collapseControl。
+   */
+  sidebar?: ProviderSidebarCapability;
+}
+
+/** Provider 侧栏折叠开关归属（谁提供折叠控制） */
+export type ProviderSidebarCollapseControl = "host" | "provider";
+
+/** Provider 接管会话侧栏（会话列表栏）的能力描述 */
+export interface ProviderSidebarCapability {
+  /**
+   * Provider 自身 Web UI 自带会话侧栏并接管（宿主不再渲染原生会话列表）。
+   * true：宿主隐藏原生 SessionList，Provider 自家侧栏在 iframe 内渲染并负责会话导航；
+   * 缺省/false：宿主渲染原生会话列表（现状），Provider 侧应隐藏自家侧栏避免重复（如 dsh）。
+   */
+  takeover?: boolean;
+  /**
+   * 折叠开关归属（仅 takeover=true 时生效）：
+   * - "host"（缺省）：宿主保留左上角开关，切换时向 iframe 发送 SIDEBAR_COLLAPSE，
+   *   由 Provider 收起/展开自家侧栏；
+   * - "provider"：Provider 自带折叠开关，宿主隐藏左上角按钮且不下发折叠消息。
+   */
+  collapseControl?: ProviderSidebarCollapseControl;
 }
 
 /**

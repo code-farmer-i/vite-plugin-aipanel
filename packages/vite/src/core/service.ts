@@ -2,7 +2,12 @@ import type { ResultPromise } from "execa";
 import type http from "http";
 import { randomUUID } from "node:crypto";
 import type { PluginOptions, ProviderEvent, ServiceStartupTask, WebProvider } from "@aipanel/core";
-import { DEFAULT_PROXY_PORT, SERVER_START_TIMEOUT, SSE_EVENT_TYPES, ChromeMcpWarmupErrorType } from "@aipanel/core";
+import {
+  DEFAULT_PROXY_PORT,
+  SERVER_START_TIMEOUT,
+  SSE_EVENT_TYPES,
+  ChromeMcpWarmupErrorType,
+} from "@aipanel/core";
 import { createLogger, findAvailablePort, findGitRoot, waitForServer } from "@aipanel/core/node";
 import { startProxyServer } from "./proxy-server";
 import type { McpProxy } from "./mcp-proxy";
@@ -49,7 +54,9 @@ export class AIPanelService {
     this.currentTask = { task, ...data };
     this.sseClients.forEach((client) => {
       try {
-        client.write(`data: ${JSON.stringify({ type: SSE_EVENT_TYPES.TASK_UPDATE, task, ...data })}\n\n`);
+        client.write(
+          `data: ${JSON.stringify({ type: SSE_EVENT_TYPES.TASK_UPDATE, task, ...data })}\n\n`,
+        );
       } catch (e) {
         log.debug("Failed to send TASK_UPDATE event", { error: e });
       }
@@ -58,6 +65,7 @@ export class AIPanelService {
 
   async start(
     vitePort: number,
+    viteHost: string,
     corsOrigins: string[],
     contextApiUrl: string,
     logsApiUrl: string,
@@ -137,6 +145,7 @@ export class AIPanelService {
           cwd: this.workspaceRoot,
           corsOrigins,
           vitePort,
+          viteHost,
           contextApiUrl,
           logsApiUrl,
           verbose: this.config.verbose,

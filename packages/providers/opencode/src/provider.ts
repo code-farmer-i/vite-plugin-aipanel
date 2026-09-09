@@ -124,6 +124,7 @@ Please install OpenCode first:
     const configDir = prepareOpenCodeRuntime(
       options.cwd,
       options.vitePort,
+      options.viteHost,
       this.opts.enableLsp,
       this.opts.enablePrettier,
     );

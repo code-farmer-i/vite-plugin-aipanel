@@ -73,6 +73,8 @@ export interface ProviderStartOptions {
   corsOrigins: string[];
   /** 项目对应的 Vite 端口（用于回连 Vite 服务） */
   vitePort: number;
+  /** 项目对应的 Vite 绑定 host（单一来源，核心层归一化）——Provider 引擎回连 Vite 端点一律用它，禁止写死 */
+  viteHost: string;
   /** 上下文 API URL（核心层提供的回连地址） */
   contextApiUrl?: string;
   /** 进程日志 API URL（核心层提供的回连地址） */

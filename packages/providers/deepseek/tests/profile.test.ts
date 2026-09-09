@@ -18,11 +18,11 @@ import {
   HOST_EVENTS_API_PATH,
   MCP_API_PATH,
 } from "@aipanel/core/node";
-import { DSH_LOOPBACK_HOST } from "../src/constants";
 import { DSH_CLIENT_PACKAGE, DSH_PLUGIN_PACKAGE } from "../src/dsh-install";
 import { buildDshOverlay, writeDshOverlay } from "../src/profile";
 
 const VITE_PORT = 5173;
+const VITE_HOST = "127.0.0.1";
 const CWD = "/tmp/demo-project";
 
 /** overlay 内的一个插件行块（- insert: 下每个 "- id: xxx" 到下一个 "- id:" 之间的行） */
@@ -53,7 +53,7 @@ function blockById(overlay: string, id: string): OverlayBlock {
 
 describe("buildDshOverlay 输出骨架", () => {
   it("以 '- insert:' 开头、结尾留空行，且行块顺序为 mcp → host(aipanel) → client(aipanel-client)", () => {
-    const overlay = buildDshOverlay({ vitePort: VITE_PORT, cwd: CWD });
+    const overlay = buildDshOverlay({ vitePort: VITE_PORT, viteHost: VITE_HOST, cwd: CWD });
     expect(overlay.startsWith("- insert:\n")).toBe(true);
     // 结尾空行：末行为空字符串
     expect(overlay.endsWith("\n")).toBe(true);
@@ -69,26 +69,35 @@ describe("buildDshOverlay 输出骨架", () => {
 
 describe("buildDshOverlay aipanel-mcp（MCP 工具来源）行块", () => {
   it("以 streamable-http 引用 AIPanel MCP server，URL 由 DSH_LOOPBACK_HOST + vitePort + MCP_API_PATH 拼装", () => {
-    const block = blockById(buildDshOverlay({ vitePort: VITE_PORT, cwd: CWD }), "aipanel-mcp");
+    const block = blockById(
+      buildDshOverlay({ vitePort: VITE_PORT, viteHost: VITE_HOST, cwd: CWD }),
+      "aipanel-mcp",
+    );
     expect(block.lines).toEqual(
       expect.arrayContaining([
         "      name: '@deepseek-ai/dsh-mcp-client'",
         "      config:",
         "        serverName: aipanel",
         "        transport: streamable-http",
-        `        url: http://${DSH_LOOPBACK_HOST}:${VITE_PORT}${MCP_API_PATH}`,
+        `        url: http://${VITE_HOST}:${VITE_PORT}${MCP_API_PATH}`,
         "        headers: {}",
       ]),
     );
     // 端口参与 URL 拼装（换端口应出现在 url 行）
-    const other = blockById(buildDshOverlay({ vitePort: 8088, cwd: CWD }), "aipanel-mcp");
-    expect(other.lines).toContain(`        url: http://${DSH_LOOPBACK_HOST}:8088${MCP_API_PATH}`);
+    const other = blockById(
+      buildDshOverlay({ vitePort: 8088, viteHost: VITE_HOST, cwd: CWD }),
+      "aipanel-mcp",
+    );
+    expect(other.lines).toContain(`        url: http://${VITE_HOST}:8088${MCP_API_PATH}`);
   });
 });
 
 describe("buildDshOverlay host 插件（aipanel / DSH_PLUGIN_PACKAGE）行块", () => {
   it("默认（pluginAvailable/autoDiagnose/eventsToken/预设均缺省）输出注入行与 config，且不写 disabled", () => {
-    const block = blockById(buildDshOverlay({ vitePort: VITE_PORT, cwd: CWD }), "aipanel");
+    const block = blockById(
+      buildDshOverlay({ vitePort: VITE_PORT, viteHost: VITE_HOST, cwd: CWD }),
+      "aipanel",
+    );
     expect(block.lines).toEqual(
       expect.arrayContaining([
         `      name: ${JSON.stringify(DSH_PLUGIN_PACKAGE)}`,
@@ -116,14 +125,24 @@ describe("buildDshOverlay host 插件（aipanel / DSH_PLUGIN_PACKAGE）行块", 
 
   it("pluginAvailable=false 时输出 'disabled: true'（host 行块内），默认 true 不出现", () => {
     const disabled = blockById(
-      buildDshOverlay({ vitePort: VITE_PORT, cwd: CWD, pluginAvailable: false }),
+      buildDshOverlay({
+        vitePort: VITE_PORT,
+        viteHost: VITE_HOST,
+        cwd: CWD,
+        pluginAvailable: false,
+      }),
       "aipanel",
     );
     expect(disabled.lines).toContain("      disabled: true");
     expect(disabled.lines).toContain("      inject: [tools]");
 
     const enabled = blockById(
-      buildDshOverlay({ vitePort: VITE_PORT, cwd: CWD, pluginAvailable: true }),
+      buildDshOverlay({
+        vitePort: VITE_PORT,
+        viteHost: VITE_HOST,
+        cwd: CWD,
+        pluginAvailable: true,
+      }),
       "aipanel",
     );
     expect(enabled.lines).not.toContain("      disabled: true");
@@ -132,7 +151,12 @@ describe("buildDshOverlay host 插件（aipanel / DSH_PLUGIN_PACKAGE）行块", 
   it("enableDiagnostics=false 时输出 'enableDiagnostics: false'", () => {
     for (const value of [false, true]) {
       const block = blockById(
-        buildDshOverlay({ vitePort: VITE_PORT, cwd: CWD, enableDiagnostics: value }),
+        buildDshOverlay({
+          vitePort: VITE_PORT,
+          viteHost: VITE_HOST,
+          cwd: CWD,
+          enableDiagnostics: value,
+        }),
         "aipanel",
       );
       expect(block.lines).toContain(`        enableDiagnostics: ${value}`);
@@ -141,12 +165,12 @@ describe("buildDshOverlay host 插件（aipanel / DSH_PLUGIN_PACKAGE）行块", 
 
   it("autoDiagnose=true/false 写入对应行；undefined（缺省）不写（由 dsh-plugin 回退 OPENCODE_ENABLE_LINT）", () => {
     const on = blockById(
-      buildDshOverlay({ vitePort: VITE_PORT, cwd: CWD, autoDiagnose: true }),
+      buildDshOverlay({ vitePort: VITE_PORT, viteHost: VITE_HOST, cwd: CWD, autoDiagnose: true }),
       "aipanel",
     );
     expect(on.lines).toContain("        autoDiagnose: true");
     const off = blockById(
-      buildDshOverlay({ vitePort: VITE_PORT, cwd: CWD, autoDiagnose: false }),
+      buildDshOverlay({ vitePort: VITE_PORT, viteHost: VITE_HOST, cwd: CWD, autoDiagnose: false }),
       "aipanel",
     );
     expect(off.lines).toContain("        autoDiagnose: false");
@@ -155,7 +179,12 @@ describe("buildDshOverlay host 插件（aipanel / DSH_PLUGIN_PACKAGE）行块", 
 
   it("eventsToken 存在时写 eventsToken/eventsPath（JSON.stringify 形式，路径引用 HOST_EVENTS_API_PATH）；缺省不写", () => {
     const block = blockById(
-      buildDshOverlay({ vitePort: VITE_PORT, cwd: CWD, eventsToken: "tk_a1b2c3" }),
+      buildDshOverlay({
+        vitePort: VITE_PORT,
+        viteHost: VITE_HOST,
+        cwd: CWD,
+        eventsToken: "tk_a1b2c3",
+      }),
       "aipanel",
     );
     expect(block.lines).toContain(`        eventsToken: ${JSON.stringify("tk_a1b2c3")}`);
@@ -166,6 +195,7 @@ describe("buildDshOverlay host 插件（aipanel / DSH_PLUGIN_PACKAGE）行块", 
     const block = blockById(
       buildDshOverlay({
         vitePort: VITE_PORT,
+        viteHost: VITE_HOST,
         cwd: CWD,
         agentPreset: "code",
         permissionPreset: "read-only",
@@ -181,7 +211,10 @@ describe("buildDshOverlay host 插件（aipanel / DSH_PLUGIN_PACKAGE）行块", 
 
 describe("buildDshOverlay client 插件（aipanel-client / DSH_CLIENT_PACKAGE）行块", () => {
   it("默认（clientAvailable=true、theme=auto）输出 name/config，不写 theme、不写 disabled", () => {
-    const block = blockById(buildDshOverlay({ vitePort: VITE_PORT, cwd: CWD }), "aipanel-client");
+    const block = blockById(
+      buildDshOverlay({ vitePort: VITE_PORT, viteHost: VITE_HOST, cwd: CWD }),
+      "aipanel-client",
+    );
     expect(block.lines).toEqual(
       expect.arrayContaining([
         `      name: ${JSON.stringify(DSH_CLIENT_PACKAGE)}`,
@@ -196,6 +229,7 @@ describe("buildDshOverlay client 插件（aipanel-client / DSH_CLIENT_PACKAGE）
   it("clientAvailable=false 时输出 'disabled: true'（client 行块内）；host 行块不受影响", () => {
     const overlay = buildDshOverlay({
       vitePort: VITE_PORT,
+      viteHost: VITE_HOST,
       cwd: CWD,
       clientAvailable: false,
     });
@@ -208,13 +242,13 @@ describe("buildDshOverlay client 插件（aipanel-client / DSH_CLIENT_PACKAGE）
   it("theme light/dark 写入对应行（JSON.stringify 形式）；'auto' 不干预（不写）", () => {
     for (const theme of ["light", "dark"] as const) {
       const block = blockById(
-        buildDshOverlay({ vitePort: VITE_PORT, cwd: CWD, theme }),
+        buildDshOverlay({ vitePort: VITE_PORT, viteHost: VITE_HOST, cwd: CWD, theme }),
         "aipanel-client",
       );
       expect(block.lines).toContain(`        theme: ${JSON.stringify(theme)}`);
     }
     const auto = blockById(
-      buildDshOverlay({ vitePort: VITE_PORT, cwd: CWD, theme: "auto" }),
+      buildDshOverlay({ vitePort: VITE_PORT, viteHost: VITE_HOST, cwd: CWD, theme: "auto" }),
       "aipanel-client",
     );
     expect(auto.lines.some((l) => l.includes("theme"))).toBe(false);
@@ -225,7 +259,7 @@ describe("writeDshOverlay 落盘位置", () => {
   it("写入 <workspaceCwd>/AIPANEL_CACHE_DIR/dsh/dsh-overlay.cordis.yml 并返回该路径，内容往返一致", () => {
     const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "aipanel-dsh-overlay-"));
     try {
-      const overlay = buildDshOverlay({ vitePort: VITE_PORT, cwd: tmpRoot });
+      const overlay = buildDshOverlay({ vitePort: VITE_PORT, viteHost: VITE_HOST, cwd: tmpRoot });
       const file = writeDshOverlay(tmpRoot, overlay);
       const expectedDir = path.join(tmpRoot, AIPANEL_CACHE_DIR, "dsh");
       const expectedFile = path.join(expectedDir, "dsh-overlay.cordis.yml");

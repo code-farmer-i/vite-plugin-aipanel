@@ -66,15 +66,17 @@ export function setupEventRelay(
   ctx: Context,
   config: {
     vitePort?: number;
+    viteHost?: string;
     eventsPath?: string;
     eventsToken?: string;
   },
 ): void {
   const vitePort = config.vitePort ?? 0;
+  const viteHost = config.viteHost ?? "127.0.0.1";
   const token = config.eventsToken;
   if (!token || vitePort <= 0) return;
   const eventsPath = config.eventsPath ?? HOST_EVENTS_API_PATH;
-  const eventsUrl = `http://127.0.0.1:${vitePort}${eventsPath}`;
+  const eventsUrl = `http://${viteHost}:${vitePort}${eventsPath}`;
 
   const states = new Map<string, SessionUiState>();
   const lastSent = new Map<string, SessionUiState>();

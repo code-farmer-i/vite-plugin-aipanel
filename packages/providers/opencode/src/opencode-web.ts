@@ -19,6 +19,7 @@ const log = createLogger("OpenCodeWeb");
 export function prepareOpenCodeRuntime(
   cwd: string,
   vitePort: number,
+  viteHost: string,
   enableLsp?: boolean,
   enablePrettier?: boolean,
 ): string {
@@ -44,7 +45,7 @@ export function prepareOpenCodeRuntime(
     mcp: {
       "chrome-devtools": {
         type: "remote",
-        url: `http://localhost:${vitePort}${MCP_API_PATH}`,
+        url: `http://${viteHost}:${vitePort}${MCP_API_PATH}`,
       },
     },
   };

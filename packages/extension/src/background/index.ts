@@ -1,4 +1,4 @@
-import { DEFAULT_HOSTNAME, EXT_MSG, EXT_BROADCAST, SERVER_SYNC_INTERVAL, START_API_PATH } from "@aipanel/core";
+import { EXT_MSG, EXT_BROADCAST, SERVER_SYNC_INTERVAL, START_API_PATH } from "@aipanel/core";
 import type { AIPanelServiceInfo } from "@aipanel/core";
 import { createLogger } from "@aipanel/core/client";
 
@@ -98,7 +98,11 @@ function countTabsForService(serviceInstanceId: string): number {
  *  - 服务端口变更 → SERVICE_APPEARED
  *  - 服务从活跃 Tab 消失且无其他 Tab 引用 → SERVICE_GONE
  */
-function updateActiveTabService(tabId: number, windowId: number, info: AIPanelServiceInfo | null): void {
+function updateActiveTabService(
+  tabId: number,
+  windowId: number,
+  info: AIPanelServiceInfo | null,
+): void {
   const oldSid = tabService.get(tabId);
 
   if (info) {
@@ -237,7 +241,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // 同 origin 路径切换 — 无需重新轮询
   if (oldSid) {
     const oldInfo = services.get(oldSid);
-    const oldOrigin = oldInfo ? `http://${DEFAULT_HOSTNAME}:${oldInfo.vitePort}` : null;
+    const oldOrigin = oldInfo ? `http://${oldInfo.viteHost}:${oldInfo.vitePort}` : null;
     if (oldOrigin && new URL(oldOrigin).origin === newOrigin) {
       return;
     }

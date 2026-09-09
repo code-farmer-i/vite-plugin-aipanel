@@ -137,6 +137,11 @@ Please upgrade:
     // 未就绪时 overlay 停用对应行，避免 dsh 因无法解析而 fail-loud，仅失去该能力。
     const profileDir = dshProfileDir(this.opts.home);
 
+    // 尽早绑定 launch token 等待源：start 中段有耗时装机（ensureDshPackage），启动早期
+    // widget 的会话请求可能在源绑定前到达。提前绑定让其在 ensureAuthenticated 走等待路径而非误报。
+    const launchToken = new LaunchToken();
+    this.api.setLaunchTokenSource(() => launchToken.wait());
+
     const devClientDir = resolveDevDshPackageSource(import.meta.url, "dsh-client", "lib/client.js");
     const clientAvailable = await ensureDshPackage(
       profileDir,
@@ -168,6 +173,7 @@ Please upgrade:
     // 由 dsh-plugin 在启动期经 ctx.settings 应用；诊断开关/主题初值随 client 插件 config 下发。
     const overlay = buildDshOverlay({
       vitePort: options.vitePort,
+      viteHost: options.viteHost,
       cwd: options.cwd,
       pluginAvailable,
       clientAvailable,
@@ -183,10 +189,6 @@ Please upgrade:
     const patchPath = writeDshOverlay(options.cwd, overlay);
 
     // dsh 服务 schema 只接受 127.0.0.1 / 0.0.0.0，且 CLI 拒绝 0.0.0.0 —— 强制 loopback
-    // launchToken 捕获器：从 dsh 启动打印的 URL（?token=…）解析出 browser-session 认证 token。
-    const launchToken = new LaunchToken();
-    // 启动早期 widget 可能先发起 /api 会话请求：把 token 等待源绑定到 API，使其等待而非抛错。
-    this.api.setLaunchTokenSource(() => launchToken.wait());
     const proc = startDeepSeekWeb({
       port: options.port,
       hostname: DSH_LOOPBACK_HOST,

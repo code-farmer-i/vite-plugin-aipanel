@@ -24,6 +24,11 @@ export class DeepSeekAPI {
   private launchToken?: string;
   /** 启动早期等待 token 就绪的源（dsh 进程 stdout 的 LaunchToken.wait），未就绪时勿立即抛错 */
   private launchTokenSource?: () => Promise<string>;
+  /** provider 尚未调用 setLaunchTokenSource 时，等待该源就绪的信号（避免早到请求立即误报） */
+  private sourceReadyPromise?: Promise<void>;
+  private resolveSourceReady?: () => void;
+  /** 兜底：来源迟迟未绑定时不无限挂起 */
+  private static readonly SOURCE_WAIT_TIMEOUT_MS = 20000;
   /** browser-session 签名 Cookie（经 launch token 换取），dsh web 所有 /api 请求必须携带 */
   private authCookie?: string;
   /** 认证引导的幂等 Promise，避免并发多次换取 */
@@ -50,6 +55,17 @@ export class DeepSeekAPI {
    */
   setLaunchTokenSource(source: () => Promise<string>): void {
     this.launchTokenSource = source;
+    this.resolveSourceReady?.();
+  }
+
+  /** 等待 launchTokenSource 就绪（首次调用惰性创建信号）；配合 ensureAuthenticated 避免早到请求误报 */
+  private waitForSourceReady(): Promise<void> {
+    if (!this.sourceReadyPromise) {
+      this.sourceReadyPromise = new Promise<void>((resolve) => {
+        this.resolveSourceReady = resolve;
+      });
+    }
+    return this.sourceReadyPromise;
   }
 
   /** 当前 browser-session Cookie（未认证时 undefined）；供代理向转发请求注入同一 Cookie */
@@ -121,7 +137,24 @@ export class DeepSeekAPI {
   private async ensureAuthenticated(): Promise<void> {
     if (this.authCookie) return;
     if (!this.launchToken) {
-      // 启动早期 dsh 尚未打印 token：等待就绪（take from stdout）而非立即抛错，避免会话请求过早失败。
+      // 启动早期 provider 尚未绑定 source：先等待其就绪而非立即抛错，避免 widget 早到的会话请求误报；
+      // 来源确实缺失时以超时兜底抛错，避免无限挂起。
+      if (!this.launchTokenSource) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            this.waitForSourceReady(),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () => reject(new Error("dsh launch token source was not bound in time")),
+                DeepSeekAPI.SOURCE_WAIT_TIMEOUT_MS,
+              );
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      }
       if (this.launchTokenSource) {
         this.launchToken = await this.launchTokenSource();
       }

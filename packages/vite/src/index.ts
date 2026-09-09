@@ -385,6 +385,7 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
           }
           await service.start(
             vitePort,
+            viteHost,
             [viteOrigin],
             contextApiUrl,
             logsApiUrl,

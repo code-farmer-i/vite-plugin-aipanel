@@ -18,7 +18,6 @@ import {
   createLogger,
 } from "@aipanel/core/node";
 import type { AIPanelWidgetTheme } from "@aipanel/core";
-import { DSH_LOOPBACK_HOST } from "./constants";
 import { DSH_CLIENT_PACKAGE, DSH_PLUGIN_PACKAGE } from "./dsh-install";
 import type { DeepSeekBusyEnter, DeepSeekPermissionPreset } from "./types";
 
@@ -27,6 +26,8 @@ const log = createLogger("DeepSeekProfile");
 /** 组装 overlay YAML */
 export function buildDshOverlay(options: {
   vitePort: number;
+  /** vite 绑定 host（单一来源，核心层归一化）：dsh 引擎回连 vite 端点用之；区别于 dsh 自身绑定的 DSH_LOOPBACK_HOST */
+  viteHost: string;
   cwd: string;
   /** host 插件（@aipanel/dsh-plugin）是否已同步到 dsh profile；false 时停用该行，避免 fail-loud */
   pluginAvailable?: boolean;
@@ -59,6 +60,7 @@ export function buildDshOverlay(options: {
 }): string {
   const {
     vitePort,
+    viteHost,
     cwd,
     pluginAvailable = true,
     clientAvailable = true,
@@ -70,7 +72,8 @@ export function buildDshOverlay(options: {
     busyEnter,
     theme = "auto",
   } = options;
-  const mcpUrl = `http://${DSH_LOOPBACK_HOST}:${vitePort}${MCP_API_PATH}`;
+  // 指向 vite 上的 MCP server：host 用 viteHost（Vite 绑定 host 单一来源），而非 dsh 自身绑定的 DSH_LOOPBACK_HOST
+  const mcpUrl = `http://${viteHost}:${vitePort}${MCP_API_PATH}`;
 
   const rows: string[] = [];
 
@@ -99,6 +102,7 @@ export function buildDshOverlay(options: {
       "      config:",
       `        cwd: ${JSON.stringify(cwd)}`,
       `        vitePort: ${vitePort}`,
+      `        viteHost: ${JSON.stringify(viteHost)}`,
       `        contextApiPath: ${JSON.stringify(CONTEXT_API_PATH)}`,
       `        enableDiagnostics: ${enableDiagnostics ? "true" : "false"}`,
       ...(autoDiagnose !== undefined

@@ -55,6 +55,8 @@ export interface AipanelPluginConfig {
   cwd?: string;
   /** 核心层 Vite 端口：用于访问 context 端点反查选中元素（与 MCP 同一地址体系） */
   vitePort?: number;
+  /** 核心层 Vite 绑定 host（单一来源，overlay 注入）：随 vitePort 一起用于回连 vite 端点 */
+  viteHost?: string;
   /** 核心层 context 端点路径（由 overlay 从 @aipanel/core 的 CONTEXT_API_PATH 常量注入） */
   contextApiPath?: string;
   /** 宿主事件推送令牌（core 每轮启动随机）：与 eventsPath 配对启用 session/event 事件中继 */
@@ -84,7 +86,6 @@ export interface AipanelPluginConfig {
   busyEnter?: "queue" | "steer";
 }
 
-
 /** 把单个选中元素组织成注入给 agent 的上下文文本块；开头带节点 id 供 agent 与消息标记关联 */
 function buildNodeContext(e: SelectedElement): string {
   const lines: string[] = [`节点 ID：${e.id ?? ""}`];
@@ -96,7 +97,6 @@ function buildNodeContext(e: SelectedElement): string {
   if (e.previewPageUrl) lines.push(`用户选中节点时的页面 URL：${e.previewPageUrl}`);
   return lines.join("\n");
 }
-
 
 /** 单条诊断分区（ESLint / vue-tsc） */
 interface DiagnosticsSection {
@@ -155,10 +155,7 @@ function renderDiagnosticsText(value: DiagnosticsCanonical): string {
  * ui-conversation），注册顺序可能晚于本插件 apply —— 这里按“已注册才写”轮询，
  * 超时后放弃（不阻塞启动）；settings 服务或命名空间缺失时仅告警。
  */
-export function applyProviderSettings(
-  ctx: Context,
-  config: AipanelPluginConfig,
-): void {
+export function applyProviderSettings(ctx: Context, config: AipanelPluginConfig): void {
   const pending: { ns: string; patch: Record<string, unknown> }[] = [];
   if (typeof config.agentPreset === "string" && config.agentPreset) {
     pending.push({ ns: "agent-presets", patch: { default: config.agentPreset } });
@@ -239,6 +236,7 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
   // 与 opencode 对齐：默认关闭自动诊断，OPENCODE_ENABLE_LINT=1（或显式配置）开启
   const autoDiagnose = config.autoDiagnose ?? process.env[OPENCODE_ENV.ENABLE_LINT] === "1";
   const vitePort = config.vitePort ?? 0;
+  const viteHost = config.viteHost ?? "127.0.0.1";
   const contextApiPath = config.contextApiPath ?? CONTEXT_API_PATH;
 
   const tools: ToolRuntime = ctx.tools;
@@ -389,7 +387,7 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
   // 只注入用户实际引用的节点上下文（plugin source），并移除已注入 id 防止后续 step 重复。
   // 注入姿势与官方 session-reference 一致：改写 decision.messages，在引用后追加上下文消息。
   if (vitePort > 0) {
-    const contextBase = `http://127.0.0.1:${vitePort}${contextApiPath}`;
+    const contextBase = `http://${viteHost}:${vitePort}${contextApiPath}`;
 
     ctx.on(
       "agent/pre-step",

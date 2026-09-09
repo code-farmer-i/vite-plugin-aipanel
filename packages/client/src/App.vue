@@ -7,7 +7,6 @@ import {
   WIDGET_MSG,
   WARMUP_API_PATH,
   START_API_PATH,
-  DEFAULT_HOSTNAME,
   DEFAULT_PROXY_PORT,
   AUTO_OPEN_DELAY,
   ensureNodeId,
@@ -48,6 +47,7 @@ const {
   displayMode = "bubble",
   splitMode,
   vitePort = "",
+  viteHost = "",
   serviceInstanceId = "",
   myWindowId,
 } = props.config;
@@ -61,8 +61,12 @@ const splitPanelWidth = ref(splitMode?.width ?? 500);
 const isExtensionMode = displayMode === "extension";
 const isExtensionSelectorMode = displayMode === "extension-selector";
 
-// 构建绝对 URL，用于绕过全局 monkey-patch（多实例场景下每个实例有独立的 vitePort）
-const viteBaseUrl = computed(() => (vitePort ? `http://${DEFAULT_HOSTNAME}:${vitePort}` : ""));
+// 构建绝对 URL，用于绕过全局 monkey-patch（多实例场景下每个实例有独立的 vitePort）。
+// host 单一来源取服务端下发的 viteHost（内联由 vite 插件写入、扩展由探测 origin 下发），
+// 与 vite 实际绑定一致，避免硬编码 127.0.0.1 与 vite 绑定地址族错位导致连接拒绝。
+const viteBaseUrl = computed(() =>
+  vitePort && viteHost ? `http://${viteHost}:${vitePort}` : "",
+);
 
 // 构建请求 URL（扩展模式下用绝对 URL，否则用相对路径走 monkey-patch）
 const apiPath = (path: string) => (viteBaseUrl.value ? `${viteBaseUrl.value}${path}` : path);
@@ -77,7 +81,7 @@ const ext = {
 
 const showNotification = (
   msg: string,
-  options?: { duration?: number; mode?: "widget" | "page" },
+  options?: { duration?: number; mode?: "widget" | "page"; },
 ) => {
   // 扩展模式下通知渲染在实例内部，避免多实例间可见
   widgetRef.value?.showNotification?.(msg, {
@@ -190,7 +194,7 @@ watch(serverSSE.isConnected, (connected, wasConnected) => {
         serviceInstanceId,
         windowId: myWindowId,
       })
-      .catch(() => {});
+      .catch(() => { });
   } else if (connected && !wasConnected && sseWasDown && serviceInstanceId) {
     sseWasDown = false;
     justReconnected = true;
@@ -203,7 +207,7 @@ watch(serverSSE.isConnected, (connected, wasConnected) => {
         serviceInstanceId,
         windowId: myWindowId,
       })
-      .catch(() => {});
+      .catch(() => { });
   }
 });
 
@@ -285,7 +289,7 @@ const toggleSelectMode = () => {
     return;
   }
 
-  const win = window as typeof window & { __VUE_INSPECTOR__?: unknown };
+  const win = window as typeof window & { __VUE_INSPECTOR__?: unknown; };
   if (win.__VUE_INSPECTOR__) {
     handleSelectModeChange(!selectMode.value);
   } else {
@@ -531,7 +535,7 @@ const handleSplitPanelWidthChange = (val: number) => {
   splitPanelWidth.value = val;
 };
 
-const handleRemoveSelectedNode = ({ index }: { index: number }) => {
+const handleRemoveSelectedNode = ({ index }: { index: number; }) => {
   removeElement(index);
   updateContext(true);
 };

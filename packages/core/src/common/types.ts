@@ -49,6 +49,8 @@ export interface WidgetOptions {
   splitMode?: SplitModeOptions;
   /** Vite 服务 Web 端口（扩展模式多实例场景用） */
   vitePort?: string;
+  /** Vite 服务绑定主机（由服务端/探测下发；缺省回退 DEFAULT_HOSTNAME）。避免与 vite 实际绑定的地址族不一致 */
+  viteHost?: string;
   /** 服务实例唯一标识（扩展模式多实例隔离用） */
   serviceInstanceId?: string;
   /** 当前窗口 ID（扩展模式多窗口隔离用） */
@@ -266,6 +268,8 @@ export interface AIPanelServiceInfo {
   proxyPort: number;
   /** Vite 开发服务端口（字符串；可能来自 widget 上报或探测 origin） */
   vitePort: string;
+  /** Vite 开发服务主机（源自探测 origin 的 hostname；扩展侧连接用，避免 127.0.0.1 与 ::1 地址族错位） */
+  viteHost: string;
   /** 项目根目录 */
   projectRoot: string;
   /** 服务实例唯一 id（多实例隔离） */

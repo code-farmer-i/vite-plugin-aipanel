@@ -121,6 +121,7 @@ async function createAppInstance(info: AIPanelServiceInfo): Promise<AppInstance>
     proxyPort: info.proxyPort,
     proxyHost: DEFAULT_HOSTNAME,
     vitePort: info.vitePort,
+    viteHost: info.viteHost,
     serviceInstanceId: info.serviceInstanceId,
     projectRoot: info.projectRoot,
     theme: "auto",
@@ -277,6 +278,7 @@ chrome.runtime.onMessage.addListener((msg) => {
         handleServiceAppeared({
           serviceInstanceId: msg.serviceInstanceId,
           vitePort: msg.vitePort,
+          viteHost: msg.viteHost,
           proxyPort: msg.proxyPort,
           projectRoot: msg.projectRoot || "",
         });

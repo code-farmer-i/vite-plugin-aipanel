@@ -121,6 +121,17 @@ export default function aipanelPlugin<const P extends ProviderId = "default">(
   return plugins;
 }
 
+/**
+ * 归一化 vite 绑定 host 为 widget 可连地址（单一来源）。
+ * 通配/无效（0.0.0.0、::、::1、hostname 数组、非字符串）无法直接作为客户端目标，
+ * 回退到配置 hostname（默认 127.0.0.1），避免拼出 0.0.0.0 或触发 localhost→::1 的地址族错位。
+ */
+function normalizeViteHost(host: unknown, fallback: string): string {
+  return typeof host === "string" && host && host !== "0.0.0.0" && host !== "::" && host !== "::1"
+    ? host
+    : fallback;
+}
+
 function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
   const config = resolvePluginConfig(options);
 
@@ -135,6 +146,8 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
   let actualProxyPort = config.proxyPort ?? DEFAULT_PROXY_PORT;
   let projectRoot = "";
   let vueDevtoolsApiUrl = "";
+  /** vite 绑定的 host 单一来源：由 server.config.server.host 解析，transformIndexHtml 据此下发到 widget config */
+  let viteServerHost = "localhost";
   const pageContext: PageContext = { url: "", title: "" };
   /** 非扩展模式使用 "default" 作为 key */
   const DEFAULT_TAB = "default";
@@ -193,6 +206,10 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
       const timer = log.timer("configureServer");
 
       projectRoot = server.config.root;
+
+      // host 单一来源：取自 vite 实际绑定 host；通配/无效（0.0.0.0、::、::1、非字符串）归一化到
+      // 本机可达 loopback 127.0.0.1（0.0.0.0 只覆盖 IPv4，用 localhost 可能解析成 ::1 触发地址族错位）。
+      viteServerHost = normalizeViteHost(server.config.server.host, config.hostname);
 
       let viteOrigin = "";
 
@@ -459,6 +476,7 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
         hotkey: config.hotkey,
         proxyPort: actualProxyPort,
         proxyHost: config.hostname,
+        viteHost: viteServerHost,
         displayMode: config.displayMode === "extension" ? "extension-selector" : config.displayMode,
         splitMode: config.splitMode,
         serviceInstanceId,

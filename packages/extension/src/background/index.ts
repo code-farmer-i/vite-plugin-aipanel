@@ -45,6 +45,8 @@ async function fetchService(origin: string): Promise<AIPanelServiceInfo | null> 
       return {
         proxyPort: data.proxyPort,
         vitePort: data.vitePort || String(new URL(origin).port),
+        // 以探测的 origin host 为准，避免扩展侧用硬编码 127.0.0.1 与 vite 实际绑定（如 macOS 的 ::1）地址族错位
+        viteHost: new URL(origin).hostname,
         projectRoot: data.projectRoot || "",
         serviceInstanceId: data.serviceInstanceId,
         verbose: data.verbose,

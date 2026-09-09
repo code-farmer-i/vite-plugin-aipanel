@@ -28,6 +28,9 @@ watch(collapsed, () => {
 const showSkeleton = computed(() => {
   if (isAnimating.value) return true;
   if (showSessionListSkeleton.value) return true;
+  // 列表数据刷新中（删除/新建/首次加载等，loadingSessionList=true）复用骨架屏，
+  // 不再用旧的居中小转圈遮罩，保证各阶段 loading 视觉一致。
+  if (loadingSessionList.value) return true;
   return false;
 });
 
@@ -166,13 +169,6 @@ function isSessionCompleted(sessionId: string): boolean {
       role="listbox"
       aria-labelledby="aipanel-session-list-title"
     >
-      <div
-        v-if="loadingSessionList"
-        class="aipanel-session-list-loading-overlay"
-      >
-        <div class="aipanel-loading-spinner small" />
-      </div>
-
       <template v-if="sessions.length > 0">
         <div
           v-for="item in sessions"
@@ -333,26 +329,6 @@ function isSessionCompleted(sessionId: string): boolean {
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.aipanel-session-list-loading-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--ap-overlay-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-  border-radius: 8px;
-}
-
-.aipanel-loading-spinner.small {
-  width: 24px;
-  height: 24px;
-  border-width: 2px;
 }
 
 /* 会话行：单行（状态点 + 标题 + 右侧时间），hover 淡覆盖层 */

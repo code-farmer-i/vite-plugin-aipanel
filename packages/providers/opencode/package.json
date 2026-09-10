@@ -22,7 +22,11 @@
   },
   "scripts": {
     "build": "pagoda-cli build",
-    "typecheck": "tsc -p tsconfig.declaration.json --noEmit"
+    "typecheck": "tsc -p tsconfig.declaration.json --noEmit",
+    "test": "vitest run --root ."
+  },
+  "devDependencies": {
+    "vitest": "^4.1.0"
   },
   "dependencies": {
     "@aipanel/core": "workspace:*",

@@ -259,7 +259,7 @@ Please install OpenCode first:
  * 归一化：Provider 私有事件 → ProviderEvent
  * thinking 推导：assistant 消息未完成（time.completed 缺失）或出现增量分片
  */
-function mapEvent(payload: unknown): ProviderEvent | null {
+export function mapEvent(payload: unknown): ProviderEvent | null {
   if (!payload || typeof payload !== "object") return null;
 
   const msg = payload as {

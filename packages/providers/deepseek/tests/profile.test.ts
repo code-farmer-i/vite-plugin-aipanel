@@ -104,6 +104,8 @@ describe("buildDshOverlay host 插件（aipanel / DSH_PLUGIN_PACKAGE）行块", 
         "      inject: [tools]",
         "      config:",
         `        cwd: ${JSON.stringify(CWD)}`,
+        // viteHost 单一来源：overlay 必须把运行时 viteHost 下发进 host 插件 config（回推目标）
+        `        viteHost: ${JSON.stringify(VITE_HOST)}`,
         `        vitePort: ${VITE_PORT}`,
         `        contextApiPath: ${JSON.stringify(CONTEXT_API_PATH)}`,
         "        enableDiagnostics: true",

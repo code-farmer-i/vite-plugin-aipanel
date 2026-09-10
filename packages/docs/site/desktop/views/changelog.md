@@ -1,5 +1,72 @@
 # 更新日志
 
+## v1.2.16
+
+`2026-09-10`
+
+### deps
+
+#### ⚡ 改进
+
+- 升级 `chrome-devtools-mcp` 依赖至 1.9.0，同步更新官方工具元数据（新增 `evaluate_script` 的 `javascriptEvaluation` 条件声明），默认工具暴露面不变
+
+### opencode
+
+#### ⚡ 改进
+
+- 新增 vitest 单元测试：为 opencode provider 与 api 补齐测试脚本与用例，覆盖核心调用逻辑
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.16/packages/extension/aipanel-assistant.zip)
+
+## v1.2.15
+
+`2026-09-10`
+
+### deepseek
+
+#### 🐛 修复
+
+- 修复跨网络环境下会话状态与标题无法实时同步的问题：事件中继此前在未收到 `viteHost` 时静默回退到 `127.0.0.1` 并吞掉推送失败，现要求显式传入 Vite 实际绑定 host（缺失即报错并停用中继），端到端统一事件链路，会话 running / 标题更新恢复正常
+- 优化会话列表加载状态显示逻辑，避免列表加载过程的状态错乱
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.15/packages/extension/aipanel-assistant.zip)
+
+## v1.2.14
+
+`2026-09-09`
+
+### vite-plugin
+
+#### ✨ 新增
+
+- 支持自定义 Vite 绑定 host：通配/无效 host（`0.0.0.0` / `::` 等）统一归一化到实际配置地址，可指定局域网/自定义 host 绑定，修复跨网络环境下客户端与扩展无法连接 Vite 服务的问题
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.14/packages/extension/aipanel-assistant.zip)
+
+## v1.2.13
+
+`2026-09-08`
+
+### vite-plugin
+
+#### 🐛 修复
+
+- 修复地址族错位导致的 Vite 服务连接失败：客户端、扩展与插件对 Vite 服务地址的解析与连接统一按实际地址族处理，避免 IPv4/IPv6 不一致导致的连接失败
+
+#### ⚡ 改进
+
+- 调整 TypeScript 配置与类型检查工具，完善仓库级类型检查流程；同步整理项目配置与代码类型优化
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.13/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.12
 
 `2026-09-08`

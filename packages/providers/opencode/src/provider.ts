@@ -116,6 +116,7 @@ Please install OpenCode first:
       };
     }
     const version = await getOpenCodeVersion();
+    log.debug("Detected opencode version", { version: version ?? "unknown" });
     return { ok: true, version: version ?? undefined };
   }
 

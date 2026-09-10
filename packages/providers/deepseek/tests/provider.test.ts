@@ -73,8 +73,9 @@ describe("DeepSeekWebProvider.buildSessionUrl（纯方法）", () => {
 });
 
 describe("LaunchToken 超时诊断", () => {
-  it("超时错误回填最近 stdout/stderr，便于定位 token 未打印的真实根因", async () => {
+  it("超时把 dsh web 启动的原始 stdout/stderr 作为一条日志整体输出", async () => {
     vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const lt = new LaunchToken();
       lt.recordOutput("stdout", "cordis 1.2.3\nbooted\n");
@@ -82,12 +83,14 @@ describe("LaunchToken 超时诊断", () => {
       const waiting = lt.wait(20000);
       vi.advanceTimersByTime(20000);
       await expect(waiting).rejects.toThrow(/dsh launch token was not captured/);
-      await waiting.catch((e: Error) => {
-        expect(e.message).toContain("cordis 1.2.3");
-        expect(e.message).toContain("booted");
-        expect(e.message).toContain("warn: frontend not built");
-      });
+      // 只有一条 warn，且整段原始输出都在该条内
+      const msg = warnSpy.mock.calls[0].join(" ");
+      expect(warnSpy.mock.calls).toHaveLength(1);
+      expect(msg).toContain("cordis 1.2.3");
+      expect(msg).toContain("booted");
+      expect(msg).toContain("warn: frontend not built");
     } finally {
+      warnSpy.mockRestore();
       vi.useRealTimers();
     }
   });

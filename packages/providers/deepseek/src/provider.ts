@@ -106,6 +106,7 @@ or run without installing:
       };
     }
     const version = await getDeepSeekVersion();
+    log.debug("Detected dsh version", { version: version ?? "unknown" });
     // 0.1.2 起 API/认证协议（browser-session、{args} RPC、remote.mux）不向下兼容：
     // 低于最低版本直接给明确指引，避免启动后干等 token 并逐个 RPC 失败。
     const compatible = version === null ? true : isDeepSeekVersionAtLeast(version);

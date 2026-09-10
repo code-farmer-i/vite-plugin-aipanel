@@ -41,6 +41,19 @@ export class LaunchToken {
     this.waiters = [];
   }
 
+  /** 报错时把 dsh web 启动的原始日志作为一条日志整体输出（幂等：每实例只打一次） */
+  private printed = false;
+  private printStartupOutput(): void {
+    if (this.printed) return;
+    this.printed = true;
+    const stdout = this.stdoutTail.trim();
+    const stderr = this.stderrTail.trim();
+    const lines = ["dsh launch token was not captured; dsh web startup output:"];
+    lines.push(stdout || "(no dsh stdout captured)");
+    if (stderr) lines.push(`dsh web stderr: ${stderr}`);
+    log.warn(lines.join("\n"));
+  }
+
   /** 已解析的 token（未就绪时 undefined） */
   get(): string | undefined {
     return this.token;
@@ -52,16 +65,10 @@ export class LaunchToken {
     if (this.failure) return Promise.reject(this.failure);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        const detail = [
-          `dsh launch token was not captured from within ${timeoutMs}ms (dsh >= 0.1.2 should print the "dsh web: http://127.0.0.1:<port>/?token=..." URL)`,
-        ];
-        if (this.stdoutTail.trim()) {
-          detail.push("-- last dsh stdout --", this.stdoutTail.trim());
-        }
-        if (this.stderrTail.trim()) {
-          detail.push("-- last dsh stderr --", this.stderrTail.trim());
-        }
-        const err = new Error(detail.join("\n"));
+        this.printStartupOutput();
+        const err = new Error(
+          `dsh launch token was not captured from stdout within ${timeoutMs}ms (dsh >= 0.1.2 should print the "dsh web: http://127.0.0.1:<port>/?token=..." URL)`,
+        );
         this.failure = err;
         for (const w of this.waiters) {
           clearTimeout(w.timer);

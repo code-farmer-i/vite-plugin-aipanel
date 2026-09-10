@@ -109,11 +109,7 @@ export interface WaitableProcess {
  * @param timeout - 超时毫秒数
  * @param proc - 可选进程，提前退出时直接失败
  */
-export function waitForServer(
-  url: string,
-  timeout = 10000,
-  proc?: WaitableProcess,
-): Promise<void> {
+export function waitForServer(url: string, timeout = 10000, proc?: WaitableProcess): Promise<void> {
   const timer = new PerformanceTimer("waitForServer", { url, timeout });
 
   return new Promise((resolve, reject) => {
@@ -217,17 +213,26 @@ export async function checkCliInstalled(bin: string): Promise<boolean> {
 }
 
 /**
- * 获取某 CLI 版本号（<bin> --version 的第一行，败路返回 null）
+ * 获取某 CLI 版本号（<bin> --version，退出码 0 时取 stdout 首段，stdout 为空回退 stderr；败路返回 null）
+ * stderr 回退：部分 CLI（如个别平台的 dsh）把版本打在 stderr，仅读 stdout 会误判为“未解析出版本”。
  */
 export function getCliVersion(bin: string): Promise<string | null> {
   return new Promise((resolve) => {
     const proc = spawn(bin, ["--version"], { stdio: "pipe", shell: true });
-    let output = "";
+    let stdout = "";
+    let stderr = "";
     proc.stdout?.on("data", (data) => {
-      output += data.toString();
+      stdout += data.toString();
+    });
+    proc.stderr?.on("data", (data) => {
+      stderr += data.toString();
     });
     proc.on("close", (code) => {
-      resolve(code === 0 && output.trim() ? output.trim() : null);
+      if (code !== 0) {
+        resolve(null);
+        return;
+      }
+      resolve(stdout.trim() || stderr.trim() || null);
     });
     proc.on("error", () => resolve(null));
   });
@@ -249,7 +254,10 @@ export interface KillOrphanCliOptions {
  * 清理被 reparent 到 init（PPID=1）的孤儿进程（win: wmic+taskkill；unix: ps+kill）
  * @returns 被成功结束的进程数
  */
-export function killOrphanCliProcesses(bin: string, options: KillOrphanCliOptions): Promise<number> {
+export function killOrphanCliProcesses(
+  bin: string,
+  options: KillOrphanCliOptions,
+): Promise<number> {
   const label = options.label ?? bin;
   const timeoutMs = options.timeout ?? 5000;
   const timer = new PerformanceTimer(`killOrphanCliProcesses:${label}`);
@@ -290,7 +298,13 @@ function killOrphansOnWindows(
   log.debug(`Using Windows method to find orphan ${label} processes`);
   const proc = spawn(
     "wmic",
-    ["process", "where", `name="${options.winName}"`, "get", "processid,parentprocessid,commandline"],
+    [
+      "process",
+      "where",
+      `name="${options.winName}"`,
+      "get",
+      "processid,parentprocessid,commandline",
+    ],
     { stdio: "pipe" },
   );
   let output = "";

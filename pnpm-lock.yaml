@@ -248,6 +248,10 @@ importers:
       execa:
         specifier: ^9.6.1
         version: 9.6.1
+    devDependencies:
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.10(@types/node@26.1.1)(jsdom@29.1.1)(vite@8.2.1(@types/node@26.1.1)(esbuild@0.28.1)(less@4.8.1)(sass@1.102.0)(tsx@4.23.0)(yaml@2.9.0))
 
   packages/ui:
     dependencies:
@@ -279,8 +283,8 @@ importers:
         specifier: ^3.3.7
         version: 3.3.9(typescript@6.0.3)
       chrome-devtools-mcp:
-        specifier: ^1.8.0
-        version: 1.8.0
+        specifier: ^1.9.0
+        version: 1.9.0
       execa:
         specifier: ^9.6.1
         version: 9.6.1
@@ -3291,8 +3295,8 @@ packages:
     resolution: {integrity: sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw==}
     engines: {node: '>= 20.19.0'}
 
-  chrome-devtools-mcp@1.8.0:
-    resolution: {integrity: sha512-Wrm9z0/5WbVs778apjWgYRkpe9bvYQWjK2zVRwqoPAtz1IHQ5+GvotM07UGXJcfrA0rj6Gt1Pnn5+w/Tf1nU4w==}
+  chrome-devtools-mcp@1.9.0:
+    resolution: {integrity: sha512-RnzXoJiUQ44hpOihWk90uOhLD/CnwDkDy0ldHMZONJ2nYQ+dWN1fq1luHHqyd+7FuYnyIlCY6uTThbN5ut9kSQ==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=23}
     hasBin: true
     peerDependencies:
@@ -9823,7 +9827,7 @@ snapshots:
     dependencies:
       readdirp: 5.0.0
 
-  chrome-devtools-mcp@1.8.0: {}
+  chrome-devtools-mcp@1.9.0: {}
 
   class-utils@0.3.6:
     dependencies:

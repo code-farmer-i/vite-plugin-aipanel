@@ -15,7 +15,7 @@ export const OFFICIAL_TOOL_META: OfficialToolMeta[] = [
   { name: "compare_heapsnapshots", category: "MEMORY", readOnlyHint: true, pageScoped: false, conditions: ["memoryDebugging"] },
   { name: "drag", category: "INPUT", readOnlyHint: false, pageScoped: true, conditions: [] },
   { name: "emulate", category: "EMULATION", readOnlyHint: false, pageScoped: true, conditions: [] },
-  { name: "evaluate_script", category: "DEBUGGING", readOnlyHint: false, pageScoped: false, conditions: [] },
+  { name: "evaluate_script", category: "DEBUGGING", readOnlyHint: false, pageScoped: false, conditions: ["javascriptEvaluation"] },
   { name: "execute_3p_developer_tool", category: "THIRD_PARTY", readOnlyHint: false, pageScoped: true, conditions: [] },
   { name: "execute_webmcp_tool", category: "WEBMCP", readOnlyHint: false, pageScoped: true, conditions: [] },
   { name: "fill", category: "INPUT", readOnlyHint: false, pageScoped: true, conditions: [] },

@@ -96,6 +96,7 @@ const {
   chromeMcpFailed,
   chromeMcpErrorType,
   chromeMcpErrorMessage,
+  failureErrorMessage,
   loadingText,
   updateStatusFromTask,
   setStarting,
@@ -562,7 +563,7 @@ const handleFrameLoaded = () => {
     :frame-loading="computedLoading"
     :loading-session-list="loadingSessionList"
     :show-session-list-skeleton="showSessionListSkeleton"
-    :show-error="chromeMcpFailed"
+    :show-error="chromeMcpFailed || serviceStatus === 'failed'"
     :iframe-src="iframeSrc"
     :current-session-id="currentSessionId"
     :sessions="sessions"
@@ -602,6 +603,47 @@ const handleFrameLoaded = () => {
         :error-message="chromeMcpErrorMessage"
         @retry="retryWarmup"
       />
+      <div
+        v-else
+        class="aipanel-failure"
+      >
+        <p class="aipanel-failure-title">{{ loadingText }}</p>
+        <p
+          v-if="failureErrorMessage"
+          class="aipanel-failure-detail"
+        >
+          {{ failureErrorMessage }}
+        </p>
+      </div>
     </template>
   </AIPanelWidget>
 </template>
+
+<style scoped>
+.aipanel-failure {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  background: var(--ap-bg-secondary);
+  text-align: center;
+}
+
+.aipanel-failure-title {
+  margin: 0;
+  color: var(--ap-text-primary);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.aipanel-failure-detail {
+  margin: 0;
+  color: var(--ap-text-placeholder);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+</style>

@@ -11,5 +11,12 @@ export default defineConfig({
     environment: "node",
     globals: false,
     include: ["tests/**/*.test.ts"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text-summary", "lcov"],
+      include: ["src/**/*.ts"],
+      exclude: ["**/*.d.ts"],
+      thresholds: { lines: 52, statements: 52, functions: 48, branches: 52 },
+    },
   },
 });

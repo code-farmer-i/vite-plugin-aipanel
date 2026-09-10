@@ -9,6 +9,9 @@ export function useServiceStatus() {
   const chromeMcpFailed = ref(false);
   const chromeMcpErrorType = ref<string | undefined>(undefined);
   const chromeMcpErrorMessage = ref<string | undefined>(undefined);
+  /** 服务启动失败（非 Chrome MCP 部分失败）的原因，供错误层展示 */
+  const failureErrorType = ref<string | undefined>(undefined);
+  const failureErrorMessage = ref<string | undefined>(undefined);
   const log = createLogger("useServiceStatus");
 
   const loadingText = computed(() => {
@@ -29,6 +32,8 @@ export function useServiceStatus() {
       chromeMcpFailed.value = false;
       chromeMcpErrorType.value = undefined;
       chromeMcpErrorMessage.value = undefined;
+      failureErrorType.value = undefined;
+      failureErrorMessage.value = undefined;
     } else if (task === "chrome_mcp_failed") {
       serviceStatus.value = "partial";
       chromeMcpFailed.value = true;
@@ -41,6 +46,8 @@ export function useServiceStatus() {
       task === "proxy_start_failed"
     ) {
       serviceStatus.value = "failed";
+      failureErrorType.value = errorType;
+      failureErrorMessage.value = errorMessage;
     } else if (serviceStatus.value === "idle" && task) {
       serviceStatus.value = "starting";
     }
@@ -59,6 +66,8 @@ export function useServiceStatus() {
     chromeMcpFailed,
     chromeMcpErrorType,
     chromeMcpErrorMessage,
+    failureErrorType,
+    failureErrorMessage,
     loadingText,
     updateStatusFromTask,
     setStarting,

@@ -26,9 +26,10 @@ function mergeSettings(
   defaultSettings: typeof DEFAULT_OPENCODE_SETTINGS,
   userSettings?: OpenCodeSettings,
 ): OpenCodeSettings {
-  if (!userSettings) return defaultSettings;
-
+  // 始终返回新对象：调用方（如注入 language）不应改写常量 DEFAULT_OPENCODE_SETTINGS
   const result: OpenCodeSettings = { ...defaultSettings };
+
+  if (!userSettings) return result;
 
   // 只合并用户提供的非 undefined 设置
   if (userSettings.general) {
@@ -57,6 +58,12 @@ function mergeSettings(
 export function generateBridgeScript(options: BridgeScriptOptions = {}): string {
   const { theme = "auto", language, settings } = options;
   const mergedSettings = mergeSettings(DEFAULT_OPENCODE_SETTINGS, settings);
+
+  // language 属于 OpenCode Web 的 general 设置项：并入 settings 一起落盘（settings.v3），
+  // 不再单独注入无人读取的顶层字段（显式语言优先于 settings 中的同名字段）。
+  if (language) {
+    mergedSettings.general = { ...(mergedSettings.general ?? {}), language };
+  }
 
   return `
 (function() {
@@ -109,14 +116,18 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
   // === 初始化配置 ===
   const initialConfig = {
     theme: ${JSON.stringify(theme)},
-    language: ${JSON.stringify(language || null)},
     settings: ${JSON.stringify(mergedSettings)}
   };
 
   // 初始化主题
   if (initialConfig.theme && initialConfig.theme !== "auto") {
-    localStorage.setItem(THEME_KEY, initialConfig.theme);
-    document.documentElement.setAttribute("data-color-scheme", initialConfig.theme);
+    try {
+      localStorage.setItem(THEME_KEY, initialConfig.theme);
+      document.documentElement.setAttribute("data-color-scheme", initialConfig.theme);
+    } catch (e) {
+      // localStorage / DOM 不可用（隐私模式、第三方存储拦截）时忽略，
+      // 避免抛错中断后续 message/keydown 监听注册与 READY 上报
+    }
   }
 
   // 初始化设置

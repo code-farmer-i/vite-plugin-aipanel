@@ -312,7 +312,7 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
           });
           service.currentTask = {
             task: "provider_not_installed",
-            data: { error: e instanceof Error ? e.message : String(e) },
+            errorMessage: e instanceof Error ? e.message : String(e),
           };
           // 中间件已注册，SSE 端点会把该状态推送给客户端；跳过后续服务启动流程
           timer.end("❌ Provider 加载失败");

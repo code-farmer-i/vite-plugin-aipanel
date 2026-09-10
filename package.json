@@ -33,6 +33,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r --if-present test",
+    "test:coverage": "pnpm -r --if-present test:coverage",
     "typecheck": "pnpm -r --if-present run typecheck && vue-tsc -p tsconfig.json --noEmit",
     "release": "node scripts/release.js",
     "deploy:docs": "node scripts/deploy-docs.js"
@@ -44,6 +45,7 @@
     "@types/chrome": "^0.2.2",
     "@types/node": "^26.1.1",
     "@vitejs/plugin-vue": "^6.0.7",
+    "@vitest/coverage-v8": "^4.1.0",
     "@vue/test-utils": "^2.4.11",
     "enquirer": "^2.4.1",
     "eslint": "^10.6.0",

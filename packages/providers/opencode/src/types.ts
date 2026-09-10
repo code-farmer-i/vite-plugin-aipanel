@@ -41,6 +41,12 @@ export interface OpenCodeSettings {
     followup?: "steer" | "suggest" | "none";
     /** 显示推理摘要 */
     showReasoningSummaries?: boolean;
+    /** 显示文件树 */
+    showFileTree?: boolean;
+    /** 使用新版布局设计 */
+    newLayoutDesigns?: boolean;
+    /** 界面语言（由 providerOptions.language 注入） */
+    language?: OpenCodeLanguage;
     /** 默认展开 shell 工具部分 */
     shellToolPartsExpanded?: boolean;
     /** 默认展开编辑工具部分 */

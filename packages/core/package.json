@@ -34,6 +34,7 @@
   "scripts": {
     "build": "pagoda-cli build",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.declaration.json --noEmit"
   },
   "dependencies": {

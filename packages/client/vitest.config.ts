@@ -9,5 +9,12 @@ export default defineConfig({
     environmentOptions: {
       jsdom: { url: "http://localhost/" },
     },
+    coverage: {
+      provider: "v8",
+      reporter: ["text-summary", "lcov"],
+      include: ["src/**/*.{ts,vue}"],
+      exclude: ["**/*.d.ts"],
+      thresholds: { lines: 55, statements: 55, functions: 60, branches: 45 },
+    },
   },
 });

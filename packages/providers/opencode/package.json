@@ -23,7 +23,8 @@
   "scripts": {
     "build": "pagoda-cli build",
     "typecheck": "tsc -p tsconfig.declaration.json --noEmit",
-    "test": "vitest run --root ."
+    "test": "vitest run --root .",
+    "test:coverage": "vitest run --root . --coverage"
   },
   "devDependencies": {
     "vitest": "^4.1.0"

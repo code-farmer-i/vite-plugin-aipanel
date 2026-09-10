@@ -3,7 +3,7 @@ import type {
   PageContext,
   ProviderCapabilities,
   ProviderEvent,
-  ServiceStartupTask,
+  ServiceTaskState,
 } from "@aipanel/core";
 import type http from "http";
 
@@ -19,7 +19,7 @@ export interface EndpointContext {
   /** 清除选中元素（活跃 Tab） */
   clearSelectedElements(): void;
   get isServiceStarted(): boolean;
-  get currentTask(): { task: ServiceStartupTask; data?: Record<string, unknown> } | null;
+  get currentTask(): ServiceTaskState | null;
   get actualProxyPort(): number;
   get actualWebPort(): number;
   get serviceInstanceId(): string;

@@ -63,12 +63,24 @@ describe("useServiceStatus", () => {
     ["web_start_timeout"],
     ["proxy_start_failed"],
     ["session_creation_failed"],
-  ] as const)("失败类任务 %s → failed", (task) => {
+  ] as const)("失败类任务 %s → failed 并记录失败原因", (task) => {
     const s = useServiceStatus();
     s.updateStatusFromTask("ready");
-    s.updateStatusFromTask(task);
+    s.updateStatusFromTask(task, "BOOM", "boom");
     expect(s.serviceStatus.value).toBe("failed");
     expect(s.loadingText.value).toBe(SERVICE_STARTUP_TASKS[task]);
+    expect(s.failureErrorType.value).toBe("BOOM");
+    expect(s.failureErrorMessage.value).toBe("boom");
+  });
+
+  it("ready 复位时清空失败原因", () => {
+    const s = useServiceStatus();
+    s.updateStatusFromTask("provider_not_installed", "BOOM", "boom");
+    expect(s.failureErrorMessage.value).toBe("boom");
+
+    s.updateStatusFromTask("ready");
+    expect(s.failureErrorType.value).toBeUndefined();
+    expect(s.failureErrorMessage.value).toBeUndefined();
   });
 
   it("失败态收到普通启动任务不会被降级为 starting（保持 failed）", () => {

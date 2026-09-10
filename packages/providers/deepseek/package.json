@@ -23,7 +23,8 @@
   "scripts": {
     "build": "pagoda-cli build && node scripts/build-dsh-assets.mjs",
     "typecheck": "tsc -p tsconfig.declaration.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@aipanel/core": "workspace:*",

@@ -28,7 +28,8 @@
   ],
   "scripts": {
     "build": "pagoda-cli build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "peerDependencies": {
     "vue": "^3.5.0"

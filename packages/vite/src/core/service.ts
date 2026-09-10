@@ -1,7 +1,13 @@
 import type { ResultPromise } from "execa";
 import type http from "http";
 import { randomUUID } from "node:crypto";
-import type { PluginOptions, ProviderEvent, ServiceStartupTask, WebProvider } from "@aipanel/core";
+import type {
+  PluginOptions,
+  ProviderEvent,
+  ServiceStartupTask,
+  ServiceTaskState,
+  WebProvider,
+} from "@aipanel/core";
 import {
   DEFAULT_PROXY_PORT,
   SERVER_START_TIMEOUT,
@@ -24,7 +30,7 @@ export class AIPanelService {
   public chromeMcpWarmupFailed = false;
   public chromeMcpWarmupErrorType: ChromeMcpWarmupErrorType | null = null;
   public chromeMcpWarmupErrorMessage: string | null = null;
-  public currentTask: { task: ServiceStartupTask; data?: Record<string, unknown> } | null = null;
+  public currentTask: ServiceTaskState | null = null;
   public workspaceRoot: string | null = null;
   private mcp: McpProxy | null = null;
   private provider: WebProvider | null = null;
@@ -50,12 +56,13 @@ export class AIPanelService {
     this.provider = provider;
   }
 
-  private sendTaskUpdate(task: ServiceStartupTask, data?: Record<string, unknown>) {
-    this.currentTask = { task, ...data };
+  private sendTaskUpdate(task: ServiceStartupTask, data?: Omit<ServiceTaskState, "task">) {
+    // task 放在 data 之后展开，避免 data 中的同名字段覆盖任务名
+    this.currentTask = { ...data, task };
     this.sseClients.forEach((client) => {
       try {
         client.write(
-          `data: ${JSON.stringify({ type: SSE_EVENT_TYPES.TASK_UPDATE, task, ...data })}\n\n`,
+          `data: ${JSON.stringify({ type: SSE_EVENT_TYPES.TASK_UPDATE, ...data, task })}\n\n`,
         );
       } catch (e) {
         log.debug("Failed to send TASK_UPDATE event", { error: e });
@@ -267,8 +274,8 @@ export class AIPanelService {
 
       if (warmupFailed) {
         this.sendTaskUpdate("chrome_mcp_failed", {
-          errorType: this.chromeMcpWarmupErrorType,
-          errorMessage: this.chromeMcpWarmupErrorMessage,
+          errorType: this.chromeMcpWarmupErrorType ?? undefined,
+          errorMessage: this.chromeMcpWarmupErrorMessage ?? undefined,
         });
       } else {
         this.sendTaskUpdate("ready");

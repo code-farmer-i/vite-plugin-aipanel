@@ -24,7 +24,8 @@
   "scripts": {
     "build": "node scripts/sync-official-meta.mjs && pagoda-cli build && vite build -c vite.client.config.ts",
     "typecheck": "tsc -p tsconfig.declaration.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "vite",

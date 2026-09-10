@@ -12,7 +12,8 @@
     "./composables/*": "./src/composables/*"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@aipanel/ui": "workspace:*",

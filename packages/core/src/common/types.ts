@@ -136,6 +136,19 @@ export type ServiceStartupTask =
   | "ready";
 
 /**
+ * 服务启动任务状态载荷
+ * currentTask / SSE TASK_UPDATE / STATUS_SYNC 共用同一形态（单一来源）
+ */
+export interface ServiceTaskState {
+  /** 当前任务 */
+  task: ServiceStartupTask;
+  /** 失败原因类型（如 ChromeMcpWarmupErrorType） */
+  errorType?: string;
+  /** 失败原因文案 */
+  errorMessage?: string;
+}
+
+/**
  * 服务启动任务状态映射
  */
 export const SERVICE_STARTUP_TASKS: Record<ServiceStartupTask, string> = {

@@ -1,6 +1,6 @@
 {
   "name": "@aipanel/ui",
-  "version": "1.2.15",
+  "version": "1.2.16",
   "description": "Reusable AIPanel widget components built with Pagoda CLI",
   "type": "module",
   "main": "lib/index.cjs",

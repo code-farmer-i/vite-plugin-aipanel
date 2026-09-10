@@ -7,10 +7,11 @@
  *   - 不调用 start / checkEnvironment / listSessions / createSession 等网络/进程方法。
  * resolveDeepSeekOptions 为模块私有函数（未导出），无法直接构造观测 → 跳过（见交付报告）。
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ProviderConfig, WebProvider } from "@aipanel/core";
 import { DSH_LOOPBACK_HOST, DSH_DEFAULT_PORT } from "../src/constants";
 import { DeepSeekWebProvider } from "../src/provider";
+import { LaunchToken } from "../src/deepseek-web";
 
 function makeProvider(): DeepSeekWebProvider {
   return new DeepSeekWebProvider(
@@ -68,5 +69,33 @@ describe("DeepSeekWebProvider.buildSessionUrl（纯方法）", () => {
     expect(url).toBe(`http://${DSH_LOOPBACK_HOST}:6097/`);
     // 不同会话/目录得到同一壳 URL
     expect(p.buildSessionUrl("/other", "sess-1")).toBe(url);
+  });
+});
+
+describe("LaunchToken 超时诊断", () => {
+  it("超时错误回填最近 stdout/stderr，便于定位 token 未打印的真实根因", async () => {
+    vi.useFakeTimers();
+    try {
+      const lt = new LaunchToken();
+      lt.recordOutput("stdout", "cordis 1.2.3\nbooted\n");
+      lt.recordOutput("stderr", "warn: frontend not built\n");
+      const waiting = lt.wait(20000);
+      vi.advanceTimersByTime(20000);
+      await expect(waiting).rejects.toThrow(/dsh launch token was not captured/);
+      await waiting.catch((e: Error) => {
+        expect(e.message).toContain("cordis 1.2.3");
+        expect(e.message).toContain("booted");
+        expect(e.message).toContain("warn: frontend not built");
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("已解析 token 时 recordOutput 不影响 wait 快速成功", async () => {
+    const lt = new LaunchToken();
+    lt.set("abc123");
+    lt.recordOutput("stdout", "busy noise\n");
+    await expect(lt.wait(1)).resolves.toBe("abc123");
   });
 });

@@ -18,6 +18,16 @@ export class LaunchToken {
     reject: (err: Error) => void;
     timer: NodeJS.Timeout;
   }[] = [];
+  /** dsh 进程原始输出尾部缓存，超时报错时回填，便于定位真实根因 */
+  private stdoutTail = "";
+  private stderrTail = "";
+
+  /** 记录 dsh 进程原始输出（只保留末尾，防止内存无限增长），用于超时报错时辅助诊断 */
+  recordOutput(stream: "stdout" | "stderr", text: string): void {
+    const key = stream === "stdout" ? "stdoutTail" : "stderrTail";
+    const tail = this[key] + text;
+    this[key] = tail.length > 4096 ? tail.slice(-4096) : tail;
+  }
 
   /** 从子进程输出写入已解析的 token（幂等：只接受第一个） */
   set(token: string): void {
@@ -42,9 +52,16 @@ export class LaunchToken {
     if (this.failure) return Promise.reject(this.failure);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        const err = new Error(
-          `dsh launch token was not captured from stdout within ${timeoutMs}ms (dsh >= 0.1.2 should print the "dsh web: http://127.0.0.1:<port>/?token=..." URL)`,
-        );
+        const detail = [
+          `dsh launch token was not captured from within ${timeoutMs}ms (dsh >= 0.1.2 should print the "dsh web: http://127.0.0.1:<port>/?token=..." URL)`,
+        ];
+        if (this.stdoutTail.trim()) {
+          detail.push("-- last dsh stdout --", this.stdoutTail.trim());
+        }
+        if (this.stderrTail.trim()) {
+          detail.push("-- last dsh stderr --", this.stderrTail.trim());
+        }
+        const err = new Error(detail.join("\n"));
         this.failure = err;
         for (const w of this.waiters) {
           clearTimeout(w.timer);
@@ -138,6 +155,7 @@ export function startDeepSeekWeb(options: DeepSeekWebOptions): ResultPromise {
     stdoutBuffer += chunk;
     // 仅保留末尾足够长度，防止长时间运行内存无限增长
     if (stdoutBuffer.length > 4096) stdoutBuffer = stdoutBuffer.slice(-4096);
+    launchToken?.recordOutput("stdout", chunk);
     if (launchToken && !launchToken.get()) {
       const match = stdoutBuffer.match(/[?&]token=([A-Za-z0-9_-]+)/);
       if (match) {
@@ -154,6 +172,7 @@ export function startDeepSeekWeb(options: DeepSeekWebOptions): ResultPromise {
 
   proc.stderr?.on("data", (data) => {
     const output = data.toString().trim();
+    launchToken?.recordOutput("stderr", data.toString());
     if (output) {
       log.warn("[dsh stderr]", { output });
       getProcessLogBuffer().addProviderStderr(output);

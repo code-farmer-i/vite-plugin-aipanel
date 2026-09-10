@@ -1,6 +1,6 @@
 {
   "name": "@aipanel/provider-deepseek",
-  "version": "1.2.16",
+  "version": "1.2.17",
   "type": "module",
   "main": "lib/index.cjs",
   "module": "es/index.js",

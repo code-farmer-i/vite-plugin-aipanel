@@ -34,6 +34,7 @@ import {
   DSH_PLUGIN_PACKAGE,
   dshProfileDir,
   ensureDshPackage,
+  readProviderVersion,
   resolveDevDshPackageSource,
 } from "./dsh-install";
 
@@ -144,11 +145,14 @@ Please upgrade:
     this.api.setLaunchTokenSource(() => launchToken.wait());
 
     const devClientDir = resolveDevDshPackageSource(import.meta.url, "dsh-client", "lib/client.js");
+    // 与插件保持同步的基准版本 = 当前 provider 版本（dsh-client/plugin 与其锁步发布）
+    const providerVersion = readProviderVersion(import.meta.url);
     const clientAvailable = await ensureDshPackage(
       profileDir,
       DSH_CLIENT_PACKAGE,
       devClientDir ?? DSH_CLIENT_PACKAGE,
       this.opts.home,
+      providerVersion,
     );
     if (!clientAvailable) {
       log.warn("@aipanel/dsh-client unavailable; @ menu chip highlight disabled", {
@@ -162,6 +166,7 @@ Please upgrade:
       DSH_PLUGIN_PACKAGE,
       devPluginDir ?? DSH_PLUGIN_PACKAGE,
       this.opts.home,
+      providerVersion,
     );
     if (!pluginAvailable) {
       log.warn("@aipanel/dsh-plugin unavailable; run_diagnostics & settings application disabled", {

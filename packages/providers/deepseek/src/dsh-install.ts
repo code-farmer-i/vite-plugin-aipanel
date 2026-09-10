@@ -60,6 +60,27 @@ export function isDshPackageInstalled(profileDir: string, packageName: string): 
   return fs.existsSync(packageJsonIn(profileDir, packageName));
 }
 
+/** 读取 profile 内已安装的某包版本（可解析不到时返回 null） */
+export function readPackageVersion(profileDir: string, packageName: string): string | null {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(packageJsonIn(profileDir, packageName), "utf8"));
+    return typeof pkg.version === "string" ? pkg.version : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 读取当前 provider 包版本（运行时源码 lib/es 的上一级即 package.json） */
+export function readProviderVersion(metaUrl: string): string | null {
+  try {
+    const pkgPath = path.resolve(path.dirname(fileURLToPath(metaUrl)), "../package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    return typeof pkg.version === "string" ? pkg.version : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 确保某 @aipanel/dsh-* 包已安装且为最新（官方命令 dsh plugin add）。
  * 每次启动都执行（不跳过已安装）：dev 本地目录每次重装保证改代码生效，
@@ -71,6 +92,7 @@ export async function ensureDshPackage(
   packageName: string,
   target: string,
   home?: string,
+  expectedVersion?: string | null,
 ): Promise<boolean> {
   try {
     log.debug(`installing ${target} into dsh profile via dsh plugin add`);
@@ -87,6 +109,17 @@ export async function ensureDshPackage(
         profileDir,
       });
       return false;
+    }
+    // 与当前 provider 版本同步校验：不一致说明 profile 里是旧插件，提示升级
+    const installed = readPackageVersion(profileDir, packageName);
+    if (expectedVersion && installed && installed !== expectedVersion) {
+      log.warn(
+        `${packageName} version ${installed} is out of sync with provider ${expectedVersion}`,
+        {
+          profileDir,
+          install: `dsh plugin --profile web add ${packageName}@${expectedVersion}`,
+        },
+      );
     }
     return true;
   } catch (e) {

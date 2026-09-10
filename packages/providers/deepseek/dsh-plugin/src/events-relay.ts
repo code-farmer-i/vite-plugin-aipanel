@@ -72,9 +72,15 @@ export function setupEventRelay(
   },
 ): void {
   const vitePort = config.vitePort ?? 0;
-  const viteHost = config.viteHost ?? "127.0.0.1";
+  const viteHost = config.viteHost;
   const token = config.eventsToken;
   if (!token || vitePort <= 0) return;
+  // viteHost 是事件回推地址的单一来源，缺失即配置错误，报错并停用中继，不做 127.0.0.1 向下兼容
+  //（跨网络/自定义 host 场景下用默认值会把 running/与标题事件推丢，正是本方要杜绝的回归）。
+  if (!viteHost) {
+    log.error(`host event relay requires a concrete viteHost; relay disabled`, { viteHost });
+    return;
+  }
   const eventsPath = config.eventsPath ?? HOST_EVENTS_API_PATH;
   const eventsUrl = `http://${viteHost}:${vitePort}${eventsPath}`;
 

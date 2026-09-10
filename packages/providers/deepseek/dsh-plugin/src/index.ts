@@ -236,7 +236,9 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
   // 与 opencode 对齐：默认关闭自动诊断，OPENCODE_ENABLE_LINT=1（或显式配置）开启
   const autoDiagnose = config.autoDiagnose ?? process.env[OPENCODE_ENV.ENABLE_LINT] === "1";
   const vitePort = config.vitePort ?? 0;
-  const viteHost = config.viteHost ?? "127.0.0.1";
+  // viteHost 单一来源（overlay 注入的 config.viteHost），不做 127.0.0.1 向下兼容；
+  // 缺失时由事件中继明确报错停用，避免静默把事件推到错误地址。
+  const viteHost = config.viteHost;
   const contextApiPath = config.contextApiPath ?? CONTEXT_API_PATH;
 
   const tools: ToolRuntime = ctx.tools;
@@ -459,6 +461,7 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
   // === 4) 宿主 → core 事件中继（running / thinking 指示恢复；无令牌/无端口时为空操作） ===
   setupEventRelay(ctx, {
     vitePort,
+    viteHost,
     eventsPath: config.eventsPath,
     eventsToken: config.eventsToken,
   });

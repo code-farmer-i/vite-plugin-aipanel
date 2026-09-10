@@ -1,5 +1,55 @@
 # 更新日志
 
+## v1.2.19
+
+`2026-09-10`
+
+### deepseek
+
+#### 🐛 修复
+
+- 修复 dsh 插件无法自动更新的问题：生产环境依赖安装目标改为显式带版本号的包名，精确绑定当前 provider 版本；开发环境仍使用本地源码链接
+- 新增 dsh 插件与 provider 的版本同步校验：读取当前包版本与已安装依赖版本，本地安装版本与当前 provider 不一致时给出升级提示
+
+### core
+
+#### ⚡ 改进
+
+- 优化 `getCliVersion` 实现，支持从 stderr 读取版本输出，修复部分 CLI 版本获取失败问题；统一工具函数参数换行与 spawn 命令参数格式，提升代码可读性
+
+## v1.2.18
+
+`2026-09-10`
+
+### providers
+
+#### ⚡ 改进
+
+- 为 OpenCode 与 DeepSeek 提供者新增版本检测调试日志（仅详细日志模式可见）
+- 重构 DeepSeek 超时诊断日志输出：将超时时的进程 stdout/stderr 合并为单条告警日志，并增加日志幂等标记，避免重复打印启动日志
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.18/packages/extension/aipanel-assistant.zip)
+
+## v1.2.17
+
+`2026-09-10`
+
+### deepseek
+
+#### ✨ 新增
+
+- 为 LaunchToken 增加超时输出诊断能力：缓存进程最近的 stdout/stderr 输出，超时错误时回填，帮助定位 token 未打印的根因，并同步补充对应测试用例
+
+#### ⚡ 改进
+
+- 更新 deepseek 相关依赖至 0.1.5-rc.1 版本
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.17/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.16
 
 `2026-09-10`

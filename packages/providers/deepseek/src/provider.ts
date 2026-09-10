@@ -147,10 +147,15 @@ Please upgrade:
     const devClientDir = resolveDevDshPackageSource(import.meta.url, "dsh-client", "lib/client.js");
     // 与插件保持同步的基准版本 = 当前 provider 版本（dsh-client/plugin 与其锁步发布）
     const providerVersion = readProviderVersion(import.meta.url);
+    // 生产用显式版本号 target（@pkg@<版本>）强制每次启动落精确版本；裸包名可能沿用 profile 里旧的
+    // 精确 pin 而不更新，正是用户反馈“插件没更新”的场景。dev 用本地 link，随源码重建生效。
+    const clientTarget =
+      devClientDir ??
+      (providerVersion ? `${DSH_CLIENT_PACKAGE}@${providerVersion}` : `${DSH_CLIENT_PACKAGE}@latest`);
     const clientAvailable = await ensureDshPackage(
       profileDir,
       DSH_CLIENT_PACKAGE,
-      devClientDir ?? DSH_CLIENT_PACKAGE,
+      clientTarget,
       this.opts.home,
       providerVersion,
     );
@@ -161,10 +166,13 @@ Please upgrade:
     }
 
     const devPluginDir = resolveDevDshPackageSource(import.meta.url, "dsh-plugin", "dist/index.js");
+    const pluginTarget =
+      devPluginDir ??
+      (providerVersion ? `${DSH_PLUGIN_PACKAGE}@${providerVersion}` : `${DSH_PLUGIN_PACKAGE}@latest`);
     const pluginAvailable = await ensureDshPackage(
       profileDir,
       DSH_PLUGIN_PACKAGE,
-      devPluginDir ?? DSH_PLUGIN_PACKAGE,
+      pluginTarget,
       this.opts.home,
       providerVersion,
     );

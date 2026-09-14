@@ -140,7 +140,7 @@ describe("apply: run_diagnostics execute 分支", () => {
           },
         ],
       },
-      tscOutput: { rawOutput: "", diagnostics: [] },
+      tscOutput: { rawOutput: "", diagnostics: [], source: "vue-tsc" },
     });
     const tool = setup("/work/proj");
 
@@ -177,7 +177,7 @@ describe("apply: run_diagnostics execute 分支", () => {
       fs.writeFileSync(file, "export const a = 1;\n");
       mocks.runAllChecks.mockResolvedValue({
         eslintOutput: { text: "", diagnostics: [] },
-        tscOutput: { rawOutput: "tsc text", diagnostics: [] },
+        tscOutput: { rawOutput: "tsc text", diagnostics: [], source: "vue-tsc" },
       });
       const tool = setup(cwd);
 
@@ -227,7 +227,7 @@ describe("apply: tools/post-execute 自动诊断门禁", () => {
     mocks.isJsFile.mockReturnValue(true);
     mocks.runAllChecks.mockResolvedValue({
       eslintOutput: { text: "E-msg" },
-      tscOutput: { rawOutput: "T-msg" },
+      tscOutput: { rawOutput: "T-msg", source: "vue-tsc" },
     });
     const handler = setup({ autoDiagnose: true });
 

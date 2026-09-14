@@ -2,10 +2,10 @@
  * @fileoverview 编辑后诊断插件
  * @description edit/write 工具执行后：
  *   1. ESLint 检查（Node API）
- *   2. vue-tsc 类型检查（过滤当前文件诊断）
+ *   2. TypeScript 类型检查（tsc / vue-tsc 按项目自动选择，过滤当前文件诊断）
  *   3. 诊断结果追加到工具输出，供 Agent 查看（不做回滚）
  *
- * 诊断引擎（ESLint/vue-tsc/格式化/全量诊断）统一由 @aipanel/core/node 提供，
+ * 诊断引擎（ESLint/类型检查/格式化/全量诊断）统一由 @aipanel/core/node 提供，
  * 与 dsh 侧审查工具共用同一实现，保证行为一致。
  */
 
@@ -19,6 +19,7 @@ import {
   runAllChecks,
   runProjectDiagnostics,
   formatDiagnosticsSections,
+  tscSectionTitle,
   isJsFile,
   MUTATING_TOOLS,
   OPENCODE_ENV,
@@ -104,13 +105,13 @@ export default {
           lintEnabled: isLintEnabled(),
         });
 
-        // ESLint 和 vue-tsc 并行检查
+        // ESLint 和类型检查并行检查
         const { eslintOutput, tscOutput } = await runAllChecks(filePath, workspace);
 
         // 构建诊断原文
         const parts: string[] = [];
         if (tscOutput.rawOutput.trim()) {
-          parts.push("## vue-tsc\n\n" + tscOutput.rawOutput.trim());
+          parts.push(`## ${tscSectionTitle(tscOutput)}\n\n` + tscOutput.rawOutput.trim());
         }
         if (eslintOutput.text) {
           parts.push("## ESLint\n\n" + eslintOutput.text);

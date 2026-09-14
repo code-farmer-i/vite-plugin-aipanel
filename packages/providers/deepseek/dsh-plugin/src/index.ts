@@ -2,11 +2,11 @@
  * AIPanel × DeepSeek Harness 插件
  *
  * 运行在 dsh 宿主进程（Cordis 插件），向 dsh agent 提供 AIPanel 能力：
- *  1. run_diagnostics 审查工具（对标 opencode 质量门禁，手动触发 ESLint + vue-tsc）
+ *  1. run_diagnostics 审查工具（对标 opencode 质量门禁，手动触发 ESLint + 类型检查）
  *  2. tools/post-execute：编辑工具（write/edit）执行后自动把诊断并入工具结果（不做回滚）；
  *     PTC（run_code）子调度只登记编辑目标，由外层调用收尾聚合成一条 additionalContexts 回给模型
  *
- * 诊断引擎（ESLint/vue-tsc/格式化/全量诊断）统一由 @aipanel/core/node 提供，
+ * 诊断引擎（ESLint/类型检查/格式化/全量诊断）统一由 @aipanel/core/node 提供，
  * 与 opencode 侧质量门禁共用同一实现，保证行为一致。
  *
  * 依赖策略：本插件保持"零运行时 @deepseek-ai 依赖"（全部 type-only import），
@@ -37,6 +37,7 @@ import {
   createLogger,
   DIAGNOSTICS_TOOL_DESCRIPTION,
   formatDiagnosticsSections,
+  tscSectionTitle,
   type DiagnosticItem,
   type EslintOutput,
   type TscResult,
@@ -163,7 +164,7 @@ async function collectPtcDiagnostics(files: Set<string>, cwd: string): Promise<s
   return blocks.length > 0 ? `自动诊断（PTC 批量编辑后）：\n\n${blocks.join("\n\n")}` : "";
 }
 
-/** 单条诊断分区（ESLint / vue-tsc） */
+/** 单条诊断分区（ESLint / 类型检查） */
 interface DiagnosticsSection {
   title: string;
   text: string;
@@ -197,7 +198,7 @@ function buildDiagnosticsCanonical(
     title,
     sections: [
       { title: "ESLint", text: eslintOutput.text || "没有发现问题" },
-      { title: "vue-tsc", text: tscOutput.rawOutput.trim() || "没有发现类型错误" },
+      { title: tscSectionTitle(tscOutput), text: tscOutput.rawOutput.trim() || "没有发现类型错误" },
     ],
     diagnostics: [
       ...toDiagnosticEntries(eslintOutput.diagnostics ?? []),
@@ -456,7 +457,8 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
 
         // 与 opencode tool.execute.after 相同的诊断拼装；空结果不改动工具输出
         const parts: string[] = [];
-        if (tscOutput.rawOutput.trim()) parts.push("## vue-tsc\n\n" + tscOutput.rawOutput.trim());
+        if (tscOutput.rawOutput.trim())
+          parts.push(`## ${tscSectionTitle(tscOutput)}\n\n` + tscOutput.rawOutput.trim());
         if (eslintOutput.text) parts.push("## ESLint\n\n" + eslintOutput.text);
         const diagText = parts.join("\n\n");
         if (!diagText) return decision;

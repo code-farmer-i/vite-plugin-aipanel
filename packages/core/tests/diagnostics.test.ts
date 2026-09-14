@@ -54,6 +54,7 @@ let eslintAvailable: boolean;
 let eslintLintThrows: boolean;
 let eslintLintImpl: (pattern: string) => Promise<FakeLintResult[]>;
 let vueTscResolvable: boolean;
+let tscResolvable: boolean;
 let execImpl: ExecImpl;
 
 class FakeESLint {
@@ -80,6 +81,10 @@ fakeRequire.resolve = ((id: string) => {
     if (!vueTscResolvable) throw new Error("Cannot find module 'vue-tsc/bin/vue-tsc.js'");
     return "/fake-bin/vue-tsc.js";
   }
+  if (id === "typescript/bin/tsc") {
+    if (!tscResolvable) throw new Error("Cannot find module 'typescript/bin/tsc'");
+    return "/fake-bin/tsc.js";
+  }
   throw new Error("Cannot resolve '" + id + "'");
 }) as unknown as NodeRequire["resolve"];
 
@@ -96,6 +101,7 @@ beforeEach(() => {
   eslintLintThrows = false;
   eslintLintImpl = async () => [];
   vueTscResolvable = true;
+  tscResolvable = true;
   execImpl = (_cmd, _opts, cb) => cb(null, "", "");
   mockedCreateRequire.mockImplementation(() => fakeRequire);
   (mockedExec as unknown as ReturnType<typeof vi.fn>).mockImplementation(
@@ -224,11 +230,12 @@ describe("lintFiles with a fake ESLint", () => {
   });
 });
 
-describe("runVueTsc", () => {
+describe("runTypeCheck", () => {
   it("returns an empty success when the vue-tsc bin cannot be resolved", async () => {
     vueTscResolvable = false;
     const mod = await freshModule();
-    const result = await mod.runVueTsc(undefined, "/proj");
+    // /proj 无 package.json → 走 vue-tsc 回退路径；两边都解析不到 → 空结果
+    const result = await mod.runTypeCheck(undefined, "/proj");
     expect(result).toEqual({ rawOutput: "", exitCode: 0 });
   });
 
@@ -242,7 +249,7 @@ describe("runVueTsc", () => {
       );
     };
     const mod = await freshModule();
-    const result = await mod.runVueTsc(undefined, "/proj");
+    const result = await mod.runTypeCheck(undefined, "/proj");
 
     expect(result.exitCode).toBe(1);
     expect(result.rawOutput).toContain("error TS2322");
@@ -264,14 +271,81 @@ describe("runVueTsc", () => {
   it("flags a killed process as exit code 1 with a timeout message", async () => {
     execImpl = (_cmd, _opts, cb) => cb({ code: null, killed: true }, "", "");
     const mod = await freshModule();
-    const result = await mod.runVueTsc(undefined, "/proj");
+    const result = await mod.runTypeCheck(undefined, "/proj");
     expect(result.exitCode).toBe(1);
     expect(result.rawOutput).toContain("超时");
   });
 });
 
+describe("runTypeCheck 引擎选择", () => {
+  /** 建临时项目目录：package.json + tsconfig.json（保证从项目目录起解析） */
+  function makeProject(deps: Record<string, string>): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aipanel-engine-"));
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "probe", dependencies: deps }),
+    );
+    fs.writeFileSync(path.join(dir, "tsconfig.json"), "{}");
+    return dir;
+  }
+
+  it("非 Vue 项目（react 依赖）用项目自身的 tsc", async () => {
+    const dir = makeProject({ react: "^19" });
+    let ranBin = "";
+    execImpl = (cmd, opts, cb) => {
+      ranBin = cmd;
+      expect(opts.cwd).toBe(dir);
+      cb({ code: 1 }, "a.ts(1,1): error TS1: boom", "");
+    };
+    try {
+      const mod = await freshModule();
+      const result = await mod.runTypeCheck(undefined, dir);
+      expect(ranBin).toContain("/fake-bin/tsc.js");
+      expect(result.source).toBe("tsc");
+      expect(result.diagnostics![0]).toMatchObject({ source: "tsc" });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Vue 项目（vue 依赖）用 vue-tsc", async () => {
+    const dir = makeProject({ vue: "^3.5" });
+    let ranBin = "";
+    execImpl = (cmd, _opts, cb) => {
+      ranBin = cmd;
+      cb({ code: 0 }, "", "");
+    };
+    try {
+      const mod = await freshModule();
+      const result = await mod.runTypeCheck(undefined, dir);
+      expect(ranBin).toContain("/fake-bin/vue-tsc.js");
+      expect(result.source).toBe("vue-tsc");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("非 Vue 项目但 tsc 解析失败时回退 vue-tsc", async () => {
+    const dir = makeProject({ react: "^19" });
+    tscResolvable = false;
+    let ranBin = "";
+    execImpl = (cmd, _opts, cb) => {
+      ranBin = cmd;
+      cb({ code: 0 }, "", "");
+    };
+    try {
+      const mod = await freshModule();
+      const result = await mod.runTypeCheck(undefined, dir);
+      expect(ranBin).toContain("/fake-bin/vue-tsc.js");
+      expect(result.source).toBe("vue-tsc");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("runAllChecks", () => {
-  it("runs lintFiles and runVueTsc in parallel and aggregates outputs", async () => {
+  it("runs lintFiles and type-check in parallel and aggregates outputs", async () => {
     eslintLintImpl = async () => [
       {
         filePath: "/proj/x.ts",
@@ -341,7 +415,11 @@ describe("runProjectDiagnostics", () => {
 
 describe("formatDiagnosticsSections", () => {
   it("renders placeholders when both engines report nothing", () => {
-    const text = formatDiagnosticsSections("# 报告", {}, { rawOutput: "", exitCode: 0 });
+    const text = formatDiagnosticsSections(
+      "# 报告",
+      {},
+      { rawOutput: "", exitCode: 0, source: "vue-tsc" },
+    );
     expect(text).toBe("# 报告\n\n## ESLint\n\n没有发现问题\n\n## vue-tsc\n\n没有发现类型错误");
   });
 
@@ -349,11 +427,25 @@ describe("formatDiagnosticsSections", () => {
     const text = formatDiagnosticsSections(
       "# 报告",
       { text: "ERROR [a.ts:1:1] nope (r)" },
-      { rawOutput: "src/a.ts(1,1): error TS1: bad\n", exitCode: 1 },
+      { rawOutput: "src/a.ts(1,1): error TS1: bad\n", exitCode: 1, source: "vue-tsc" },
     );
     expect(text).toContain("## ESLint");
     expect(text).toContain("ERROR [a.ts:1:1] nope (r)");
     expect(text).toContain("## vue-tsc");
     expect(text).toContain("error TS1: bad");
+  });
+
+  it("follows the actual engine (tsc) for the section title", () => {
+    const text = formatDiagnosticsSections(
+      "# 报告",
+      {},
+      {
+        rawOutput: "a.ts(1,1): error TS1: bad",
+        exitCode: 1,
+        source: "tsc",
+      },
+    );
+    expect(text).toContain("## tsc");
+    expect(text).not.toContain("vue-tsc");
   });
 });

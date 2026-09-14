@@ -1,11 +1,14 @@
 /**
  * 代码诊断引擎（质量门禁）——opencode 插件与 dsh 插件共用的同一实现。
  *
- * 职责：ESLint（Node API）+ vue-tsc --build（CLI）两类检查，支持单文件诊断与
+ * 职责：ESLint（Node API）+ TypeScript 类型检查（CLI）两类检查，支持单文件诊断与
  * 全量项目诊断，输出统一的分区文本格式。
  *
- * 本模块零运行时静态依赖：eslint / vue-tsc 均通过 createRequire 动态解析
- * （eslint 从被诊断的 workspace 解析，vue-tsc 从本模块自身 node_modules 解析），
+ * 类型检查引擎按项目自动选择：package.json 直接依赖 vue/nuxt → vue-tsc（支持 .vue）；
+ * 否则用项目自身的 tsc（版本与项目一致、无 Volar 开销），解析不到时回退 vue-tsc。
+ *
+ * 本模块零运行时静态依赖：eslint / vue-tsc / typescript 均通过 createRequire 动态解析
+ * （eslint / tsc 从被诊断的 workspace 解析，vue-tsc 从本模块自身 node_modules 解析），
  * 因此任何宿主（opencode / dsh）bundle 本模块后都可直接使用，无需用户安装检查器。
  */
 import fs from "node:fs";
@@ -83,6 +86,8 @@ export interface TscResult {
   rawOutput: string;
   exitCode: number;
   diagnostics?: DiagnosticItem[];
+  /** 实际使用的类型检查引擎名（"tsc" / "vue-tsc"），用于分区标题；解析失败等极端场景缺省 */
+  source?: string;
 }
 
 export interface EslintOutput {
@@ -198,7 +203,7 @@ export async function lintFiles(
   }
 }
 
-// ---- vue-tsc ----
+// ---- TypeScript 类型检查（引擎按项目自动选择） ----
 
 let _vueTscBin: string | null | undefined;
 
@@ -217,6 +222,63 @@ function resolveVueTscBin(): string | null {
     _vueTscBin = null;
   }
   return _vueTscBin;
+}
+
+/** tsc bin 解析缓存（key 为 package.json 所在目录） */
+const _tscBinByPkgDir = new Map<string, string | null>();
+
+/** 从起始目录向上查找最近的 package.json 所在目录（找不到返回 null） */
+function nearestPackageJsonDir(startDir: string): string | null {
+  let dir = path.resolve(startDir);
+  while (true) {
+    if (fs.existsSync(path.join(dir, "package.json"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/** package.json 直接依赖（含 dev）是否含 vue / nuxt（Vue 技术栈信号） */
+function isVuePackage(pkgDir: string): boolean {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, "package.json"), "utf8")) as {
+      dependencies?: Record<string, unknown>;
+      devDependencies?: Record<string, unknown>;
+    };
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    return "vue" in deps || "nuxt" in deps;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 解析类型检查引擎：Vue 项目（vue/nuxt 依赖）→ vue-tsc；否则 → 项目自身的 tsc
+ * （React 等纯 TS 项目无需 Volar 层，且 tsc 版本与项目一致）。
+ * 项目未装 typescript 或无 package.json 时回退 vue-tsc（vue-tsc 为 tsc 超集）。
+ */
+function resolveTypeCheckBin(projectDir: string): { bin: string; source: string } | null {
+  const pkgDir = nearestPackageJsonDir(projectDir);
+  if (!pkgDir || isVuePackage(pkgDir)) {
+    const bin = resolveVueTscBin();
+    return bin ? { bin, source: "vue-tsc" } : null;
+  }
+
+  let bin = _tscBinByPkgDir.get(pkgDir);
+  if (bin === undefined) {
+    try {
+      const req = createRequire(path.join(pkgDir, "package.json"));
+      bin = req.resolve("typescript/bin/tsc");
+    } catch {
+      bin = null;
+    }
+    _tscBinByPkgDir.set(pkgDir, bin);
+    if (!bin) log.debug("workspace tsc not resolvable, fallback to vue-tsc", { pkgDir });
+  }
+
+  if (bin) return { bin, source: "tsc" };
+  const vueBin = resolveVueTscBin();
+  return vueBin ? { bin: vueBin, source: "vue-tsc" } : null;
 }
 
 /** 从文件路径向上查找最近的 tsconfig.json 所在目录 */
@@ -268,11 +330,12 @@ export function findAllTsconfigDirs(workspace: string): string[] {
   return dirs;
 }
 
-/** 简单解析 vue-tsc 输出为 DiagnosticItem，可选按文件过滤 */
+/** 简单解析 tsc 输出为 DiagnosticItem，可选按文件过滤 */
 function parseTscDiags(
   rawOutput: string,
   filePath?: string,
   projectDir?: string,
+  source = "tsc",
 ): DiagnosticItem[] {
   const errorLinePat = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS(\d+):\s+(.+)$/;
   const diags: DiagnosticItem[] = [];
@@ -295,7 +358,7 @@ function parseTscDiags(
           end: { line: Number(lineNum) - 1, character: Number(col) - 1 },
         },
         message: `[TS${code}] ${message}`,
-        source: "vue-tsc",
+        source,
       });
     }
   }
@@ -303,21 +366,21 @@ function parseTscDiags(
   return diags;
 }
 
-/** 运行 vue-tsc --build --noEmit，返回原始输出 */
-export async function runVueTsc(filePath: string | undefined, cwd: string): Promise<TscResult> {
+/** 运行 TypeScript 类型检查（tsc / vue-tsc 按项目自动选择）--build --noEmit，返回原始输出 */
+export async function runTypeCheck(filePath: string | undefined, cwd: string): Promise<TscResult> {
   const dir = cwd;
   // 如果有文件路径，从文件向上找最近的 tsconfig.json 所在目录，
   // 确保 --build 使用正确的项目 tsconfig 而非 monorepo 根目录
   const projectDir = filePath ? (findTsconfigDir(filePath) ?? dir) : dir;
-  log.debug("runVueTsc", {
+  log.debug("runTypeCheck", {
     filePath: filePath || "(all)",
     cwd: dir,
     projectDir,
     processCwd: process.cwd(),
   });
-  const bin = resolveVueTscBin();
-  if (!bin) {
-    log.warn("vue-tsc bin not found", { projectDir });
+  const engine = resolveTypeCheckBin(projectDir);
+  if (!engine) {
+    log.warn("type-check bin not found", { projectDir });
     return { rawOutput: "", exitCode: 0 };
   }
 
@@ -326,7 +389,7 @@ export async function runVueTsc(filePath: string | undefined, cwd: string): Prom
 
   return new Promise((resolve) => {
     exec(
-      `node "${bin}" --build --noEmit --pretty false`,
+      `node "${engine.bin}" --build --noEmit --pretty false`,
       { cwd: projectDir, timeout, maxBuffer },
       (error, stdout, stderr) => {
         let rawOutput = stdout + stderr;
@@ -334,10 +397,10 @@ export async function runVueTsc(filePath: string | undefined, cwd: string): Prom
         const exitCode = typeof error?.code === "number" ? error.code : killed ? 1 : 0;
 
         if (killed && !rawOutput) {
-          rawOutput = "vue-tsc 检查超时，请尝试缩小检查范围或优化项目配置。";
+          rawOutput = `${engine.source} 检查超时，请尝试缩小检查范围或优化项目配置。`;
         }
 
-        const diagnostics = parseTscDiags(rawOutput, filePath, projectDir);
+        const diagnostics = parseTscDiags(rawOutput, filePath, projectDir, engine.source);
 
         // 单文件模式：保留目标文件的错误行及其续行（缩进的多行详情）
         if (filePath) {
@@ -360,29 +423,30 @@ export async function runVueTsc(filePath: string | undefined, cwd: string): Prom
           rawOutput = filtered.join("\n");
         }
 
-        log.debug("vue-tsc finished", {
+        log.debug("type-check finished", {
+          engine: engine.source,
           filePath: filePath || "(all)",
           exitCode,
           outputLength: rawOutput.length,
         });
-        resolve({ rawOutput, exitCode, diagnostics });
+        resolve({ rawOutput, exitCode, diagnostics, source: engine.source });
       },
     );
   });
 }
 
-/** 并行运行 ESLint + vue-tsc 检查（单文件或 glob） */
+/** 并行运行 ESLint + 类型检查（单文件或 glob） */
 export async function runAllChecks(pattern: string, cwd: string): Promise<DiagnosticsResult> {
   log.debug("runAllChecks", { pattern, cwd });
   const [eslintOutput, tscOutput] = await Promise.all([
     lintFiles(pattern, cwd),
-    runVueTsc(pattern, cwd),
+    runTypeCheck(pattern, cwd),
   ]);
   return { eslintOutput, tscOutput };
 }
 
 /**
- * 全量项目诊断：优先从根 tsconfig 运行一次 vue-tsc --build，
+ * 全量项目诊断：优先从根 tsconfig 运行一次类型检查 --build，
  * 根无 tsconfig 时回退到逐个子目录 build；ESLint 以 "." 全量扫描。
  */
 export async function runProjectDiagnostics(workspace: string): Promise<DiagnosticsResult> {
@@ -393,7 +457,7 @@ export async function runProjectDiagnostics(workspace: string): Promise<Diagnost
 
   const [eslintOutput, ...tscOutputs] = await Promise.all([
     lintFiles(".", workspace, 10),
-    ...tscDirs.map((dir) => runVueTsc(undefined, dir)),
+    ...tscDirs.map((dir) => runTypeCheck(undefined, dir)),
   ]);
 
   const mergedTsc: TscResult = {
@@ -403,12 +467,18 @@ export async function runProjectDiagnostics(workspace: string): Promise<Diagnost
       .join("\n"),
     exitCode: tscOutputs.reduce((max, o) => Math.max(max, o.exitCode), 0),
     diagnostics: tscOutputs.flatMap((o) => o.diagnostics ?? []),
+    source: tscOutputs.find((o) => o.source)?.source,
   };
 
   return { eslintOutput, tscOutput: mergedTsc };
 }
 
-/** 组装统一的分区诊断文本（ESLint / vue-tsc，空结果显示占位文案） */
+/** 类型检查分区标题（单一来源：跟随实际引擎 tsc / vue-tsc） */
+export function tscSectionTitle(tscOutput: TscResult): string {
+  return tscOutput.source ?? "tsc";
+}
+
+/** 组装统一的分区诊断文本（ESLint / 类型检查，空结果显示占位文案） */
 export function formatDiagnosticsSections(
   title: string,
   eslintOutput: EslintOutput,
@@ -419,7 +489,7 @@ export function formatDiagnosticsSections(
   parts.push("## ESLint\n\n" + (eslintOutput.text || "没有发现问题"));
 
   const tscLines = tscOutput.rawOutput.trim();
-  parts.push("## vue-tsc\n\n" + (tscLines || "没有发现类型错误"));
+  parts.push(`## ${tscSectionTitle(tscOutput)}\n\n` + (tscLines || "没有发现类型错误"));
 
   return `${title}\n\n` + parts.join("\n\n");
 }

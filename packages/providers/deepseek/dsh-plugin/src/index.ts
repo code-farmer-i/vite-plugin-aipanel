@@ -95,7 +95,12 @@ function buildNodeContext(e: SelectedElement): string {
   const loc = e.line ? (e.column ? `:${e.line}:${e.column}` : `:${e.line}`) : "";
   if (e.filePath) lines.push(`源码文件路径：${e.filePath}${loc}`);
   if (e.description) lines.push(`DOM 元素选择器：${e.description}`);
-  if (e.innerText) lines.push(`DOM 元素内部文本：${e.innerText.slice(0, 200)}`);
+  if (e.innerText) {
+    // 先截断再转义换行：真实 \n 转义成字面量 "\\n"，让模型把它当作单个逻辑文本值，
+    // 与上下文里用于分行的结构换行区分开；顺序不可反，避免截断残缺的转义序列。
+    const text = e.innerText.slice(0, 20).replace(/\r?\n/g, "\\n");
+    lines.push(`DOM 元素内部文本：${text}`);
+  }
   if (e.previewPageUrl) lines.push(`用户选中节点时的页面 URL：${e.previewPageUrl}`);
   return lines.join("\n");
 }

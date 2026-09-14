@@ -2,7 +2,6 @@ import type { HtmlTagDescriptor, Plugin, ViteDevServer } from "vite";
 import type http from "http";
 import crypto from "crypto";
 import fs from "fs";
-import Inspector from "unplugin-vue-inspector/vite";
 import type { PageContext, PluginOptions, WebProvider } from "@aipanel/core";
 import {
   CONTEXT_API_PATH,
@@ -16,6 +15,7 @@ import { createLogger, initProcessLogCapture } from "@aipanel/core/node";
 
 import { setupMiddlewares, LOGS_API_PATH, VUE_DEVTOOLS_API_PATH } from "./endpoints/index";
 import { injectWidget } from "./core/injector";
+import { createInspectorPlugins } from "./inspectors";
 import { loadProvider, type ProviderId } from "./core/provider-loader";
 import type { OpenCodeProviderOptions } from "@aipanel/provider-opencode";
 import type { DeepSeekProviderOptions } from "@aipanel/provider-deepseek";
@@ -108,13 +108,8 @@ export default function aipanelPlugin<const P extends ProviderId = "default">(
 ): Plugin[] {
   const plugins: Plugin[] = [];
 
-  plugins.push(
-    ...Inspector({
-      enabled: false,
-      toggleButtonVisibility: "never",
-      toggleComboKey: false,
-    }),
-  );
+  // 框架 Inspector 构建期插件（点击元素 → 打开源码），客户端按同一 id 解析适配器
+  plugins.push(...createInspectorPlugins());
 
   plugins.push(createAIPanelPlugin(options));
 

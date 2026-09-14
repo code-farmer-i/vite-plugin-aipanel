@@ -261,7 +261,7 @@ const confirmDelete = async (message) => {
 1. **iframe 通信**: 如果需要与 iframe 进行通信，可以使用 `sendMessageToIframe` 方法
 2. **对话框**: `showConfirmDialog` 返回 Promise，需要使用 `await` 处理
 3. **通知**: `showNotification` 的持续时间可以自定义，默认 3000ms
-4. **选择模式**: 选择模式依赖 `__VUE_INSPECTOR__` 全局对象，需要确保已安装 Vue Inspector
+4. **选择模式**: 选择模式依赖 `@aipanel/core` 的框架 Inspector 适配器（当前已实现 Vue），需确保对应框架的 Inspector 运行时已注入页面
 5. **主题切换**: 在 `auto` 模式下，组件会自动检测系统主题变化
 
 ## 依赖

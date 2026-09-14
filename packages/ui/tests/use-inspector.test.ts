@@ -21,13 +21,12 @@ import { mountComposable, unmountAll, flushVue } from "./helpers";
 
 type Inspector = NonNullable<typeof window.__VUE_INSPECTOR__>;
 
-/** 构造 __VUE_INSPECTOR__ 假实现，并单独持有各方法的 mock 便于断言 */
+/** 构造 __VUE_INSPECTOR__（框架适配器运行时）假实现，并单独持有各方法的 mock 便于断言 */
 function createInspector() {
-  const getTargetNode = vi.fn(() => ({ targetNode: null, params: null }));
   const handleClick = vi.fn();
   const enable = vi.fn();
   const disable = vi.fn();
-  const inspector: Inspector = { getTargetNode, handleClick, enable, disable };
+  const inspector: Inspector = { handleClick, enable, disable };
   return { inspector, handleClick, enable, disable };
 }
 

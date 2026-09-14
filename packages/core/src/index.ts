@@ -1,4 +1,5 @@
 export * from "./common/constants";
+export * from "./common/inspector";
 export * from "./common/logger-core";
 export * from "./common/options";
 export * from "./common/provider";

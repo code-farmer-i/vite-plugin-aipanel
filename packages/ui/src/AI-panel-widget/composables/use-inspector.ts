@@ -1,26 +1,15 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 import { ref, watch, onMounted, onUnmounted, nextTick, type Ref } from "vue";
-import { INSPECTOR_CHECK_INTERVAL, truncate } from "@aipanel/core";
+import {
+  INSPECTOR_CHECK_INTERVAL,
+  listInspectorAdapters,
+  resolveInspectorAdapter,
+  truncate,
+  type InspectorSourceLocation,
+} from "@aipanel/core";
 import getCssSelector from "css-selector-generator";
 import type { AIPanelSelectedElement } from "../src/types";
-
-interface VueInspector {
-  getTargetNode: (e: MouseEvent) => {
-    targetNode: Element | null;
-    params: { file?: string; line?: number; column?: number } | null;
-  };
-  handleClick: (e: MouseEvent) => void;
-  enable: () => void;
-  disable: () => void;
-  __aipanel_hooked?: boolean;
-}
-
-declare global {
-  interface Window {
-    __VUE_INSPECTOR__?: VueInspector;
-  }
-}
 
 interface UseInspectorOptions {
   selectMode: Ref<boolean>;
@@ -28,26 +17,25 @@ interface UseInspectorOptions {
   onExitSelectMode: () => void;
 }
 
-interface FileInfo {
-  file: string | null;
-  line: number | null;
-  column: number | null;
-}
+/** 挂件自身 UI 根节点：点击其内部元素透传给底层 inspector，不进入元素选择 */
+const WIDGET_ROOT_SELECTOR = ".aipanel-widget";
 
-// 需要忽略的选择器列表
-const IGNORE_SELECTORS = [
-  "#vue-inspector-container",
-  ".aipanel-widget",
+/** 挂件自身 UI：不参与元素选择 */
+const WIDGET_IGNORE_SELECTORS = [
+  WIDGET_ROOT_SELECTOR,
   ".aipanel-element-highlight",
   ".aipanel-element-tooltip",
   ".aipanel-select-mode-hint",
   ".floating-bubble",
 ];
 
-const IGNORE_ATTRIBUTE = "data-v-inspector-ignore";
+// 需要忽略的选择器/属性：挂件自身 UI + 各框架适配器自带的覆盖层与忽略标记（单一来源）
+const IGNORE_SELECTORS = [
+  ...WIDGET_IGNORE_SELECTORS,
+  ...listInspectorAdapters().flatMap((adapter) => adapter.ignoreSelectors),
+];
 
-const KEY_PROPS_DATA = "__v_inspector";
-const KEY_DATA = "data-v-inspector";
+const IGNORE_ATTRIBUTES = listInspectorAdapters().flatMap((adapter) => adapter.ignoreAttributes);
 
 function getDirectText(element: Element): string {
   // 不能只取直接文本节点：选中元素常含行内子元素（<span>/<b> 等），
@@ -140,149 +128,22 @@ function getElementDescription(element: Element): string {
   });
 }
 
-interface Vue3ComponentInstance {
-  type?: {
-    __file?: string;
-    name?: string;
-  };
-  parent?: Vue3ComponentInstance;
-  vnode?: {
-    type?: {
-      __file?: string;
-      name?: string;
-    };
-  };
-}
-
-interface Vue2ComponentInstance {
-  $options?: {
-    __file?: string;
-    name?: string;
-    _componentTag?: string;
-  };
-  $parent?: Vue2ComponentInstance;
-}
-
-function getFileInfoFromVueInstance(element: Element): FileInfo | null {
-  const vue3Instance = (element as Element & { __vueParentComponent?: Vue3ComponentInstance })
-    .__vueParentComponent;
-  if (vue3Instance) {
-    let current: Vue3ComponentInstance | undefined = vue3Instance;
-    while (current) {
-      const file = current.type?.__file || current.vnode?.type?.__file;
-      if (file) {
-        return { file, line: null, column: null };
-      }
-      current = current.parent;
-    }
-  }
-
-  const vue2Instance = (element as Element & { __vue__?: Vue2ComponentInstance }).__vue__;
-  if (vue2Instance) {
-    let current: Vue2ComponentInstance | undefined = vue2Instance;
-    while (current) {
-      const file = current.$options?.__file;
-      if (file) {
-        return { file, line: null, column: null };
-      }
-      current = current.$parent;
-    }
-  }
-
-  return null;
-}
-
 function shouldIgnoreElement(el: Element): boolean {
-  if (el.hasAttribute(IGNORE_ATTRIBUTE)) return true;
+  if (IGNORE_ATTRIBUTES.some((attribute) => el.hasAttribute(attribute))) return true;
   for (const selector of IGNORE_SELECTORS) {
     if (el.closest(selector)) return true;
   }
   return false;
 }
 
-function getDataFromElement(el: Element): string | undefined {
-  const vnodeData = (el as unknown as { __vnode?: { props?: Record<string, unknown> } }).__vnode
-    ?.props?.[KEY_PROPS_DATA];
-  if (vnodeData) return vnodeData as string;
-
-  const ctxVNode = (
-    el as unknown as {
-      __vnode?: { ctx?: { vnode?: { el?: Element; props?: Record<string, unknown> } } };
-    }
-  ).__vnode?.ctx?.vnode;
-  if (ctxVNode?.el === el) {
-    const ctxData = ctxVNode.props?.[KEY_PROPS_DATA];
-    if (ctxData) return ctxData as string;
-  }
-
-  const vueInstance = (
-    el as unknown as {
-      __vueParentComponent?: {
-        parent?: {
-          vnode?: { el?: Element; props?: Record<string, unknown> };
-          parent?: unknown;
-        };
-      };
-    }
-  ).__vueParentComponent;
-
-  let currentParent = vueInstance?.parent;
-  while (currentParent) {
-    if (currentParent.vnode?.el === el) {
-      const parentData = currentParent.vnode.props?.[KEY_PROPS_DATA];
-      if (parentData) return parentData as string;
-    }
-    currentParent = currentParent.parent as typeof currentParent;
-  }
-
-  const attr = el.getAttribute(KEY_DATA);
-  return attr ?? undefined;
-}
-
-function findInspectorFileInfo(element: Element): FileInfo | null {
-  let current: Element | null = element;
-  while (current) {
-    if (shouldIgnoreElement(current)) {
-      current = current.parentElement;
-      continue;
-    }
-    const data = getDataFromElement(current);
-    if (data) {
-      const splitRE = /(.+):([\d]+):([\d]+)$/;
-      const match = data.match(splitRE);
-      if (match) {
-        return {
-          file: match[1],
-          line: parseInt(match[2], 10),
-          column: parseInt(match[3], 10),
-        };
-      }
-    }
-    current = current.parentElement;
+/** 元素源码位置：依次尝试各框架适配器解析（与 inspector 运行时是否就绪无关） */
+function resolveElementSourceLocation(element: Element | null): InspectorSourceLocation | null {
+  if (!element) return null;
+  for (const adapter of listInspectorAdapters()) {
+    const location = adapter.resolveSourceLocation(element);
+    if (location?.file) return location;
   }
   return null;
-}
-
-function mergeFileInfo(inspectorFileInfo: FileInfo | null, vueFileInfo: FileInfo | null): FileInfo {
-  if (!inspectorFileInfo?.file && !vueFileInfo?.file) {
-    return { file: null, line: null, column: null };
-  }
-
-  const isNodeModules = (path: string) => path.includes("node_modules");
-
-  if (inspectorFileInfo?.file && vueFileInfo?.file) {
-    if (!isNodeModules(inspectorFileInfo.file)) {
-      return inspectorFileInfo;
-    } else if (!isNodeModules(vueFileInfo.file)) {
-      return vueFileInfo;
-    } else {
-      return inspectorFileInfo;
-    }
-  } else if (inspectorFileInfo?.file) {
-    return inspectorFileInfo;
-  } else {
-    return vueFileInfo!;
-  }
 }
 
 function getTargetElement(e: MouseEvent): Element | null {
@@ -290,18 +151,6 @@ function getTargetElement(e: MouseEvent): Element | null {
   const el = e.target as Element;
   if (shouldIgnoreElement(el)) return null;
   return el;
-}
-
-function getFileInfo(e: MouseEvent, element: Element | null): FileInfo {
-  let inspectorFileInfo: FileInfo | null = null;
-
-  if (element) {
-    inspectorFileInfo = findInspectorFileInfo(element);
-  }
-
-  const vueFileInfo = element ? getFileInfoFromVueInstance(element) : null;
-
-  return mergeFileInfo(inspectorFileInfo, vueFileInfo);
 }
 
 export function useInspector(options: UseInspectorOptions) {
@@ -345,7 +194,7 @@ export function useInspector(options: UseInspectorOptions) {
     setPointerEventsNone(uiElements);
 
     const elementToHighlight = getTargetElement(e);
-    const fileInfo = getFileInfo(e, elementToHighlight);
+    const fileInfo = resolveElementSourceLocation(elementToHighlight);
 
     setPointerEventsAuto(uiElements);
 
@@ -359,9 +208,9 @@ export function useInspector(options: UseInspectorOptions) {
       }
 
       const description = getElementDescription(elementToHighlight);
-      const fileName = fileInfo.file ? fileInfo.file.split("/").pop() : "";
+      const fileName = fileInfo?.file ? fileInfo.file.split("/").pop() : "";
       let lineInfo = "";
-      if (fileInfo.line) {
+      if (fileInfo?.line) {
         lineInfo = `:${fileInfo.line}`;
         if (fileInfo.column) {
           lineInfo += `:${fileInfo.column}`;
@@ -516,46 +365,43 @@ export function useInspector(options: UseInspectorOptions) {
 
   const handleMouseMove = handleMouseMoveCore;
 
-  function setupInspectorHook() {
-    const inspector = window.__VUE_INSPECTOR__;
-    if (!inspector || inspector.__aipanel_hooked) return;
+  /**
+   * 元素点击：交给当前可用的框架适配器接管。
+   * 返回 true = 宿主接管（适配器抑制底层默认行为）；返回 false = 透传给底层 inspector。
+   */
+  function handleElementClick(element: Element | null): boolean {
+    if (!options.selectMode.value) return false;
 
-    const originalHandleClick = inspector.handleClick.bind(inspector);
+    // 点击挂件自身 UI：透传给底层 inspector
+    if (element?.closest(WIDGET_ROOT_SELECTOR)) return false;
 
-    inspector.handleClick = function (e: MouseEvent) {
-      if (options.selectMode.value) {
-        const targetEl = e.target instanceof Element ? e.target : null;
-        if (targetEl && targetEl.closest(".aipanel-widget")) {
-          return originalHandleClick.call(inspector, e);
-        }
+    const elementToSelect = element && !shouldIgnoreElement(element) ? element : null;
 
-        e.preventDefault();
-        e.stopPropagation();
+    if (elementToSelect) {
+      const fileInfo = resolveElementSourceLocation(elementToSelect);
+      const innerText = getDirectText(elementToSelect);
+      const description = getElementDescription(elementToSelect);
 
-        const elementToSelect = getTargetElement(e);
-        const fileInfo = getFileInfo(e, elementToSelect);
+      const elementInfo: AIPanelSelectedElement = {
+        filePath: fileInfo?.file ?? null,
+        line: fileInfo?.line ?? null,
+        column: fileInfo?.column ?? null,
+        innerText: truncate(innerText, 200),
+        description,
+      };
 
-        if (elementToSelect) {
-          const innerText = getDirectText(elementToSelect);
-          const description = getElementDescription(elementToSelect);
+      options.onAddSelectedNode(elementInfo);
+    }
 
-          const elementInfo: AIPanelSelectedElement = {
-            filePath: fileInfo.file,
-            line: fileInfo.line,
-            column: fileInfo.column,
-            innerText: truncate(innerText, 200),
-            description,
-          };
+    return true;
+  }
 
-          options.onAddSelectedNode(elementInfo);
-        }
-        return;
-      }
-
-      return originalHandleClick.call(inspector, e);
-    };
-
-    inspector.__aipanel_hooked = true;
+  /** 安装点击接管：适配器运行时未就绪时返回 false，由调用方轮询重试 */
+  function hookInspector(): boolean {
+    const adapter = resolveInspectorAdapter();
+    if (!adapter) return false;
+    adapter.onElementClick(handleElementClick);
+    return true;
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -567,17 +413,12 @@ export function useInspector(options: UseInspectorOptions) {
   }
 
   watch(options.selectMode, (newVal) => {
-    const inspector = window.__VUE_INSPECTOR__;
+    resolveInspectorAdapter()?.setEnabled(newVal);
+
     if (newVal) {
-      if (inspector) {
-        inspector.enable();
-      }
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("keydown", handleKeydown, true);
     } else {
-      if (inspector) {
-        inspector.disable();
-      }
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("keydown", handleKeydown, true);
       highlightVisible.value = false;
@@ -586,19 +427,15 @@ export function useInspector(options: UseInspectorOptions) {
   });
 
   onMounted(() => {
-    if (window.__VUE_INSPECTOR__) {
-      setupInspectorHook();
-    } else {
-      inspectorCheckTimer = window.setInterval(() => {
-        if (window.__VUE_INSPECTOR__) {
-          setupInspectorHook();
-          if (inspectorCheckTimer) {
-            window.clearInterval(inspectorCheckTimer);
-            inspectorCheckTimer = null;
-          }
-        }
-      }, INSPECTOR_CHECK_INTERVAL);
-    }
+    if (hookInspector()) return;
+
+    inspectorCheckTimer = window.setInterval(() => {
+      if (!hookInspector()) return;
+      if (inspectorCheckTimer) {
+        window.clearInterval(inspectorCheckTimer);
+        inspectorCheckTimer = null;
+      }
+    }, INSPECTOR_CHECK_INTERVAL);
   });
 
   onUnmounted(() => {

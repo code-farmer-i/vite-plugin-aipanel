@@ -10,6 +10,8 @@ import {
   DEFAULT_PROXY_PORT,
   AUTO_OPEN_DELAY,
   ensureNodeId,
+  listInspectorAdapters,
+  resolveInspectorAdapter,
 } from "@aipanel/core";
 import { createLogger } from "@aipanel/core/client";
 
@@ -290,12 +292,16 @@ const toggleSelectMode = () => {
     return;
   }
 
-  const win = window as typeof window & { __VUE_INSPECTOR__?: unknown; };
-  if (win.__VUE_INSPECTOR__) {
+  if (resolveInspectorAdapter()) {
     handleSelectModeChange(!selectMode.value);
-  } else {
-    showNotification("Vue Inspector 未加载，无法使用元素选择功能");
+    return;
   }
+
+  // 提示文案取自已登记的框架适配器名称（单一来源），避免宿主硬编码框架名
+  const labels = listInspectorAdapters()
+    .map((adapter) => adapter.label)
+    .join(" / ");
+  showNotification(`${labels} 未加载，无法使用元素选择功能`);
 };
 
 // Ctrl+P 热键仅在非扩展模式下注册（扩展模式在 Side Panel 中运行）

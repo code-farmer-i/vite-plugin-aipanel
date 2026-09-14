@@ -70,7 +70,7 @@ export const CONTEXT_UPDATE_INTERVAL = 500;
 /** 服务器同步间隔（毫秒） */
 export const SERVER_SYNC_INTERVAL = 2000;
 
-/** Vue Inspector 检查间隔（毫秒） */
+/** 框架 Inspector 检查间隔（毫秒） */
 export const INSPECTOR_CHECK_INTERVAL = 500;
 
 /** 自动打开延迟（毫秒） */
@@ -247,3 +247,16 @@ export const SSE_EVENT_TYPES = {
   CLEAR_ELEMENTS: "CLEAR_ELEMENTS",
 } as const;
 export type SSEEventType = (typeof SSE_EVENT_TYPES)[keyof typeof SSE_EVENT_TYPES];
+
+/** ==================== 元素选择器（click-to-source） ==================== */
+
+/**
+ * 元素选择器适配器标识：服务端注入的构建期插件与客户端运行时适配器共用同一标识，
+ * 新增框架（如 React）在此登记，两侧按同一 id 对齐。
+ */
+export const INSPECTOR_ADAPTER_IDS = {
+  vue: "vue",
+} as const;
+
+/** 元素选择器适配器标识类型 */
+export type InspectorAdapterId = (typeof INSPECTOR_ADAPTER_IDS)[keyof typeof INSPECTOR_ADAPTER_IDS];

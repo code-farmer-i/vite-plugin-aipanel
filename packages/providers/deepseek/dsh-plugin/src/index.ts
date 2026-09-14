@@ -3,7 +3,8 @@
  *
  * 运行在 dsh 宿主进程（Cordis 插件），向 dsh agent 提供 AIPanel 能力：
  *  1. run_diagnostics 审查工具（对标 opencode 质量门禁，手动触发 ESLint + vue-tsc）
- *  2. tools/post-execute：编辑工具（write/edit）执行后自动把诊断并入工具结果（不做回滚）
+ *  2. tools/post-execute：编辑工具（write/edit）执行后自动把诊断并入工具结果（不做回滚）；
+ *     PTC（run_code）子调度只登记编辑目标，由外层调用收尾聚合成一条 additionalContexts 回给模型
  *
  * 诊断引擎（ESLint/vue-tsc/格式化/全量诊断）统一由 @aipanel/core/node 提供，
  * 与 opencode 侧质量门禁共用同一实现，保证行为一致。
@@ -35,6 +36,7 @@ import {
   CONTEXT_API_PATH,
   createLogger,
   DIAGNOSTICS_TOOL_DESCRIPTION,
+  formatDiagnosticsSections,
   type DiagnosticItem,
   type EslintOutput,
   type TscResult,
@@ -96,6 +98,64 @@ function buildNodeContext(e: SelectedElement): string {
   if (e.innerText) lines.push(`DOM 元素内部文本：${e.innerText.slice(0, 200)}`);
   if (e.previewPageUrl) lines.push(`用户选中节点时的页面 URL：${e.previewPageUrl}`);
   return lines.join("\n");
+}
+
+/** 构造 plugin 来源的用户上下文消息（pre-step 节点上下文与 PTC 聚合诊断共用） */
+function buildPluginMessage(text: string): UserMessage {
+  return {
+    role: "user",
+    id: randomUUID(),
+    content: [{ type: "text", text }],
+    source: { kind: "plugin", plugin: name },
+  } as UserMessage;
+}
+
+/** PTC 编辑目标登记表：外层 rootCallId → 本次程序编辑过的源文件绝对路径集合 */
+type PtcEditTargets = Map<string, Set<string>>;
+
+/** 登记一次 PTC 子调度的编辑目标（仅可诊断的写类工具、成功、accept 决策） */
+function registerPtcEdit(
+  targets: PtcEditTargets,
+  rootKey: string,
+  exec: ToolExecution,
+  result: Readonly<ToolExecutionResult>,
+  decision: PostToolDecision,
+  cwd: string,
+): void {
+  if (!MUTATING_TOOLS.has(exec.name)) return;
+  if (result.isError) return;
+  if (decision.kind !== "accept") return;
+  const rawArgs = exec.arguments as { file_path?: unknown; filePath?: unknown } | undefined;
+  const filePath = typeof rawArgs?.file_path === "string" ? rawArgs.file_path : rawArgs?.filePath;
+  if (typeof filePath !== "string" || !filePath) return;
+  if (!isJsFile(filePath)) return;
+  let files = targets.get(rootKey);
+  if (!files) {
+    files = new Set();
+    targets.set(rootKey, files);
+  }
+  files.add(path.resolve(cwd, filePath));
+}
+
+/**
+ * 对本次 PTC 程序登记的文件统一诊断，聚合成一条文本（仅保留有发现的分区）。
+ * 复用 run_diagnostics 的 formatDiagnosticsSections 分区格式，两处呈现一致。
+ */
+async function collectPtcDiagnostics(files: Set<string>, cwd: string): Promise<string> {
+  const blocks: string[] = [];
+  for (const file of files) {
+    const { eslintOutput, tscOutput } = await runAllChecks(file, cwd).catch(
+      (): { eslintOutput: EslintOutput; tscOutput: TscResult } => ({
+        eslintOutput: {},
+        tscOutput: { rawOutput: "", exitCode: 0 },
+      }),
+    );
+    if (!eslintOutput.text && !tscOutput.rawOutput.trim()) continue;
+    blocks.push(
+      formatDiagnosticsSections(`### ${path.relative(cwd, file)}`, eslintOutput, tscOutput),
+    );
+  }
+  return blocks.length > 0 ? `自动诊断（PTC 批量编辑后）：\n\n${blocks.join("\n\n")}` : "";
 }
 
 /** 单条诊断分区（ESLint / vue-tsc） */
@@ -327,6 +387,8 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
     tools.register(diagnosticsTool);
 
     // === 2) 编辑后自动诊断（不做回滚） ===
+    // PTC 编辑目标登记表：外层 rootCallId → 本次程序编辑过的源文件（外层调用收尾时清空）
+    const pendingPtcEdits: PtcEditTargets = new Map();
     ctx.on(
       "tools/post-execute",
       async (
@@ -336,10 +398,36 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
       ) => {
         const decision = await next();
         if (!autoDiagnose) return decision;
+
         // PTC 子调度（run_code 程序内调 edit/write）：程序拿到的是 canonical value，
-        // 看不到 content 通道的追加文本，自动检查结果对程序与模型都不可见——
-        // 不白跑检查，程序需要诊断时主动调用 run_diagnostics 获取结构化结果。
-        if (exec.parent !== undefined) return decision;
+        // 追加的 content 只进 tool/ptc-dispatch 持久化日志，程序与模型都看不到。
+        // 因此这里只登记编辑目标，等外层调用收尾统一诊断，避免逐次白跑与刷屏。
+        if (exec.parent !== undefined) {
+          registerPtcEdit(pendingPtcEdits, String(exec.rootCallId), exec, result, decision, cwd);
+          return decision;
+        }
+
+        // 外层调用收尾：本次 PTC 程序若登记过编辑目标，聚合诊断并以 additionalContexts
+        // 追加 plugin 上下文消息。该通道经 ptc bridge 的 deferContext 上提到外层 run_code，
+        // 再经 agent-loop 的 acceptContext 回给模型（content 通道在 PTC 下不达模型）。
+        // 用登记表判定而非硬编码 run_code 名：只有 transport 子调度会登记，键即外层 rootCallId。
+        const rootKey = String(exec.rootCallId);
+        const ptcTargets = pendingPtcEdits.get(rootKey);
+        if (ptcTargets !== undefined) {
+          pendingPtcEdits.delete(rootKey);
+          if (decision.kind !== "accept") return decision;
+          const ptcDiagText = await collectPtcDiagnostics(ptcTargets, cwd);
+          if (!ptcDiagText) return decision;
+          return {
+            ...decision,
+            additionalContexts: [
+              ...(decision.additionalContexts ?? []),
+              buildPluginMessage(ptcDiagText),
+            ],
+          };
+        }
+
+        // 原生路径：编辑工具执行后把诊断并入工具结果 content。
         if (!MUTATING_TOOLS.has(exec.name)) return decision;
         if (result.isError) return decision;
         if (decision.kind !== "accept") return decision;
@@ -433,17 +521,9 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
         // 上下文（含节点 ID）足以让模型理解引用指向哪个节点。
 
         const contextText = injected.map(buildNodeContext).join("\n\n---\n\n");
-        const contextMessage = {
-          role: "user" as const,
-          id: randomUUID(),
-          content: [
-            {
-              type: "text" as const,
-              text: `以下是用户引用节点的完整上下文（节点 ID 与消息中的 @节点[id] 标记对应）：\n\n${contextText}`,
-            },
-          ],
-          source: { kind: "plugin" as const, plugin: name },
-        } as UserMessage;
+        const contextMessage = buildPluginMessage(
+          `以下是用户引用节点的完整上下文（节点 ID 与消息中的 @节点[id] 标记对应）：\n\n${contextText}`,
+        );
 
         // 注入后清空端点 selectedElements：消息已消费这批节点上下文，防止残留/重复注入。
         try {

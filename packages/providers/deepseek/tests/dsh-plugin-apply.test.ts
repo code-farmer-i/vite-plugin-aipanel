@@ -5,8 +5,10 @@
  *   - 诊断总开关 enableDiagnostics：关闭时不注册工具与 post-execute 钩子；
  *   - run_diagnostics 工具定义与 execute 分支：全量诊断、单文件不存在报错、单文件诊断、
  *     诊断分区空文本兜底、LSP 零基坐标 → 1-based 归一化；
- *   - tools/post-execute 自动诊断门禁：默认关闭、PTC 子调度跳过、非写工具跳过、
- *     失败结果/非 accept 决策跳过、非 JS 文件跳过、诊断并入原工具内容而非覆盖；
+ *   - tools/post-execute 自动诊断门禁：默认关闭、非写工具跳过、失败结果/非 accept 决策跳过、
+ *     非 JS 文件跳过、诊断并入原工具内容而非覆盖；
+ *   - PTC（run_code）自动诊断：子调度只登记编辑目标（不立即检查），外层调用收尾对登记文件
+ *     聚合诊断并以 additionalContexts 追加 plugin 上下文消息，随后清空登记；
  *   - agent/pre-step 节点上下文注入：按 @节点[id] 反查、追加 plugin 消息、注入后清空端点。
  *
  * Stub 策略：跑在最小 ctx 桩上（tools/on/get），@aipanel/core/node 的诊断引擎面
@@ -244,7 +246,7 @@ describe("apply: tools/post-execute 自动诊断门禁", () => {
     });
   });
 
-  it("跳过：PTC 子调度 / 非写工具 / 工具失败 / 非 accept 决策 / 非 JS 文件", async () => {
+  it("跳过：非写工具 / 工具失败 / 非 accept 决策 / 非 JS 文件", async () => {
     mocks.runAllChecks.mockResolvedValue({
       eslintOutput: { text: "E" },
       tscOutput: { rawOutput: "T" },
@@ -253,7 +255,6 @@ describe("apply: tools/post-execute 自动诊断门禁", () => {
     const handler = setup({ autoDiagnose: true });
     const next = async () => ({ kind: "accept" as const });
 
-    await handler(exec({ parent: "run_code" }), okResult(), next);
     await handler(exec({ name: "read" }), okResult(), next);
     await handler(exec(), { isError: true, content: [] }, next);
     await handler(exec(), okResult(), async () => ({ kind: "reject" }));
@@ -271,6 +272,209 @@ describe("apply: tools/post-execute 自动诊断门禁", () => {
 
     const decision = await handler(exec(), okResult(), async () => ({ kind: "accept" }));
     expect(decision).toEqual({ kind: "accept" });
+  });
+});
+
+describe("apply: tools/post-execute PTC 自动诊断（登记 + 聚合）", () => {
+  type PtcMessage = {
+    source?: { kind: string; plugin?: string };
+    content?: { type: string; text: string }[];
+  };
+  type PtcDecision = {
+    kind: string;
+    content?: unknown[];
+    additionalContexts?: PtcMessage[];
+  };
+  type PostExec = (
+    exec: unknown,
+    result: unknown,
+    next: () => Promise<PtcDecision>,
+  ) => Promise<PtcDecision>;
+
+  function setup() {
+    const { ctx, handlers } = createCtx();
+    apply(ctx, { cwd: "/work/proj", enableDiagnostics: true, autoDiagnose: true });
+    return handlerOf(handlers, "tools/post-execute") as unknown as PostExec;
+  }
+
+  const exec = (overrides: Record<string, unknown> = {}) => ({
+    name: "write",
+    arguments: { file_path: "src/a.ts" },
+    rootCallId: "root-1",
+    ...overrides,
+  });
+  const okResult = () => ({ isError: false, content: [{ type: "text", text: "原始输出" }] });
+  const next = async () => ({ kind: "accept" as const });
+
+  it("PTC 子调度只登记不检查，外层调用收尾聚合成一条 additionalContexts", async () => {
+    mocks.isJsFile.mockReturnValue(true);
+    mocks.runAllChecks.mockResolvedValue({
+      eslintOutput: { text: "E-msg" },
+      tscOutput: { rawOutput: "T-msg" },
+    });
+    const handler = setup();
+
+    const sub = await handler(exec({ parent: "run_code" }), okResult(), next);
+    expect(sub).toEqual({ kind: "accept" });
+    expect(mocks.runAllChecks).not.toHaveBeenCalled();
+
+    const outer = await handler(exec({ name: "run_code", arguments: {} }), okResult(), next);
+    expect(mocks.runAllChecks).toHaveBeenCalledWith(
+      path.resolve("/work/proj", "src/a.ts"),
+      "/work/proj",
+    );
+    expect(outer.additionalContexts).toHaveLength(1);
+    const message = outer.additionalContexts?.[0];
+    expect(message?.source).toEqual({ kind: "plugin", plugin: "aipanel" });
+    expect(message?.content?.[0]?.text).toContain("src/a.ts");
+    expect(message?.content?.[0]?.text).toContain("E-msg");
+    expect(message?.content?.[0]?.text).toContain("T-msg");
+  });
+
+  it("同一程序多文件去重后聚合为一条消息", async () => {
+    mocks.isJsFile.mockReturnValue(true);
+    mocks.runAllChecks.mockResolvedValue({
+      eslintOutput: { text: "E" },
+      tscOutput: { rawOutput: "T" },
+    });
+    const handler = setup();
+
+    await handler(
+      exec({ parent: "run_code", arguments: { file_path: "src/a.ts" } }),
+      okResult(),
+      next,
+    );
+    await handler(
+      exec({ parent: "run_code", arguments: { file_path: "src/b.vue" } }),
+      okResult(),
+      next,
+    );
+    // 同文件重复编辑只登记一次
+    await handler(
+      exec({ parent: "run_code", arguments: { file_path: "src/a.ts" } }),
+      okResult(),
+      next,
+    );
+    const outer = await handler(exec({ name: "run_code", arguments: {} }), okResult(), next);
+
+    expect(mocks.runAllChecks).toHaveBeenCalledTimes(2);
+    expect(outer.additionalContexts).toHaveLength(1);
+    expect(outer.additionalContexts?.[0]?.content?.[0]?.text).toContain("src/a.ts");
+    expect(outer.additionalContexts?.[0]?.content?.[0]?.text).toContain("src/b.vue");
+  });
+
+  it("诊断为空时不追加 additionalContexts", async () => {
+    mocks.isJsFile.mockReturnValue(true);
+    mocks.runAllChecks.mockResolvedValue({
+      eslintOutput: {},
+      tscOutput: { rawOutput: "", exitCode: 0 },
+    });
+    const handler = setup();
+
+    await handler(exec({ parent: "run_code" }), okResult(), next);
+    const outer = await handler(exec({ name: "run_code", arguments: {} }), okResult(), next);
+    expect(outer).toEqual({ kind: "accept" });
+  });
+
+  it("外层收尾清空登记：再次收尾不重复诊断", async () => {
+    mocks.isJsFile.mockReturnValue(true);
+    mocks.runAllChecks.mockResolvedValue({
+      eslintOutput: { text: "E" },
+      tscOutput: { rawOutput: "T" },
+    });
+    const handler = setup();
+
+    await handler(exec({ parent: "run_code" }), okResult(), next);
+    await handler(exec({ name: "run_code", arguments: {} }), okResult(), next);
+    expect(mocks.runAllChecks).toHaveBeenCalledTimes(1);
+
+    const again = await handler(exec({ name: "run_code", arguments: {} }), okResult(), next);
+    expect(mocks.runAllChecks).toHaveBeenCalledTimes(1);
+    expect(again.additionalContexts).toBeUndefined();
+  });
+
+  it("子调度不登记：非写工具 / 失败结果 / 非 JS 文件", async () => {
+    mocks.isJsFile.mockReturnValue(false);
+    const handler = setup();
+
+    await handler(exec({ parent: "run_code", name: "read" }), okResult(), next);
+    await handler(exec({ parent: "run_code" }), { isError: true, content: [] }, next);
+    await handler(exec({ parent: "run_code" }), okResult(), next); // isJsFile=false
+
+    const outer = await handler(exec({ name: "run_code", arguments: {} }), okResult(), next);
+    expect(mocks.runAllChecks).not.toHaveBeenCalled();
+    expect(outer).toEqual({ kind: "accept" });
+  });
+
+  it("兼容 camelCase filePath 登记", async () => {
+    mocks.isJsFile.mockReturnValue(true);
+    mocks.runAllChecks.mockResolvedValue({
+      eslintOutput: { text: "E" },
+      tscOutput: { rawOutput: "T" },
+    });
+    const handler = setup();
+
+    await handler(
+      exec({ parent: "run_code", arguments: { filePath: "src/camel.ts" } }),
+      okResult(),
+      next,
+    );
+    const outer = await handler(exec({ name: "run_code", arguments: {} }), okResult(), next);
+
+    expect(mocks.runAllChecks).toHaveBeenCalledWith(
+      path.resolve("/work/proj", "src/camel.ts"),
+      "/work/proj",
+    );
+    expect(outer.additionalContexts).toHaveLength(1);
+  });
+
+  it("单文件检查抛错时降级为空结果，不影响其他文件聚合", async () => {
+    mocks.isJsFile.mockReturnValue(true);
+    mocks.runAllChecks.mockImplementation(async (file: string) => {
+      if (file.endsWith("bad.ts")) throw new Error("boom");
+      return { eslintOutput: { text: "E" }, tscOutput: { rawOutput: "T" } };
+    });
+    const handler = setup();
+
+    await handler(
+      exec({ parent: "run_code", arguments: { file_path: "src/bad.ts" } }),
+      okResult(),
+      next,
+    );
+    await handler(
+      exec({ parent: "run_code", arguments: { file_path: "src/good.ts" } }),
+      okResult(),
+      next,
+    );
+    const outer = await handler(exec({ name: "run_code", arguments: {} }), okResult(), next);
+
+    expect(mocks.runAllChecks).toHaveBeenCalledTimes(2);
+    expect(outer.additionalContexts).toHaveLength(1);
+    const text = outer.additionalContexts?.[0]?.content?.[0]?.text ?? "";
+    expect(text).toContain("src/good.ts");
+    expect(text).not.toContain("src/bad.ts");
+  });
+
+  it("外层非 accept 决策丢弃登记，后续外层不重复诊断", async () => {
+    mocks.isJsFile.mockReturnValue(true);
+    mocks.runAllChecks.mockResolvedValue({
+      eslintOutput: { text: "E" },
+      tscOutput: { rawOutput: "T" },
+    });
+    const handler = setup();
+
+    await handler(exec({ parent: "run_code" }), okResult(), next);
+    const blocked = await handler(
+      exec({ name: "run_code", arguments: {} }),
+      okResult(),
+      async () => ({ kind: "reject" }),
+    );
+    expect(blocked.additionalContexts).toBeUndefined();
+    expect(mocks.runAllChecks).not.toHaveBeenCalled();
+
+    const outer = await handler(exec({ name: "run_code", arguments: {} }), okResult(), next);
+    expect(mocks.runAllChecks).not.toHaveBeenCalled();
+    expect(outer.additionalContexts).toBeUndefined();
   });
 });
 

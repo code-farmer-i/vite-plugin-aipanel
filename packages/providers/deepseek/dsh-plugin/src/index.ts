@@ -37,6 +37,7 @@ import {
   createLogger,
   DIAGNOSTICS_TOOL_DESCRIPTION,
   formatDiagnosticsSections,
+  lintSectionTitle,
   tscSectionTitle,
   type DiagnosticItem,
   type EslintOutput,
@@ -197,7 +198,7 @@ function buildDiagnosticsCanonical(
   return {
     title,
     sections: [
-      { title: "ESLint", text: eslintOutput.text || "没有发现问题" },
+      { title: lintSectionTitle(eslintOutput), text: eslintOutput.text || "没有发现问题" },
       { title: tscSectionTitle(tscOutput), text: tscOutput.rawOutput.trim() || "没有发现类型错误" },
     ],
     diagnostics: [
@@ -459,7 +460,8 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
         const parts: string[] = [];
         if (tscOutput.rawOutput.trim())
           parts.push(`## ${tscSectionTitle(tscOutput)}\n\n` + tscOutput.rawOutput.trim());
-        if (eslintOutput.text) parts.push("## ESLint\n\n" + eslintOutput.text);
+        if (eslintOutput.text)
+          parts.push(`## ${lintSectionTitle(eslintOutput)}\n\n` + eslintOutput.text);
         const diagText = parts.join("\n\n");
         if (!diagText) return decision;
 

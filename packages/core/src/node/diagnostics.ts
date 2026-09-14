@@ -43,10 +43,10 @@ export function isJsFile(filePath: string): boolean {
  * 只声明能力与支持的文件类型，不涉及内部使用的检查工具。
  */
 export const DIAGNOSTICS_TOOL_DESCRIPTION = [
-  "运行 ESLint 与 TypeScript 类型诊断，返回诊断结果。",
+  "运行 Lint（ESLint / oxlint）与 TypeScript 类型诊断，返回诊断结果。",
   "",
   "**支持的文件类型**：",
-  `- ESLint：JavaScript / TypeScript / Vue 源码（${[...JS_EXTENSIONS].map((e) => `*${e}`).join(" ")}）`,
+  `- Lint：JavaScript / TypeScript / Vue 源码（${[...JS_EXTENSIONS].map((e) => `*${e}`).join(" ")}）；两引擎均安装时并行互补运行（诊断按来源标注）`,
   "- TypeScript 类型检查：*.ts *.tsx *.vue",
   "",
   "**何时使用此工具**：",
@@ -93,6 +93,8 @@ export interface TscResult {
 export interface EslintOutput {
   text?: string;
   diagnostics?: DiagnosticItem[];
+  /** 实际运行的 lint 引擎（"ESLint" / "oxlint"）；缺省视为 ESLint（兼容旧调用方） */
+  engines?: string[];
 }
 
 export interface DiagnosticsResult {
@@ -130,15 +132,99 @@ export async function lintFiles(
   warnLimit = 5,
 ): Promise<EslintOutput> {
   loadESLint(cwd);
-  if (!ESLintClass) {
-    // 不静默当“干净”：ESLint 未解析到时明确告知，避免诊断卡片假装没问题
+
+  // create-vue 官方约定 ESLint + oxlint 互补并用（规则去重由项目的 eslint-plugin-oxlint 承担）：
+  // 两引擎均可用时并行跑；仅可用其一则用其一；均不可用明确报"未运行"，不静默假装干净
+  const [eslintOutput, oxlintOutput] = await Promise.all([
+    ESLintClass ? runEslintFiles(pattern, cwd, warnLimit) : Promise.resolve(null),
+    runOxlintFiles(pattern, cwd, warnLimit),
+  ]);
+
+  const engines: string[] = [];
+  const texts: string[] = [];
+  const diagnostics: DiagnosticItem[] = [];
+  for (const output of [eslintOutput, oxlintOutput]) {
+    if (!output) continue;
+    engines.push(...(output.engines ?? []));
+    if (output.text) texts.push(output.text);
+    diagnostics.push(...(output.diagnostics ?? []));
+  }
+
+  if (engines.length === 0) {
     return {
-      text: `[ESLint] 未运行：无法在 workspace "${cwd}" 解析到 eslint（仅显示 TypeScript 诊断）`,
+      text: `[Lint] 未运行：无法在 workspace "${cwd}" 解析到 eslint 或 oxlint`,
       diagnostics: [],
     };
   }
+
+  return { text: texts.join("\n\n") || undefined, diagnostics, engines };
+}
+
+/** 把 lint 消息按 error/warning 分级格式化为文本行与 LSP 诊断项（ESLint / oxlint 共用） */
+function formatLintMessages(
+  messages: (LintMessage & { filePath: string })[],
+  engine: { label: string; source: string },
+  warnLimit: number,
+): EslintOutput {
+  if (messages.length === 0) return { engines: [engine.label] };
+
+  const ESLINT_ERROR = 2;
+  const ESLINT_WARN = 1;
+  const lines: string[] = [];
+  const errors = messages.filter((m) => m.severity === ESLINT_ERROR);
+  const warnings = messages.filter((m) => m.severity === ESLINT_WARN);
+
+  if (errors.length > 0) {
+    lines.push(
+      ...errors.map(
+        (m) => `ERROR [${m.filePath}:${m.line}:${m.column}] ${m.message} (${m.ruleId})`,
+      ),
+    );
+  }
+  if (warnings.length > 0) {
+    lines.push(
+      ...warnings
+        .slice(0, warnLimit)
+        .map((m) => `WARN [${m.filePath}:${m.line}:${m.column}] ${m.message} (${m.ruleId})`),
+    );
+    if (warnings.length > warnLimit)
+      lines.push(`... and ${warnings.length - warnLimit} more warnings`);
+  }
+
+  const diagnostics: DiagnosticItem[] = messages.map((m) => ({
+    severity:
+      m.severity === ESLINT_ERROR
+        ? SEVERITY_ERROR
+        : m.severity === ESLINT_WARN
+          ? SEVERITY_WARN
+          : m.severity,
+    file: m.filePath,
+    range: {
+      start: { line: (m.line || 1) - 1, character: (m.column || 1) - 1 },
+      end: {
+        line: (m.endLine || m.line || 1) - 1,
+        character: (m.endColumn || m.column || 1) - 1,
+      },
+    },
+    message: `[${engine.label}] ${m.message} (${m.ruleId})`,
+    source: engine.source,
+  }));
+
+  return {
+    text: lines.length > 0 ? lines.join("\n") : undefined,
+    diagnostics,
+    engines: [engine.label],
+  };
+}
+
+/** ESLint Node API 检查（引擎可用时由 lintFiles 调度） */
+async function runEslintFiles(
+  pattern: string,
+  cwd: string,
+  warnLimit: number,
+): Promise<EslintOutput> {
   try {
-    const eslint = new ESLintClass({ cwd });
+    const eslint = new ESLintClass!({ cwd });
     const results = await eslint.lintFiles(pattern);
     const messages: (LintMessage & { filePath: string })[] = results.flatMap((r) =>
       (r.messages ?? []).map((m) => ({ ...m, filePath: r.filePath })),
@@ -148,59 +234,150 @@ export async function lintFiles(
       fileCount: results.length,
       messageCount: messages.length,
     });
-
-    if (messages.length === 0) return {};
-
-    const ESLINT_ERROR = 2;
-    const ESLINT_WARN = 1;
-    const lines: string[] = [];
-    const errors = messages.filter((m) => m.severity === ESLINT_ERROR);
-    const warnings = messages.filter((m) => m.severity === ESLINT_WARN);
-
-    if (errors.length > 0) {
-      lines.push(
-        ...errors.map(
-          (m) => `ERROR [${m.filePath}:${m.line}:${m.column}] ${m.message} (${m.ruleId})`,
-        ),
-      );
-    }
-    if (warnings.length > 0) {
-      lines.push(
-        ...warnings
-          .slice(0, warnLimit)
-          .map((m) => `WARN [${m.filePath}:${m.line}:${m.column}] ${m.message} (${m.ruleId})`),
-      );
-      if (warnings.length > warnLimit)
-        lines.push(`... and ${warnings.length - warnLimit} more warnings`);
-    }
-
-    const diagnostics: DiagnosticItem[] = messages.map((m) => ({
-      severity:
-        m.severity === ESLINT_ERROR
-          ? SEVERITY_ERROR
-          : m.severity === ESLINT_WARN
-            ? SEVERITY_WARN
-            : m.severity,
-      file: m.filePath,
-      range: {
-        start: { line: (m.line || 1) - 1, character: (m.column || 1) - 1 },
-        end: {
-          line: (m.endLine || m.line || 1) - 1,
-          character: (m.endColumn || m.column || 1) - 1,
-        },
-      },
-      message: `[ESLint] ${m.message} (${m.ruleId})`,
-      source: "eslint",
-    }));
-
-    return { text: lines.length > 0 ? lines.join("\n") : undefined, diagnostics };
+    return formatLintMessages(messages, { label: "ESLint", source: "eslint" }, warnLimit);
   } catch (err) {
     log.warn("ESLint failed", { pattern, error: (err as Error).message });
     return {
       text: `[ESLint] 运行失败：${(err as Error).message}（仅显示 TypeScript 诊断）`,
       diagnostics: [],
+      engines: ["ESLint"],
     };
   }
+}
+
+// ---- oxlint（Rust linter，与 ESLint 互补；create-vue 约定 oxlint 先跑） ----
+
+let _oxlintBin: string | null | undefined;
+
+/**
+ * 解析 oxlint CLI 路径（从被诊断 workspace 解析，用户项目已安装才会启用）。
+ * oxlint 的 exports map 未暴露 bin 子路径，经 "oxlint/package.json" 定位后按 bin 字段拼接。
+ */
+function resolveOxlintBin(workspace: string): string | null {
+  if (_oxlintBin !== undefined) return _oxlintBin;
+  try {
+    const req = createRequire(path.join(workspace, "package.json"));
+    const pkgJsonPath = req.resolve("oxlint/package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) as {
+      bin?: string | Record<string, string>;
+    };
+    const binRel = typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.oxlint;
+    _oxlintBin = binRel ? path.join(path.dirname(pkgJsonPath), binRel) : null;
+  } catch {
+    _oxlintBin = null;
+  }
+  return _oxlintBin;
+}
+
+/** oxlint --format=json 的诊断条目（自有格式，非 ESLint 兼容数组） */
+interface OxlintJsonDiagnostic {
+  message?: string;
+  /** 规则标识，形如 "eslint(no-unused-vars)" */
+  code?: string;
+  severity?: string;
+  filename?: string;
+  labels?: Array<{ span?: { line?: number; column?: number; length?: number } }>;
+}
+
+interface OxlintJsonOutput {
+  diagnostics?: OxlintJsonDiagnostic[];
+}
+
+/** 从 oxlint JSON 输出提取规则名："eslint(no-unused-vars)" → "no-unused-vars" */
+function oxlintRuleName(code: string | undefined): string | null {
+  if (!code) return null;
+  const match = /\(([^)]*)\)$/.exec(code);
+  return match ? match[1] : code;
+}
+
+/** 解析 oxlint --format=json 输出（容忍 stdout 中混入的人类可读前缀消息） */
+function parseOxlintOutput(stdout: string, cwd: string): (LintMessage & { filePath: string })[] {
+  let parsed: OxlintJsonOutput | undefined;
+  try {
+    parsed = JSON.parse(stdout) as OxlintJsonOutput;
+  } catch {
+    const start = stdout.indexOf("{");
+    const end = stdout.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        parsed = JSON.parse(stdout.slice(start, end + 1)) as OxlintJsonOutput;
+      } catch {
+        parsed = undefined;
+      }
+    }
+  }
+  if (!parsed) throw new Error("无法解析 oxlint JSON 输出");
+
+  return (parsed.diagnostics ?? []).flatMap((d) => {
+    const filePath = d.filename
+      ? path.isAbsolute(d.filename)
+        ? d.filename
+        : path.resolve(cwd, d.filename)
+      : "";
+    if (!filePath) return [];
+    const span = d.labels?.[0]?.span;
+    const line = span?.line ?? 1;
+    const column = span?.column ?? 1;
+    return [
+      {
+        // oxlint 无 endLine/endColumn，同行按 span.length 延伸近似
+        severity: d.severity === "error" ? 2 : 1,
+        line,
+        column,
+        endLine: line,
+        endColumn: column + (span?.length ?? 0),
+        message: d.message ?? "未知诊断",
+        ruleId: oxlintRuleName(d.code),
+        filePath,
+      },
+    ];
+  });
+}
+
+/** oxlint CLI 检查（--format=json；未安装时静默跳过，由 ESLint 路径兜底报"未运行"） */
+async function runOxlintFiles(
+  pattern: string,
+  cwd: string,
+  warnLimit: number,
+): Promise<EslintOutput> {
+  const bin = resolveOxlintBin(cwd);
+  if (!bin) return {};
+
+  return new Promise((resolve) => {
+    exec(
+      // 与 ESLint 默认行为对齐：忽略 node_modules（oxlint 默认不排除）
+      `node "${bin}" --format=json --ignore-pattern node_modules "${pattern}"`,
+      { cwd, timeout: 60000, maxBuffer: 50 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        const killed = error?.killed;
+        if (killed) {
+          log.warn("oxlint timed out", { pattern });
+          resolve({
+            text: "[oxlint] 运行失败：检查超时，请尝试缩小检查范围。",
+            diagnostics: [],
+            engines: ["oxlint"],
+          });
+          return;
+        }
+        try {
+          const messages = parseOxlintOutput(stdout, cwd);
+          log.debug("oxlint lint", {
+            pattern,
+            messageCount: messages.length,
+            stderr: stderr || undefined,
+          });
+          resolve(formatLintMessages(messages, { label: "oxlint", source: "oxlint" }, warnLimit));
+        } catch (e) {
+          log.warn("oxlint failed", { pattern, error: (e as Error).message });
+          resolve({
+            text: `[oxlint] 运行失败：${(e as Error).message}`,
+            diagnostics: [],
+            engines: ["oxlint"],
+          });
+        }
+      },
+    );
+  });
 }
 
 // ---- TypeScript 类型检查（引擎按项目自动选择） ----
@@ -478,7 +655,12 @@ export function tscSectionTitle(tscOutput: TscResult): string {
   return tscOutput.source ?? "tsc";
 }
 
-/** 组装统一的分区诊断文本（ESLint / 类型检查，空结果显示占位文案） */
+/** Lint 分区标题（单一来源：跟随实际运行的引擎组合，如 "ESLint + oxlint"） */
+export function lintSectionTitle(lintOutput: EslintOutput): string {
+  return lintOutput.engines?.length ? lintOutput.engines.join(" + ") : "ESLint";
+}
+
+/** 组装统一的分区诊断文本（Lint / 类型检查，空结果显示占位文案） */
 export function formatDiagnosticsSections(
   title: string,
   eslintOutput: EslintOutput,
@@ -486,7 +668,7 @@ export function formatDiagnosticsSections(
 ): string {
   const parts: string[] = [];
 
-  parts.push("## ESLint\n\n" + (eslintOutput.text || "没有发现问题"));
+  parts.push(`## ${lintSectionTitle(eslintOutput)}\n\n` + (eslintOutput.text || "没有发现问题"));
 
   const tscLines = tscOutput.rawOutput.trim();
   parts.push(`## ${tscSectionTitle(tscOutput)}\n\n` + (tscLines || "没有发现类型错误"));

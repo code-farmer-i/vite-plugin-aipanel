@@ -19,6 +19,7 @@ import {
   runAllChecks,
   runProjectDiagnostics,
   formatDiagnosticsSections,
+  lintSectionTitle,
   tscSectionTitle,
   isJsFile,
   MUTATING_TOOLS,
@@ -114,7 +115,7 @@ export default {
           parts.push(`## ${tscSectionTitle(tscOutput)}\n\n` + tscOutput.rawOutput.trim());
         }
         if (eslintOutput.text) {
-          parts.push("## ESLint\n\n" + eslintOutput.text);
+          parts.push(`## ${lintSectionTitle(eslintOutput)}\n\n` + eslintOutput.text);
         }
         const diagText = parts.join("\n\n");
 

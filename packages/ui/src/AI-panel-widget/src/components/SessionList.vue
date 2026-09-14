@@ -211,7 +211,12 @@ function isSessionCompleted(sessionId: string): boolean {
             title="已完成"
           />
 
-          <span class="aipanel-session-title-text">{{ item.title }}</span>
+          <!-- 单行省略；原生 title 悬浮显示完整标题（对齐 DS 行 HoverCard 的完整标题能力） -->
+          <span
+            class="aipanel-session-title-text"
+            :title="item.title"
+            >{{ item.title }}</span
+          >
 
           <span
             v-if="item.meta"
@@ -331,24 +336,21 @@ function isSessionCompleted(sessionId: string): boolean {
   gap: 2px;
 }
 
-/* 会话行：单行（状态点 + 标题 + 右侧时间），hover 淡覆盖层 */
+/* 会话行：对齐 DS sessionRow（height:32px / padding:0 8px / radius:8px）。
+   文字色 alias-label-primary：--ap-text-primary 已按主题取值（light=bluish-1000 / dark=bluish-50），无需再按主题覆盖。 */
 .aipanel-session-item {
   position: relative;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
-  padding: 8px 10px;
+  height: 32px;
+  padding: 0 8px;
   border-radius: 8px;
   cursor: pointer;
+  user-select: none;
   color: var(--ap-text-primary);
   transition: background-color 0.15s ease;
-}
-
-/* 深色主题：标题用浅灰，不用纯白，避免扎眼（浅色仍用近黑） */
-.aipanel-widget.aipanel-theme-dark .aipanel-session-item {
-  color: var(--ap-text-secondary);
 }
 
 .aipanel-session-item:hover {
@@ -371,7 +373,7 @@ function isSessionCompleted(sessionId: string): boolean {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 400;
   line-height: 20px;
 }
@@ -381,7 +383,8 @@ function isSessionCompleted(sessionId: string): boolean {
   margin-left: auto;
   font-size: 12px;
   line-height: 20px;
-  color: var(--ap-text-placeholder);
+  /* 对齐 DS .time：alias-label-tertiary（= --ap-text-tertiary） */
+  color: var(--ap-text-tertiary);
   white-space: nowrap;
   transition: opacity 0.15s ease;
 }
@@ -395,13 +398,14 @@ function isSessionCompleted(sessionId: string): boolean {
   right: 8px;
   top: 50%;
   transform: translateY(-50%);
-  width: 22px;
-  height: 22px;
+  /* 对齐 DS .iconButton：16×16 / radius 4 / alias-label-tertiary */
+  width: 16px;
+  height: 16px;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
-  color: var(--ap-text-placeholder);
-  font-size: 16px;
+  color: var(--ap-text-tertiary);
+  font-size: 14px;
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -553,9 +557,9 @@ function isSessionCompleted(sessionId: string): boolean {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
+  height: 32px;
   box-sizing: border-box;
-  padding: 8px 10px;
+  padding: 0 8px;
   border-radius: 8px;
   margin-bottom: 2px;
   background: var(--ap-skeleton-bg);

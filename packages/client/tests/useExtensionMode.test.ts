@@ -170,7 +170,8 @@ describe("useExtensionMode", () => {
       description: "div",
     });
     // Content Script 会原样转发页面 postMessage 的载荷，再投递给所有已注册监听器
-    const forwarded = postSpy.mock.calls.at(-1)![0] as AnyMsg;
+    const calls = postSpy.mock.calls;
+    const forwarded = calls[calls.length - 1][0] as AnyMsg;
     listeners.forEach((handle) => handle(forwarded));
 
     expect(onSelectedA).toHaveBeenCalledTimes(1);

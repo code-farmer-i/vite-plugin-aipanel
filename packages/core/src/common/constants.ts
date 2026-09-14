@@ -252,10 +252,11 @@ export type SSEEventType = (typeof SSE_EVENT_TYPES)[keyof typeof SSE_EVENT_TYPES
 
 /**
  * 元素选择器适配器标识：服务端注入的构建期插件与客户端运行时适配器共用同一标识，
- * 新增框架（如 React）在此登记，两侧按同一 id 对齐。
+ * 已登记 Vue / React；新增框架在此登记，两侧按同一 id 对齐。
  */
 export const INSPECTOR_ADAPTER_IDS = {
   vue: "vue",
+  react: "react",
 } as const;
 
 /** 元素选择器适配器标识类型 */

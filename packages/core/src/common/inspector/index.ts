@@ -1,14 +1,15 @@
 import type { InspectorAdapter } from "./types";
+import { reactInspectorAdapter } from "./react";
 import { vueInspectorAdapter } from "./vue";
 
 export * from "./types";
 
 /**
  * 已登记的框架适配器（单一来源）。
- * 新增框架（如 React）时在此追加实现，宿主侧无需改动；
+ * 已登记 Vue / React；新增框架在此追加实现，宿主侧无需改动；
  * 服务端注入的构建期插件与这里按同一 id 对齐。
  */
-const adapters: readonly InspectorAdapter[] = [vueInspectorAdapter];
+const adapters: readonly InspectorAdapter[] = [vueInspectorAdapter, reactInspectorAdapter];
 
 /** 全部已登记适配器：用于静态元数据（忽略标记、源码位置解析） */
 export function listInspectorAdapters(): readonly InspectorAdapter[] {

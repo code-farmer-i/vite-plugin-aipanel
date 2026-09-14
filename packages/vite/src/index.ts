@@ -6,6 +6,7 @@ import type { PageContext, PluginOptions, WebProvider } from "@aipanel/core";
 import {
   CONTEXT_API_PATH,
   DEFAULT_PROXY_PORT,
+  INSPECTOR_ADAPTER_IDS,
   MCP_API_PATH,
   SESSION_ID_KEY,
   resolvePluginConfig,
@@ -27,6 +28,7 @@ import {
   resolveWidgetStylePath,
   resolveVueDevtoolsBridgePath,
 } from "./utils/paths";
+import { detectViteFramework } from "./core/framework";
 import { findGitRoot } from "@aipanel/core/node";
 
 export type { PluginOptions } from "@aipanel/core";
@@ -141,6 +143,8 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
   let actualProxyPort = config.proxyPort ?? DEFAULT_PROXY_PORT;
   let projectRoot = "";
   let vueDevtoolsApiUrl = "";
+  /** Vue DevTools 桥仅注入 Vue 项目：React 等项目无 __aipanel_vue 消费者，注入只会白跑 devtools-kit */
+  let isVueProject = true;
   /** vite 绑定的 host 单一来源：由 server.config.server.host 解析，transformIndexHtml 据此下发到 widget config */
   let viteServerHost = "localhost";
   const pageContext: PageContext = { url: "", title: "" };
@@ -195,6 +199,12 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
       if (!config.enabled) return false;
 
       return env.command === "serve" && process.env.NODE_ENV !== "test";
+    },
+
+    configResolved(resolvedConfig) {
+      // 依据用户配置的框架插件（vite:vue* / vite:react*）判定项目类型；
+      // 未识别框架保守视为 Vue（保持桥注入现状）
+      isVueProject = detectViteFramework(resolvedConfig) !== INSPECTOR_ADAPTER_IDS.react;
     },
 
     async configureServer(server: ViteDevServer) {
@@ -386,7 +396,8 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
             logsApiUrl,
             viteOrigin,
             mcpProxy,
-            vueDevtoolsApiUrl,
+            // React 项目不下发：provider 侧不注册 vue-devtools_* 工具，避免模型调用必失败的工具
+            isVueProject ? vueDevtoolsApiUrl : undefined,
           );
         } catch (e) {
           log.error("Failed to start services", { error: e });
@@ -430,18 +441,20 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
     transformIndexHtml(html) {
       const timer = log.timer("transformIndexHtml");
 
-      // Vue DevTools 桥接脚本 — 通过 tags 注入，Vite 会处理 @id/ 前缀内部的 import。
-      // 纯净 MCP 模式也需注入：vue-devtools_* MCP 工具依赖 window.__aipanel_vue
-      const tags: HtmlTagDescriptor[] = [
-        {
-          tag: "script",
-          injectTo: "head-prepend",
-          attrs: {
-            type: "module",
-            src: `/@id/${DEVTOOLS_BRIDGE_IMPORTEE}`,
-          },
-        },
-      ];
+      // Vue DevTools 桥接脚本 — 仅 Vue 项目注入（通过 tags 注入，Vite 会处理 @id/ 前缀内部的 import）。
+      // 纯净 MCP 模式的 Vue 项目也需注入：vue-devtools_* MCP 工具依赖 window.__aipanel_vue
+      const tags: HtmlTagDescriptor[] = isVueProject
+        ? [
+            {
+              tag: "script",
+              injectTo: "head-prepend",
+              attrs: {
+                type: "module",
+                src: `/@id/${DEVTOOLS_BRIDGE_IMPORTEE}`,
+              },
+            },
+          ]
+        : [];
 
       // sessionStorage 注入唯一标识（同 Tab 刷新不变，新 Tab 重生成）
       // 用 8 位随机字符，避免多 Tab 场景下标识碰撞；
@@ -459,7 +472,7 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
       // 仍注入 titleInject（_aipanel_pk 标识）与静默上下文上报脚本，
       // 使 current_page 等工具能感知当前浏览页面
       if (config.mcpOnly) {
-        timer.end("✓ mcp-only (skip widget bubble, keep vue-devtools bridge + context report)");
+        timer.end("✓ mcp-only (skip widget bubble, keep context report)");
         return {
           html: html.replace("</body>", `${titleInject}\n${SILENT_CONTEXT_SCRIPT}</body>`),
           tags,

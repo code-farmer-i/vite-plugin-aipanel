@@ -1,5 +1,45 @@
 # 更新日志
 
+## v1.2.22
+
+`2026-09-14`
+
+### core
+
+#### ✨ 新增
+
+- 代码检查支持 oxlint：项目里装了 oxlint 时会和 ESLint 一起参与检查，两者并行互补（重复规则的去重交给项目自己的 `eslint-plugin-oxlint`），诊断结果分别标注来源；只装了其中一个就只跑那一个，两个都没装时会明确提示「未运行」，不再笼统显示「没有发现问题」造成误判
+
+#### ⚡ 改进
+
+- 类型检查按项目自动挑检查器：Vue / Nuxt 项目继续用 vue-tsc（能检查 `.vue`），React 等纯 TypeScript 项目改用项目自己的 tsc——检查器版本和项目保持一致，也省掉 Volar 转换开销；检查器跑不动时会自动回退，尽量保证诊断可用
+- 诊断结果不再写死「ESLint」「vue-tsc」标题：卡片上的分区标题跟随本次实际跑了的检查器（如「ESLint + oxlint」「tsc」），看到什么就代表真跑了什么
+- ESLint 与 oxlint 的展示格式统一：错误 / 警告分级、警告过多时的截断、点击跳转定位的表现完全一致，多个检查器的结果合并后一起给出
+
+### providers
+
+#### ⚡ 改进
+
+- DeepSeek 的审查工具与编辑后自动诊断、OpenCode 的编辑后诊断同步跟上新检查器：诊断卡片分区标题与实际执行的检查器一致，不再出现标题写着 vue-tsc、实际跑的是 tsc 的情况
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.22/packages/extension/aipanel-assistant.zip)
+
+## v1.2.21
+
+`2026-09-14`
+
+### deepseek
+
+#### 🐛 修复
+
+- 修复选中「多行文本元素」时的上下文注入：元素内部文本里的真实换行现在作为文本内容本身传给 AI，不再和上下文中用于排版的换行混在一起（此前 AI 容易把两者看成同一层级）；同时注入的文本更精简，避免长文案挤占上下文
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.21/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.20
 
 `2026-09-14`

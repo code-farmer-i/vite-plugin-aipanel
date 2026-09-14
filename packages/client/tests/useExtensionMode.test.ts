@@ -10,6 +10,7 @@ import { flushPromises } from "@vue/test-utils";
 import { WIDGET_MSG, EXT_MSG } from "@aipanel/core";
 import type { AIPanelSelectedElement } from "@aipanel/core";
 import { useExtensionMode } from "../src/composables/useExtensionMode";
+import { useExtensionSelectorMode } from "../src/composables/useExtensionSelectorMode";
 import { mountComposable } from "./test-utils";
 
 type AnyMsg = Record<string, unknown>;
@@ -135,6 +136,61 @@ describe("useExtensionMode", () => {
       filePath: "/x.ts",
     });
     expect(onElementSelected).not.toHaveBeenCalled();
+  });
+
+  it("页面回传的选择结果只被对应项目的实例处理（端到端隔离）", () => {
+    // 项目 A 页面侧：经真实发送逻辑回传选择结果
+    const postSpy = vi.spyOn(window, "postMessage").mockImplementation(() => {});
+    const { api: pageA } = mountComposable(() =>
+      useExtensionSelectorMode({ serviceInstanceId: "inst-A", onSelectModeChange: vi.fn() }),
+    );
+    // Side Panel 同时保活 A / B 两个项目实例
+    const onSelectedA = vi.fn();
+    const onSelectedB = vi.fn();
+    mountComposable(() =>
+      useExtensionMode({
+        selectMode: ref(false),
+        serviceInstanceId: "inst-A",
+        onElementSelected: onSelectedA,
+      }),
+    );
+    mountComposable(() =>
+      useExtensionMode({
+        selectMode: ref(false),
+        serviceInstanceId: "inst-B",
+        onElementSelected: onSelectedB,
+      }),
+    );
+
+    pageA.notifySelectionResult({
+      filePath: "/a.ts",
+      line: 1,
+      column: 1,
+      innerText: "x",
+      description: "div",
+    });
+    // Content Script 会原样转发页面 postMessage 的载荷，再投递给所有已注册监听器
+    const forwarded = postSpy.mock.calls.at(-1)![0] as AnyMsg;
+    listeners.forEach((handle) => handle(forwarded));
+
+    expect(onSelectedA).toHaveBeenCalledTimes(1);
+    expect(onSelectedB).not.toHaveBeenCalled();
+  });
+
+  it("选择类消息缺少 serviceInstanceId 时忽略，避免其他项目实例串扰", () => {
+    const selectMode = ref(false);
+    const onElementSelected = vi.fn();
+    mountComposable(() =>
+      useExtensionMode({
+        selectMode,
+        serviceInstanceId: "inst-1",
+        onElementSelected,
+      }),
+    );
+    listeners[0]({ type: WIDGET_MSG.ELEMENT_SELECTED, filePath: "/x.ts" });
+    expect(onElementSelected).not.toHaveBeenCalled();
+    listeners[0]({ type: WIDGET_MSG.SELECTOR_START });
+    expect(selectMode.value).toBe(false);
   });
 
   it("SELECTOR_START / STOP / SELECTION_CANCELLED 同步 selectMode", () => {

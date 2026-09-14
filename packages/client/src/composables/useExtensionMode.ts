@@ -32,8 +32,13 @@ export function useExtensionMode(options: UseExtensionModeOptions) {
   const { selectMode, serviceInstanceId, onElementSelected, onThemeChange } = options;
 
   const handleMessage = (msg: ExtensionMessage) => {
-    // 按 serviceInstanceId 过滤，仅处理来自当前服务实例的消息
-    if (msg.serviceInstanceId && msg.serviceInstanceId !== serviceInstanceId) return;
+    // 选择类消息必须精确匹配 serviceInstanceId：Side Panel 为每个项目保活一个实例，
+    // 放行缺失标识的消息会让所有项目都插入同一节点。主题为全局广播，不携带实例标识。
+    if (msg.type === EXT_MSG.THEME_CHANGE) {
+      if (msg.serviceInstanceId && msg.serviceInstanceId !== serviceInstanceId) return;
+    } else if (msg.serviceInstanceId !== serviceInstanceId) {
+      return;
+    }
 
     switch (msg.type) {
       case WIDGET_MSG.ELEMENT_SELECTED:

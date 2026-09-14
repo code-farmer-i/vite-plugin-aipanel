@@ -78,6 +78,37 @@ describe("useExtensionSelectorMode", () => {
     wrapper.unmount();
   });
 
+  it("携带 serviceInstanceId 时随回传消息一起携带，供 Side Panel 多实例隔离", () => {
+    const { wrapper, api } = mountComposable(() =>
+      useExtensionSelectorMode({ serviceInstanceId: "inst-1", onSelectModeChange: vi.fn() }),
+    );
+    api.notifySelectionResult({
+      filePath: "/a.ts",
+      line: 1,
+      column: 1,
+      innerText: "x",
+      description: "div",
+    });
+    expect(window.postMessage).toHaveBeenLastCalledWith(
+      {
+        type: WIDGET_MSG.ELEMENT_SELECTED,
+        serviceInstanceId: "inst-1",
+        filePath: "/a.ts",
+        line: 1,
+        column: 1,
+        innerText: "x",
+        description: "div",
+      },
+      "*",
+    );
+    api.notifySelectModeChange(true);
+    expect(window.postMessage).toHaveBeenLastCalledWith(
+      { type: WIDGET_MSG.SELECTOR_START, serviceInstanceId: "inst-1" },
+      "*",
+    );
+    wrapper.unmount();
+  });
+
   it("notifySelectModeChange 广播 SELECTOR_START/STOP", () => {
     const { wrapper, api } = mountComposable(() =>
       useExtensionSelectorMode({ onSelectModeChange: vi.fn() }),

@@ -522,7 +522,7 @@ if (isExtensionMode) {
   ext.broadcastTheme = result.broadcastTheme;
 }
 if (isExtensionSelectorMode) {
-  const result = useExtensionSelectorMode({ onSelectModeChange: handleSelectModeChange });
+  const result = useExtensionSelectorMode({ onSelectModeChange: handleSelectModeChange, serviceInstanceId });
   ext.notifySelectionResult = result.notifySelectionResult;
   ext.notifySelectModeChange = result.notifySelectModeChange;
 }

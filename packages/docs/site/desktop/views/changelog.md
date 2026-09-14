@@ -1,5 +1,55 @@
 # 更新日志
 
+## v1.2.20
+
+`2026-09-14`
+
+### vite-plugin
+
+#### ✨ 新增
+
+- 元素选择器升级为多框架架构：新增统一的 Inspector 适配器契约，框架适配与宿主逻辑解耦，UI 层不再硬编码框架实现而是动态加载适配器，首版落地 Vue 支持
+- 新增 React 框架的元素选择支持：复用 `@code-inspector/core` 官方 `transformCode` API 在 dev 阶段为 jsx/tsx 注入源码坐标标记（仅 serve 生效，生产构建零影响），运行时配套新增 React 解析适配器；Vue 项目（含 vue-jsx）自动跳过注入
+- 新增构建期框架检测：通过 Vite 已装配插件前缀识别 Vue / React 项目，用于驱动适配器选择与注入门控
+
+#### ⚡ 改进
+
+- Vue DevTools 桥注入按框架门控：React 项目不再注入无关的桥脚本
+
+### deepseek
+
+#### ✨ 新增
+
+- 优化 PTC 子调度自动诊断：重构 post-execute 钩子，将 PTC 子调度的编辑目标登记与最终诊断聚合分离，外层调用收尾时对登记的编辑文件统一执行批量诊断并追加上下文，子调度内的多次编辑不再各自触发诊断
+
+#### 🐛 修复
+
+- 修复嵌入式场景下 dsh 侧栏未按预期隐藏的问题：改用类名匹配替代 data 属性匹配
+
+### extension
+
+#### 🐛 修复
+
+- 修复多实例串扰问题：为选择模式相关消息添加服务实例 ID 隔离，过滤规则收紧为仅主题全局广播放行、其余消息必须匹配当前实例 ID，多项目同时使用时不再互相干扰
+
+### ui
+
+#### ⚡ 改进
+
+- 会话列表样式对齐设计系统规范，会话标题添加悬浮提示
+
+### test
+
+#### ⚡ 改进
+
+- 为所有子包新增 `test:coverage` 覆盖率脚本与 vitest 覆盖率配置
+- 大规模补齐单元测试：覆盖 vite 端点/服务/代理服务器、ui 组件与 composables、扩展 background/content/sidepanel、deepseek 与 opencode provider 核心逻辑等
+- 新增 `ServiceTaskState` 类型统一任务状态传递；修复 provider 加载失败的错误字段命名；优化 opencode provider 的配置合并与错误处理
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.20/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.19
 
 `2026-09-10`

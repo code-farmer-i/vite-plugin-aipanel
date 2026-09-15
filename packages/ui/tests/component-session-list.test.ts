@@ -84,14 +84,14 @@ describe("SessionList", () => {
       key: "a",
       id: "a",
       title: "标题 A",
-      meta: "2 分钟前",
+      meta: "2分钟前",
       active: true,
     });
     const w = mountList({ sessionItems: ref([item]), handleSelectSession });
 
     const row = w.find(".aipanel-session-item");
     expect(row.find(".aipanel-session-title-text").text()).toBe("标题 A");
-    expect(row.find(".aipanel-session-meta").text()).toBe("2 分钟前");
+    expect(row.find(".aipanel-session-meta").text()).toBe("2分钟前");
     expect(row.classes()).toContain("active");
     expect(row.attributes("aria-selected")).toBe("true");
 

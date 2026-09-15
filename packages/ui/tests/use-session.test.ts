@@ -3,7 +3,8 @@
  *
  * 覆盖目标：
  *  - sessionItems 由 sessions 映射：key/id/title（缺省「新会话」）/meta/active/session；
- *  - meta 优先级：session.meta > updatedAt 相对时间（刚刚/N 分钟前/N 小时前/N 天前/>7 天回退日期）；
+ *  - meta 优先级：session.meta > updatedAt 相对时间（刚刚/N分钟/N小时/N天/N个月/N年）；
+ *    分桶阈值与官方 relativeTime 一致，超出即升档而非回退绝对日期；
  *  - 非法/缺失 updatedAt 的兜底为空串；
  *  - handleCreateSession / handleSelectSession 透传；
  *  - handleDeleteSession 弹确认，仅 confirmed 才回调 onDeleteSession。
@@ -57,7 +58,7 @@ afterEach(() => {
 describe("useSession", () => {
   it("sessionItems 映射 key/id/title/active，并保留原始 session", () => {
     const s = setup();
-    const session: AIPanelWidgetSession = { id: "s1", title: "标题一", meta: "3 分钟前" };
+    const session: AIPanelWidgetSession = { id: "s1", title: "标题一", meta: "3分钟前" };
     s.sessions.value = [session, { id: "s2" }];
     s.currentSessionId.value = "s2";
 
@@ -67,7 +68,7 @@ describe("useSession", () => {
       key: "s1",
       id: "s1",
       title: "标题一",
-      meta: "3 分钟前",
+      meta: "3分钟前",
       active: false,
     });
     expect(items[0].session).toStrictEqual(session);
@@ -87,9 +88,9 @@ describe("useSession", () => {
 
     expect(s.api.sessionItems.value.map((item) => item.meta)).toEqual([
       "刚刚",
-      "2 分钟前",
-      "3 小时前",
-      "2 天前",
+      "2分钟",
+      "3小时",
+      "2天",
     ]);
   });
 
@@ -100,22 +101,24 @@ describe("useSession", () => {
       { id: "date", updatedAt: new Date(Date.now() - 4 * HOUR) },
     ];
 
-    expect(s.api.sessionItems.value.map((item) => item.meta)).toEqual(["刚刚", "4 小时前"]);
+    expect(s.api.sessionItems.value.map((item) => item.meta)).toEqual(["刚刚", "4小时"]);
   });
 
-  it("超过 7 天回退为本地日期时间字符串；非法/缺失 updatedAt 兜底空串", () => {
+  it("超过 30 天升档为个月、超过 365 天升档为年；非法/缺失 updatedAt 兜底空串", () => {
     const s = setup();
     s.sessions.value = [
-      { id: "old", updatedAt: Date.now() - 8 * DAY },
+      { id: "months", updatedAt: Date.now() - 45 * DAY },
+      { id: "years", updatedAt: Date.now() - 400 * DAY },
       { id: "bad", updatedAt: "not-a-date" },
       { id: "none" },
     ];
 
-    const items = s.api.sessionItems.value;
-    expect(items[0].meta).not.toContain("天前");
-    expect(items[0].meta.length).toBeGreaterThan(0);
-    expect(items[1].meta).toBe("");
-    expect(items[2].meta).toBe("");
+    expect(s.api.sessionItems.value.map((item) => item.meta)).toEqual([
+      "1个月",
+      "1年",
+      "",
+      "",
+    ]);
   });
 
   it("session.meta 优先于 updatedAt", () => {

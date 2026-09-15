@@ -1,4 +1,4 @@
-import{F as p,T as d,d as g,g as _,s as i,x as u}from"./vue.runtime.esm-bundler.DJFQAGOt.js";var c=`<svg t="1775402599580" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5390" xmlns:xlink="http://www.w3.org/1999/xlink" width="100%" height="100%">
+import{F as p,T as d,d as g,g as _,s as i,x as u}from"./vue.runtime.esm-bundler.CrY3TkW7.js";var c=`<svg t="1775402599580" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5390" xmlns:xlink="http://www.w3.org/1999/xlink" width="100%" height="100%">
   <defs>
     <linearGradient id="aipanel-logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#667eea"/>

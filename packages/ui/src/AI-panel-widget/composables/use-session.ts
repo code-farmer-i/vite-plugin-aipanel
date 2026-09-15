@@ -1,21 +1,23 @@
 import { computed, type Ref } from "vue";
 import type { AIPanelWidgetSession, AIPanelWidgetSessionItem } from "../src/types";
 
-/** 相对时间标签（对齐官方行内 timeLabel 语义：刚刚/N分钟前/N小时前/N天前） */
+/**
+ * 相对时间标签，对齐官方会话列表行内 timeLabel：刚刚/N分钟/N小时/N天/N个月/N年。
+ * 分桶阈值与 @deepseek-ai/dsh-client-ui-primitives 的 relativeTime 一致。
+ */
 function formatRelativeTime(ts: number | string | Date): string {
   const time = new Date(ts).getTime();
   if (Number.isNaN(time)) return "";
-  const diff = Date.now() - time;
-  if (diff < 0) return "刚刚";
+  const diff = Math.max(0, Date.now() - time);
   const minute = 60_000;
   const hour = 60 * minute;
   const day = 24 * hour;
   if (diff < minute) return "刚刚";
-  if (diff < hour) return `${Math.floor(diff / minute)} 分钟前`;
-  if (diff < day) return `${Math.floor(diff / hour)} 小时前`;
-  if (diff < 7 * day) return `${Math.floor(diff / day)} 天前`;
-  const date = new Date(time);
-  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  if (diff < hour) return `${Math.floor(diff / minute)}分钟`;
+  if (diff < day) return `${Math.floor(diff / hour)}小时`;
+  if (diff < 30 * day) return `${Math.floor(diff / day)}天`;
+  if (diff < 365 * day) return `${Math.floor(diff / (30 * day))}个月`;
+  return `${Math.floor(diff / (365 * day))}年`;
 }
 
 function formatSessionMeta(session: AIPanelWidgetSession): string {

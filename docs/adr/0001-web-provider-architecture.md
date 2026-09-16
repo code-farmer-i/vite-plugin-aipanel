@@ -1,4 +1,8 @@
-# 开放 Web 接入架构设计
+# WebProvider 适配器架构
+
+**Status: accepted**
+
+核心框架与具体 Web UI 通过 `WebProvider` 适配器接口解耦：进程管理、后端 API、桥接脚本、事件协议、数据模型全部下沉到 provider 实现，核心层只依赖通用协议，未来可接入任意 Web UI。
 
 > 目标：核心框架与具体的 Web UI 解耦，未来可接入任意 Web UI（Provider）。核心层只依赖通用协议，具体 Web UI 的一切细节沉入 Provider 实现。
 

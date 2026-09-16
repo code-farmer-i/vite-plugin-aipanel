@@ -11,3 +11,13 @@
 3. 官方类型优先：框架/依赖自带的能力类型直接 import；缺类型声明就补 devDependency，不本地复刻。
 4. 删除即清理：移除旧机制时，同步删除其定义、导出与产物引用，不留兼容镜像；优雅优先于向后兼容。
 5. 改动自检：静态检查/typecheck 通过、仓库级校验全绿、受影响产物已重建。
+
+## Agent skills
+
+### Issue tracker
+
+Issue 与 spec 以 GitHub issue 形式管理，统一通过 `gh` CLI 操作。详见 `docs/agents/issue-tracker.md`。
+
+### Domain docs
+
+multi-context 布局：根级 `CONTEXT-MAP.md` 指向各 package 的 `CONTEXT.md`，系统级 ADR 在 `docs/adr/`、各 package 级 ADR 在 `packages/*/docs/adr/`。详见 `docs/agents/domain.md`。

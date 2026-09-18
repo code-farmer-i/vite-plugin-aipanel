@@ -1,5 +1,26 @@
 # 更新日志
 
+## v1.2.23
+
+`2026-09-18`
+
+### deepseek
+
+#### 🐛 修复
+
+- 修复新版 dsh（0.1.6-alpha.2）下从 AIPanel 点击会话无法切换的问题：dsh 把「当前会话」的归属从会话控制器移到了界面导航层，插件已改走官方新接口（`uiWorkspace.openSession`）；此前依赖的旧接口在新版已被移除，会话切换会静默失效
+- 会话「已就绪」判定同步改用官方列表状态（主视图持有标记 + 列表就绪阶段）：新版 dsh 的会话列表不再提供 `current` 字段，原先基于它的就绪判断会一直不成立，导致 AIPanel 侧 loading 无法放行
+
+### ui
+
+#### ⚡ 改进
+
+- 会话列表的时间标签对齐 DeepSeek 官方的相对时间写法：刚刚 / N分钟 / N小时 / N天 / N个月 / N年；此前超过一周就退回成绝对日期时间，与 dsh 侧栏里的显示不一致
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.23/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.22
 
 `2026-09-14`

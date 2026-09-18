@@ -4,24 +4,6 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
-  "pnpm": {
-    "overrides": {
-      "esbuild": "^0.28.1",
-      "typescript": "^6.0.3",
-      "vue-tsc": "^3.3.6"
-    },
-    "onlyBuiltDependencies": [
-      "@parcel/watcher",
-      "esbuild",
-      "keytar",
-      "msgpackr-extract",
-      "node-pty",
-      "vue-demi"
-    ],
-    "ignoredBuiltDependencies": [
-      "sharp"
-    ]
-  },
   "scripts": {
     "build": "pnpm --filter @aipanel/core build && pnpm --filter @aipanel/provider-opencode build && pnpm --filter @aipanel/provider-deepseek build && pnpm --filter @aipanel/ui build && pnpm --filter vite-plugin-aipanel build && pnpm --filter @aipanel/extension build",
     "build:ui": "pnpm --filter @aipanel/ui build && pnpm --filter @aipanel/extension build",

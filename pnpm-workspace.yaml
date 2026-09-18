@@ -2,6 +2,10 @@ packages:
   - "packages/*"
   - "packages/providers/*"
   - "packages/providers/*/dsh-*"
+overrides:
+  esbuild: ^0.28.1
+  typescript: ^6.0.3
+  vue-tsc: ^3.3.6
 allowBuilds:
   '@parcel/watcher': true
   esbuild: true

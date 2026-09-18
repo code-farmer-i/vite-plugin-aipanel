@@ -1,7 +1,7 @@
 import type { ViteDevServer } from "vite";
 import type { IncomingMessage } from "node:http";
 import type { ChromeProjectOptions, LogFileConfig, PageContext } from "@aipanel/core";
-import { MCP_API_PATH, VUE_DEVTOOLS_ACTIONS } from "@aipanel/core";
+import { MCP_API_PATH } from "@aipanel/core";
 import { McpProxy } from "../core/mcp-proxy";
 import {
   createLogger,
@@ -19,7 +19,16 @@ import {
   validatePageId,
 } from "../core/mcp-chrome";
 import { resolveProjectScope } from "../core/chrome-project";
-import { CUSTOM_TOOLS, isAllowedToolName, type CustomTool } from "../core/mcp-tools";
+import {
+  CUSTOM_TOOLS,
+  findVueDevtoolsTool,
+  isAllowedToolName,
+  serviceLogToolName,
+  VITE_LOGS_TOOL_NAME,
+  VUE_DEVTOOLS_PREFIX,
+  vueDevtoolsToolList,
+  type CustomTool,
+} from "../core/mcp-tools";
 import { getOfficialProjectTools } from "../core/official-tools";
 import { executeAction } from "./vue-devtools";
 import { findGitRoot } from "@aipanel/core/node";
@@ -40,6 +49,8 @@ export function setupMcpEndpoint(
   getPageContext: () => PageContext,
   logFiles: LogFileConfig[] = [],
   chromeProject?: ChromeProjectOptions,
+  /** Vue 项目才注入 vue-devtools 桥；非 Vue 项目既不上架也不路由这些工具，避免模型调用必失败的工具 */
+  exposeVueDevtools = true,
 ) {
   const projectRoot = findGitRoot(process.cwd());
   server.middlewares.use(async (req, res, next) => {
@@ -80,6 +91,7 @@ export function setupMcpEndpoint(
         getPageContext,
         logFiles,
         projectRoot,
+        exposeVueDevtools,
       );
       return;
     }
@@ -112,6 +124,7 @@ async function handlePost(
   getPageContext: () => PageContext,
   logFiles: LogFileConfig[],
   projectRoot: string,
+  exposeVueDevtools: boolean,
 ) {
   try {
     const body = await readBody(req);
@@ -126,7 +139,7 @@ async function handlePost(
 
     switch (method) {
       case "tools/list":
-        return await handleToolsList(res, id, mcp, logFiles);
+        return await handleToolsList(res, id, mcp, logFiles, exposeVueDevtools);
       case "tools/call":
         return await handleToolsCall(
           res,
@@ -139,6 +152,7 @@ async function handlePost(
           getPageContext,
           logFiles,
           projectRoot,
+          exposeVueDevtools,
         );
       default:
         // initialize 等 → 直接转发
@@ -160,6 +174,7 @@ async function handleToolsList(
   id: number | null,
   mcp: McpProxy,
   logFiles: LogFileConfig[],
+  exposeVueDevtools: boolean,
 ) {
   let official: CustomTool[] = [];
   try {
@@ -170,7 +185,12 @@ async function handleToolsList(
       error: e instanceof Error ? e.message : String(e),
     });
   }
-  const tools = [...official, ...CUSTOM_TOOLS, ...buildServiceLogTools(logFiles)];
+  const tools = [
+    ...official,
+    ...CUSTOM_TOOLS,
+    ...(exposeVueDevtools ? vueDevtoolsToolList() : []),
+    ...buildServiceLogTools(logFiles),
+  ];
   sendMcpJson(res, 200, { jsonrpc: "2.0", id, result: { tools } }, mcp.sessionId);
 }
 
@@ -187,6 +207,7 @@ function handleToolsCall(
   getPageContext: () => PageContext,
   logFiles: LogFileConfig[],
   projectRoot: string,
+  exposeVueDevtools: boolean,
 ) {
   const params = tryParseParams(body);
   const toolName = params?.name;
@@ -197,12 +218,16 @@ function handleToolsCall(
     return handleGetPageContext(res, id, mcp, operationsOrigins, includeExtensions, getPageContext);
   }
 
-  // vue-devtools 桥（window.__aipanel_vue）只注入在项目页，范围固定为自动项目页
-  if (toolName?.startsWith("vue-devtools_")) {
+  // vue-devtools 桥（window.__aipanel_vue）只注入在项目页，范围固定为自动项目页；
+  // 非 Vue 项目不路由：与 tools/list 暴露面保持一致
+  if (toolName?.startsWith(VUE_DEVTOOLS_PREFIX)) {
+    if (!exposeVueDevtools) {
+      return sendMcpError(res, id, -32601, `Tool not found: ${toolName}`, mcp.sessionId);
+    }
     return handleVueDevtoolsTool(res, id, mcp, projectOrigins, toolName, args);
   }
 
-  if (toolName === "logs-devtools_vite_logs") {
+  if (toolName === VITE_LOGS_TOOL_NAME) {
     return handleViteLogsTool(res, id, args, mcp.sessionId);
   }
 
@@ -559,17 +584,6 @@ async function handleDevTool(
 
 // ========== Vue DevTools 工具 ==========
 
-/** vue-devtools_* 工具名到后端 action 的映射 */
-const VUE_DEVTOOLS_TOOL_ACTIONS: Record<string, string> = {
-  "vue-devtools_get_apps": VUE_DEVTOOLS_ACTIONS.GET_APPS,
-  "vue-devtools_set_active_app": VUE_DEVTOOLS_ACTIONS.TOGGLE_APP,
-  "vue-devtools_get_component_tree": VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_TREE,
-  "vue-devtools_get_component_state": VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_STATE,
-  "vue-devtools_get_component_render_code": VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_RENDER_CODE,
-  "vue-devtools_get_current_route": VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO,
-  "vue-devtools_get_routes": VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO,
-};
-
 async function handleVueDevtoolsTool(
   res: McpResponse,
   id: number | null,
@@ -579,13 +593,14 @@ async function handleVueDevtoolsTool(
   args: Record<string, unknown>,
 ) {
   try {
-    const action = VUE_DEVTOOLS_TOOL_ACTIONS[toolName];
-    if (!action) {
+    // 单一来源：name/description/schema 与 action 同出自 core/mcp-tools 的 VUE_DEVTOOLS_TOOLS
+    const tool = findVueDevtoolsTool(toolName);
+    if (!tool) {
       sendMcpError(res, id, -32601, `Tool not found: ${toolName}`, mcp.sessionId);
       return;
     }
 
-    const result = await executeAction(action, args, mcp, projectOrigins);
+    const result = await executeAction(tool.action, args, mcp, projectOrigins);
 
     switch (toolName) {
       case "vue-devtools_set_active_app":
@@ -697,7 +712,7 @@ function parseProcessLevelFilter(level: unknown): ProcessLogEntry["level"][] | u
 
 function buildServiceLogTools(logFiles: LogFileConfig[]): CustomTool[] {
   return logFiles.map((cfg) => ({
-    name: `logs-devtools_${cfg.name}_logs`,
+    name: serviceLogToolName(cfg.name),
     description: `获取 ${cfg.name} 的日志。
 
 **何时使用此工具**：
@@ -727,7 +742,7 @@ ${cfg.description}
 }
 
 function isServiceLogTool(toolName: string, logFiles: LogFileConfig[]): boolean {
-  return logFiles.some((cfg) => `logs-devtools_${cfg.name}_logs` === toolName);
+  return logFiles.some((cfg) => serviceLogToolName(cfg.name) === toolName);
 }
 
 async function handleServiceLogsTool(
@@ -740,7 +755,7 @@ async function handleServiceLogsTool(
   sessionId: string,
 ) {
   try {
-    const cfg = logFiles.find((c) => `logs-devtools_${c.name}_logs` === toolName);
+    const cfg = logFiles.find((c) => serviceLogToolName(c.name) === toolName);
     if (!cfg) {
       sendMcpError(res, id, -32601, `Tool not found: ${toolName}`, sessionId);
       return;

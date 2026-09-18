@@ -296,6 +296,7 @@ function createAIPanelPlugin(options: PluginOptions = {}): Plugin {
         mcpProxy,
         config.logFiles,
         chromeProjectOptions,
+        isVueProject,
       );
 
       // 纯净 MCP 模式：不加载 Web Provider，仅暴露 MCP 工具服务。

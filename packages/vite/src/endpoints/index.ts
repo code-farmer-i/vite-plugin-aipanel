@@ -22,6 +22,8 @@ export function setupMiddlewares(
   mcp?: McpProxy,
   logFiles?: LogFileConfig[],
   chromeProject?: ChromeProjectOptions,
+  /** 是否暴露 vue-devtools_* 工具（Vue 项目才有页面桥；未识别框架按保守策略视为 Vue） */
+  exposeVueDevtools = true,
 ) {
   setupWidgetEndpoints(server, ctx);
   setupContextEndpoint(server, ctx);
@@ -32,7 +34,14 @@ export function setupMiddlewares(
   setupWarmupEndpoint(server, ctx);
   setupLogsEndpoint(server);
   if (mcp) {
-    setupMcpEndpoint(server, mcp, () => ctx.getPageContext(), logFiles ?? [], chromeProject);
+    setupMcpEndpoint(
+      server,
+      mcp,
+      () => ctx.getPageContext(),
+      logFiles ?? [],
+      chromeProject,
+      exposeVueDevtools,
+    );
     setupVueDevtoolsEndpoint(server, mcp);
   }
 }

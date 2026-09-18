@@ -6,6 +6,7 @@
  * 工具层限制（白名单、必填 pageId、仅项目页）由本文件 + endpoints/mcp.ts 的 tools/call 共同执行。
  */
 
+import { VUE_DEVTOOLS_ACTIONS, type VueDevtoolsAction } from "@aipanel/core";
 import { OFFICIAL_TOOL_META, type OfficialToolMeta } from "./official-meta";
 
 /** 模型可见名前缀：官方短名 → chrome-devtools_<name> */
@@ -13,6 +14,18 @@ export const MCP_PREFIX = "chrome-devtools_";
 
 export function displayToolName(short: string): string {
   return MCP_PREFIX + short;
+}
+
+/** 本地桥接工具族前缀（tools/list 暴露面与 tools/call 路由共用） */
+export const VUE_DEVTOOLS_PREFIX = "vue-devtools_";
+export const LOGS_DEVTOOLS_PREFIX = "logs-devtools_";
+
+/** Vite 进程日志工具名（工具定义与调用路由共用） */
+export const VITE_LOGS_TOOL_NAME = `${LOGS_DEVTOOLS_PREFIX}vite_logs`;
+
+/** 服务日志文件工具名（按 LogFileConfig.name 生成，暴露与路由共用） */
+export function serviceLogToolName(name: string): string {
+  return `${LOGS_DEVTOOLS_PREFIX}${name}_logs`;
 }
 
 export interface CustomTool {
@@ -83,7 +96,169 @@ export const CUSTOM_TOOLS: CustomTool[] = [
       "Get the page the user is currently browsing (URL, title, and page ID). Resolves the project page with injected context; for allowOrigins pages use list_pages and pass its pageId to page tools instead.",
     inputSchema: { type: "object", properties: {} },
   },
+  {
+    name: VITE_LOGS_TOOL_NAME,
+    description: `获取 Vite 开发服务器的运行日志。
+
+**何时使用此工具**：
+- 用户报告"页面没更新"、"热更新不工作"、"HMR 失效"时
+- 构建报错或编译失败，需要查看详细错误信息
+- 页面白屏、样式丢失、模块加载失败等开发问题
+- 用户提到"开发服务器有问题"、"vite 报错"
+- 需要确认最近的文件变更是否被 Vite 正确处理
+
+**日志内容**：
+- Vite HMR 热更新日志（哪些文件被更新、更新状态）
+- 构建编译日志（错误、警告、成功信息）
+- OpenCode Web 进程输出
+- 插件运行日志
+
+日志保存在内存缓冲区（最近 500 条）。`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        level: {
+          type: "string",
+          description:
+            "日志级别过滤：error(错误)、warn(警告)、info(信息)、debug(调试)、log(普通)。多个用逗号分隔，如 'error,warn'",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 200,
+          default: 50,
+          description: "返回条数，默认 50，最大 200",
+        },
+        source: {
+          type: "string",
+          description:
+            "来源过滤：console(控制台)、provider-stdout(服务输出)、provider-stderr(服务错误)",
+        },
+      },
+    },
+  },
 ];
+
+/**
+ * 页面桥接工具：描述与输入 schema（模型可见）+ 后端 action（调用分发）单一来源。
+ * tools/list 与 tools/call 都取自本定义，避免"清单"与"路由"两份来源各自漂移。
+ * 只在注入 Vue DevTools 桥的项目（Vue 项目）暴露。
+ */
+export interface VueDevtoolsTool extends CustomTool {
+  /** 页面桥后端 action（endpoints/vue-devtools.ts executeAction） */
+  action: VueDevtoolsAction;
+}
+
+export const VUE_DEVTOOLS_TOOLS: readonly VueDevtoolsTool[] = [
+  {
+    name: `${VUE_DEVTOOLS_PREFIX}get_apps`,
+    action: VUE_DEVTOOLS_ACTIONS.GET_APPS,
+    description: `获取指定页面所有 Vue 应用实例列表。
+
+**何时使用**：
+- 排查微前端/多实例场景下操作的是哪个应用
+- 切换活跃应用前查看有哪些可用`,
+    inputSchema: withPageIdSchema({ type: "object", properties: {} }),
+  },
+  {
+    name: `${VUE_DEVTOOLS_PREFIX}set_active_app`,
+    action: VUE_DEVTOOLS_ACTIONS.TOGGLE_APP,
+    description: `切换指定页面的活跃 Vue 应用实例。后续所有 vue-devtools_* 工具都操作这个应用。`,
+    inputSchema: withPageIdSchema({
+      type: "object",
+      properties: {
+        appId: { type: "string", description: "应用 ID（从 vue-devtools_get_apps 获取）" },
+      },
+      required: ["appId"],
+    }),
+  },
+  {
+    name: `${VUE_DEVTOOLS_PREFIX}get_component_tree`,
+    action: VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_TREE,
+    description: `获取指定页面当前活跃 Vue 应用的组件树。
+
+**何时使用**：
+- 了解页面组件层级结构
+- 找到目标组件的 nodeId（后续查状态用）
+- 排查组件未渲染问题
+- 只关心某类组件时用 filter 缩小范围
+
+**返回**：组件树 [{ id, name, children, file, ... }]`,
+    inputSchema: withPageIdSchema({
+      type: "object",
+      properties: {
+        filter: { type: "string", description: "按组件名过滤（大小写不敏感的子串匹配），可选" },
+      },
+    }),
+  },
+  {
+    name: `${VUE_DEVTOOLS_PREFIX}get_component_state`,
+    action: VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_STATE,
+    description: `获取指定组件的完整运行时状态。
+
+**何时使用**：
+- 排查 props 传值是否正确
+- 查看 ref/reactive 响应式数据的当前值
+- 检查 computed 计算结果
+- 查看 attrs / events / inject / provide / template refs`,
+    inputSchema: withPageIdSchema({
+      type: "object",
+      properties: {
+        nodeId: {
+          type: "string",
+          description: "组件节点 ID（从 vue-devtools_get_component_tree 获取）",
+        },
+      },
+      required: ["nodeId"],
+    }),
+  },
+  {
+    name: `${VUE_DEVTOOLS_PREFIX}get_component_render_code`,
+    action: VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_RENDER_CODE,
+    description: `获取组件的渲染函数源码。`,
+    inputSchema: withPageIdSchema({
+      type: "object",
+      properties: { nodeId: { type: "string", description: "组件节点 ID" } },
+      required: ["nodeId"],
+    }),
+  },
+  {
+    name: `${VUE_DEVTOOLS_PREFIX}get_current_route`,
+    action: VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO,
+    description: `获取 Vue Router 的当前路由信息。
+
+**何时使用**：
+- 排查路由跳转问题
+- 查看当前路由 path/params/query/hash
+- 确认路由守卫和 matched 记录`,
+    inputSchema: withPageIdSchema({ type: "object", properties: {} }),
+  },
+  {
+    name: `${VUE_DEVTOOLS_PREFIX}get_routes`,
+    action: VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO,
+    description: `获取 Vue Router 的完整路由表。
+
+**何时使用**：
+- 查看所有已注册路由
+- 确认路由配置是否正确
+- 查看路由嵌套关系`,
+    inputSchema: withPageIdSchema({ type: "object", properties: {} }),
+  },
+];
+
+/** vue-devtools_* 工具名 → 定义（未知名称返回 undefined） */
+export function findVueDevtoolsTool(name: string): VueDevtoolsTool | undefined {
+  return VUE_DEVTOOLS_TOOLS.find((t) => t.name === name);
+}
+
+/** vue-devtools_* 的 tools/list 暴露面（剥掉仅用于路由分发的 action 字段） */
+export function vueDevtoolsToolList(): CustomTool[] {
+  return VUE_DEVTOOLS_TOOLS.map(({ name, description, inputSchema }) => ({
+    name,
+    description,
+    inputSchema,
+  }));
+}
 /** 跨分类不开放（与项目无关的实体/安装类） */
 const UNSAFE_CATEGORIES = new Set(["EXTENSIONS", "PWA", "THIRD_PARTY", "WEBMCP"]);
 

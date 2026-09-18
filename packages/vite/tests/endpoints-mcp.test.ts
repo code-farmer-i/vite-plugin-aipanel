@@ -3,7 +3,7 @@
  *
  * 覆盖目标（tools/call 路由分发 / 边界守卫 / 错误映射）：
  * - 方法分发：非 MCP 路径 next、OPTIONS 204、GET SSE、DELETE、POST 空 body 400；
- * - tools/list：官方白名单 + CUSTOM_TOOLS + 服务日志工具组合、会话头；
+ * - tools/list：官方白名单 + CUSTOM_TOOLS + vue-devtools 工具（Vue 项目）+ 服务日志工具组合、会话头；
  * - chrome-devtools_current_page / list_pages / new_page 各分支与错误映射；
  * - 工具白名单守卫（isAllowedToolName / deny）、pageId 解析与范围校验、
  *   navigate_page 目标范围守卫、select_page + 剥离 pageId 转发；
@@ -25,6 +25,8 @@ import type { McpProxy } from "../src/core/mcp-proxy";
 import {
   CUSTOM_TOOLS,
   OFFICIAL_GLOBAL_POLICY,
+  VITE_LOGS_TOOL_NAME,
+  VUE_DEVTOOLS_TOOLS,
   configureToolScope,
   displayToolName,
   officialDefaultShorts,
@@ -146,6 +148,8 @@ interface SetupOptions {
   chromeProject?: { allowOrigins?: string[]; includeExtensionPages?: boolean };
   origins?: string[];
   pageContext?: PageContext;
+  /** 是否暴露 vue-devtools_* 工具（对齐插件按框架下发的 exposeVueDevtools） */
+  exposeVueDevtools?: boolean;
 }
 
 function setup(options: SetupOptions): Handler {
@@ -164,6 +168,7 @@ function setup(options: SetupOptions): Handler {
     () => options.pageContext ?? { url: "", title: "" },
     options.logFiles ?? [],
     options.chromeProject,
+    options.exposeVueDevtools ?? true,
   );
   if (!handler) throw new Error("mcp handler 未注册");
   return handler;
@@ -275,10 +280,40 @@ describe("setupMcpEndpoint — tools/list", () => {
       expect.arrayContaining([
         ...officialDefaultShorts().map(displayToolName),
         ...CUSTOM_TOOLS.map((t) => t.name),
+        ...VUE_DEVTOOLS_TOOLS.map((t) => t.name),
         "logs-devtools_api_logs",
       ]),
     );
-    expect(names).toHaveLength(officialDefaultShorts().length + CUSTOM_TOOLS.length + 1);
+    expect(names).toHaveLength(
+      officialDefaultShorts().length + CUSTOM_TOOLS.length + VUE_DEVTOOLS_TOOLS.length + 1,
+    );
+
+    // 暴露面与调用路由同源：schema 原样下发（页面级工具统一必填 pageId）
+    const tools = json(res).result.tools as Array<{
+      name: string;
+      inputSchema: { required?: string[] };
+    }>;
+    const tree = tools.find((t) => t.name === "vue-devtools_get_component_tree");
+    expect(tree?.inputSchema.required).toContain("pageId");
+  });
+
+  it("非 Vue 项目不上架 vue-devtools 工具，本地日志工具照常暴露", async () => {
+    const handler = setup({ mcp: makeMcp(), exposeVueDevtools: false });
+    const res = fakeRes();
+    await handler(
+      fakeReq(
+        "POST",
+        MCP_API_PATH,
+        JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+      ),
+      res,
+      vi.fn(),
+    );
+
+    const names = (json(res).result.tools as Array<{ name: string }>).map((t) => t.name);
+    expect(names.some((name) => name.startsWith("vue-devtools_"))).toBe(false);
+    expect(names).toContain(VITE_LOGS_TOOL_NAME);
+    expect(names).toHaveLength(officialDefaultShorts().length + CUSTOM_TOOLS.length);
   });
 });
 
@@ -591,6 +626,21 @@ describe("setupMcpEndpoint — vue-devtools 与日志工具", () => {
     expect(toolError(res).code).toBe(-32601);
   });
 
+  it("非 Vue 项目调用 vue-devtools_* 返回 -32601（不上架也不路由）", async () => {
+    const handler = setup({ mcp: makeMcp(), exposeVueDevtools: false });
+    const res = fakeRes();
+    await handler(
+      fakeReq(
+        "POST",
+        MCP_API_PATH,
+        JSON.stringify(postBody(res, { name: "vue-devtools_get_apps", arguments: { pageId: 0 } })),
+      ),
+      res,
+      vi.fn(),
+    );
+    expect(toolError(res).code).toBe(-32601);
+  });
+
   it("vue-devtools_get_current_route 提取 currentRoute", async () => {
     const mcp = makeMcp();
     mcp.callChromeDevTool.mockImplementation(async (name: string) => {
@@ -631,7 +681,7 @@ describe("setupMcpEndpoint — vue-devtools 与日志工具", () => {
       fakeReq(
         "POST",
         MCP_API_PATH,
-        JSON.stringify(postBody(res, { name: "logs-devtools_vite_logs", arguments: {} })),
+        JSON.stringify(postBody(res, { name: VITE_LOGS_TOOL_NAME, arguments: {} })),
       ),
       res,
       vi.fn(),
@@ -652,9 +702,7 @@ describe("setupMcpEndpoint — vue-devtools 与日志工具", () => {
       fakeReq(
         "POST",
         MCP_API_PATH,
-        JSON.stringify(
-          postBody(res, { name: "logs-devtools_vite_logs", arguments: { limit: 10 } }),
-        ),
+        JSON.stringify(postBody(res, { name: VITE_LOGS_TOOL_NAME, arguments: { limit: 10 } })),
       ),
       res,
       vi.fn(),

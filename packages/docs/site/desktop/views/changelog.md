@@ -1,5 +1,21 @@
 # 更新日志
 
+## v1.2.24
+
+`2026-09-18`
+
+### mcp
+
+#### 🐛 修复
+
+- 修复 Vue 项目里 AI 拿不到 Vue DevTools 调试工具的问题：组件树、组件运行时状态、渲染源码、当前路由、路由表、应用切换这批工具没被列进工具清单，模型侧根本看不到，能力等于不存在；现在清单和实际可调用的能力重新对齐，Vue 项目共 36 个工具（含 7 个 `vue-devtools_*`）
+- 同样修复 `logs-devtools_vite_logs` 没被列进清单的问题：AI 排查「页面没更新 / HMR 失效 / 构建报错」时用不到这条查 Vite 运行日志的能力，现已恢复
+- React 等非 Vue 项目不再列出 `vue-devtools_*`：这些工具依赖只注入 Vue 页面的调试桥，列出来也只会调用失败；现在按项目框架下发，未下发的名称直接返回「工具不存在」
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.24/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.23
 
 `2026-09-18`

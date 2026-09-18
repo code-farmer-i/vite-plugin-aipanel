@@ -2,21 +2,19 @@
  * AIPanel 浏览器侧插件（dsh Web Client bundle）
  *
  * 经 dsh 的 dsh.client 契约被 __DSH_BOOT__ 自动激活。AIPanel × dsh 的“页内”
- * 全部行为都由本插件承载（不再向 HTML 注入 bridge 脚本）：
+ * 全部行为都由本插件承载：
  *
  *  1. 选中元素引用：AIPanel 点选后经 INSERT_FILE_PART 直接以 chip 插入输入框
  *     （appearance:'file'，官方 SessionInput.insertReference）；本插件保留一个
- *     @aipanel source 仅作 chip 的 codec（提交序列化为 `@节点[n<id>]`）——不再提供
- *     @ 菜单候选列表（已移除）。完整节点上下文由 host 端 dsh-plugin 在 agent/pre-step 反查注入。
- *  2. 会话聚焦（FOCUS_SESSION）：直接走官方 ctx.sessions.open() —— 无 reload、
- *     无 localStorage 握手；激活稳定后把 SESSION_READY 上报父窗（放行 loading）。
+ *     @aipanel source 仅作 chip 的 codec（提交序列化为 `@节点[n<id>]`）。
+ *     完整节点上下文由 host 端 dsh-plugin 在 agent/pre-step 反查注入。
+ *  2. 会话聚焦（FOCUS_SESSION）：直接走官方 ctx.uiWorkspace.openSession()；
+ *     主视图稳定后把 SESSION_READY 上报父窗（放行 loading）。
  *  3. 主题同步（SET_THEME）：ctx.theme.setTheme()（官方持久化偏好 + 呈现器落 DOM）。
  *  4. AIPanel 布局：嵌入式（iframe）时隐藏 dsh 侧栏，避免与 AIPanel 自带会话列表重复。
  *  5. 键盘转发（Esc / Ctrl+P）：嵌入式时把按键转交父窗（退出/切换选择模式）。
- *  6. 选中元素即时插入：官方 SessionInput.insertReference() 把元素以 chip 插入输入框。
  *
- * 与 AIPanel 挂件的消息协议（WIDGET_MSG）、元素/诊断等共享类型均直接引用
- * @aipanel/core 单一来源，不在此维护副本。
+ * 与 AIPanel 挂件的消息协议（WIDGET_MSG）、元素/诊断等共享类型均以 @aipanel/core 为单一来源。
  */
 import type { Context } from "@deepseek-ai/cordis";
 import type {
@@ -26,6 +24,9 @@ import type {
 import { ensureNodeId, toNodeMention, widgetEnvelope, WIDGET_MSG } from "@aipanel/core";
 import type { AIPanelSelectedElement, AIPanelWidgetTheme } from "@aipanel/core";
 import type { ISessions, SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
+// 仅取声明合并：SessionReferenceSourceMap.mainView 由 ui-session 扩展而来
+import type {} from "@deepseek-ai/dsh-client-ui-session/client";
+import type { UiWorkspace } from "@deepseek-ai/dsh-client-ui-workspace/client";
 import type { SessionId } from "@deepseek-ai/dsh-session/types";
 import type {
   IConversation,
@@ -36,10 +37,6 @@ import type {
 import type { ThemePreference, ThemeRuntime } from "@deepseek-ai/dsh-client-ui-theme/client";
 import { registerDiagnosticsView } from "./diagnostics-view";
 
-/**
- * AIPanel 挂件 ⇄ dsh iframe 的消息协议：单一来源 @aipanel/core 的 WIDGET_MSG。
- * 本包不再自行维护一份镜像常量，避免协议漂移。
- */
 const MSG = WIDGET_MSG;
 
 /** overlay 传入的插件配置（config 段，best-effort；缺失时走默认值） */
@@ -59,13 +56,14 @@ export interface AipanelClientPluginConfig {
 /**
  * cordis 插件服务注入声明。rc.1 起插件 ctx 只暴露 inject 声明过的服务面：
  *  - slots：诊断卡片视图（官方 ui-tool 同款姿势）
- *  - sessions：会话列表/current/聚焦（sessions.open）与会话就绪探针
+ *  - sessions：会话列表快照（主视图持有源 retainedBy.mainView）与就绪探针
+ *  - uiWorkspace：会话切换（openSession；alpha.2 起会话选择权归 UI 导航层）
  *  - inputTriggers：注册 @aipanel 引用 source
  *  - conversation：选中元素插入当前会话输入框
  */
-export const inject = ["slots", "sessions", "inputTriggers", "conversation"];
+export const inject = ["slots", "sessions", "inputTriggers", "conversation", "uiWorkspace"];
 
-/** 会话就绪确认所需的最小稳态时长（毫秒）：current 在该窗口内不变视为“已稳定” */
+/** 会话就绪确认所需的最小稳态时长（毫秒）：主视图会话在该窗口内不变视为“已稳定” */
 const SESSION_SETTLE_MS = 400;
 
 /** 等待会话列表基线/会员资格就绪后再 open 的最大重试次数 */
@@ -140,9 +138,10 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
   registerDiagnosticsView(ctx, config.enableDiagnostics !== false);
 
   // ============================================================
-  // 1) 会话就绪探针 + 聚焦（FOCUS_SESSION → sessions.open，无 reload）
+  // 1) 会话就绪探针 + 聚焦（FOCUS_SESSION → uiWorkspace.openSession，无 reload）
   // ============================================================
   const sessions = ctx.get("sessions") as ISessions | undefined;
+  const uiWorkspace = ctx.get("uiWorkspace") as UiWorkspace | undefined;
   if (sessions) {
     let lastCurrent: SessionId | undefined;
     let settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -155,16 +154,29 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
     let focusAttempts = 0;
     let refreshing = false;
 
-    /** 会话已稳定（current 在该窗口内未变）→ 上报父窗放行 loading */
+    /** 会话已稳定 → 上报父窗放行 loading */
     const notifyReady = (sessionId: SessionId) => {
       postToHost(MSG.SESSION_READY, { sessionId });
     };
 
-    /** 判定列表是否已有基线（非“尚无任何数据”的 loading 态） */
-    const hasBaseline = (snap?: SessionListState): boolean => {
-      if (!snap) return false;
-      return !!snap.current || !!snap.ids?.length || Object.keys(snap.byId ?? {}).length > 0;
+    /** 目标会话是否已在主视图展示（mainView 源持有数 > 0） */
+    const isMainView = (snap: SessionListState | undefined, id: SessionId): boolean =>
+      (snap?.byId?.[id]?.retainedBy?.mainView ?? 0) > 0;
+
+    /** 当前主视图会话：先按宿主列表顺序找，再兜底列表外的行（如子代理路由） */
+    const findMainView = (snap?: SessionListState): SessionId | undefined => {
+      if (!snap) return undefined;
+      for (const id of snap.ids ?? []) {
+        if (isMainView(snap, id)) return id;
+      }
+      for (const row of Object.values(snap.byId ?? {})) {
+        if ((row?.retainedBy?.mainView ?? 0) > 0) return row.id;
+      }
+      return undefined;
     };
+
+    /** 判定列表是否已有基线（pending → ready） */
+    const hasBaseline = (snap?: SessionListState): boolean => snap?.phase === "ready";
 
     const listContains = (snap: SessionListState | undefined, id: SessionId): boolean => {
       if (!snap) return false;
@@ -192,7 +204,7 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
       if (focusAttempts >= FOCUS_OPEN_MAX_ATTEMPTS) return;
       focusAttempts += 1;
       const snap = sessions.list.getSnapshot();
-      if (snap.current === id) {
+      if (isMainView(snap, id)) {
         // 目标会话已就位（无需 open）：立即解除在途状态，避免 target 残留导致
         // 后续 dsh 内部/用户切换（如进入子代理会话）被 refocus 强制拉回
         clearFocusTarget();
@@ -215,7 +227,7 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
         }
       }
       try {
-        sessions.open(id);
+        uiWorkspace?.openSession(id);
       } catch {
         /* open 失败（会话不可达）：放弃本轮，父窗兜底 */
       }
@@ -245,10 +257,10 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
       void tryOpenTarget(sessionId);
     };
 
-    // current 稳态探针：任何会话稳定即上报（聚焦目标经 open 后由这里放行）
+    // 主视图稳态探针：任何会话稳定即上报（聚焦目标经 openSession 后由这里放行）
     const probe = () => {
       const snapshot = sessions.list?.getSnapshot?.();
-      const current = snapshot?.current;
+      const current = findMainView(snapshot);
       if (!current) {
         lastCurrent = undefined;
         if (settleTimer) {
@@ -262,7 +274,7 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
       if (settleTimer) clearTimeout(settleTimer);
       settleTimer = setTimeout(() => {
         settleTimer = null;
-        if (sessions.list?.getSnapshot?.()?.current === current) {
+        if (findMainView(sessions.list?.getSnapshot?.()) === current) {
           notifyReady(current);
           if (targetSessionId) {
             if (current === targetSessionId) {
@@ -400,7 +412,7 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
 
     const insertElement = (element: AIPanelSelectedElement) => {
       if (!element) return;
-      const current = sessions.list.getSnapshot().current;
+      const current = findMainView(sessions.list.getSnapshot());
       if (!current) return;
       let inputFor: SessionInput | undefined;
       try {
@@ -484,8 +496,7 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
   // ============================================================
   // 3) @aipanel 引用 codec source（无候选列表）
   // ============================================================
-  // 元素统一由 AIPanel 点选后经 INSERT_FILE_PART 直接插入 chip，不再提供 @ 菜单候选。
-  // 本 source 保留的唯一职责：chip 提交时的 codec（clipboard 投影 + @节点[id] 模型序列化）。
+  // 本 source 的唯一职责：chip 提交时的 codec（clipboard 投影 + @节点[id] 模型序列化）。
   const inputTriggers = ctx.get("inputTriggers");
   if (!inputTriggers) return;
 

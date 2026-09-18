@@ -11,12 +11,8 @@ import type {
   WebProvider,
 } from "@aipanel/core";
 import { createLogger } from "@aipanel/core/node";
-import type {
-  DeepSeekBusyEnter,
-  DeepSeekPermissionPreset,
-  DeepSeekProviderOptions,
-  SessionSummary,
-} from "./types";
+import type { DeepSeekBusyEnter, DeepSeekPermissionPreset, DeepSeekProviderOptions } from "./types";
+import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/types";
 import { DEFAULT_DEEPSEEK_PROVIDER_OPTIONS } from "./constants";
 import { DSH_LOOPBACK_HOST } from "./constants";
 import { DeepSeekAPI } from "./api";
@@ -151,7 +147,9 @@ Please upgrade:
     // 精确 pin 而不更新，正是用户反馈“插件没更新”的场景。dev 用本地 link，随源码重建生效。
     const clientTarget =
       devClientDir ??
-      (providerVersion ? `${DSH_CLIENT_PACKAGE}@${providerVersion}` : `${DSH_CLIENT_PACKAGE}@latest`);
+      (providerVersion
+        ? `${DSH_CLIENT_PACKAGE}@${providerVersion}`
+        : `${DSH_CLIENT_PACKAGE}@latest`);
     const clientAvailable = await ensureDshPackage(
       profileDir,
       DSH_CLIENT_PACKAGE,
@@ -168,7 +166,9 @@ Please upgrade:
     const devPluginDir = resolveDevDshPackageSource(import.meta.url, "dsh-plugin", "dist/index.js");
     const pluginTarget =
       devPluginDir ??
-      (providerVersion ? `${DSH_PLUGIN_PACKAGE}@${providerVersion}` : `${DSH_PLUGIN_PACKAGE}@latest`);
+      (providerVersion
+        ? `${DSH_PLUGIN_PACKAGE}@${providerVersion}`
+        : `${DSH_PLUGIN_PACKAGE}@latest`);
     const pluginAvailable = await ensureDshPackage(
       profileDir,
       DSH_PLUGIN_PACKAGE,
@@ -267,7 +267,7 @@ Please upgrade:
 
   async listSessions(projectDir: string, activeSessionId?: string): Promise<ChatSession[]> {
     const sessions = await this.api.listSessions(projectDir, activeSessionId);
-    // 无 deepLink：所有会话共用应用壳 URL（会话切换经 FOCUS_SESSION → dsh-client 的 sessions.open）
+    // 无 deepLink：所有会话共用应用壳 URL
     const url = this.buildSessionUrl(projectDir, "");
     return sessions.map((s) => toChatSession(s, url));
   }
@@ -294,8 +294,7 @@ Please upgrade:
     void projectDir;
     void sessionId;
     // 无 deepLink 能力：所有会话共用应用壳 URL。必须走代理（proxyPort）而非直连 dsh，
-    // 使 dsh-client 能收到父窗消息（页面与核心层同域转发）；切换会话靠 FOCUS_SESSION →
-    // dsh-client 的 sessions.open 完成。
+    // 使 dsh-client 能收到父窗消息（页面与核心层同域转发）。
     return `http://${DSH_LOOPBACK_HOST}:${this.deps.getProxyPort()}/`;
   }
 
@@ -312,10 +311,11 @@ Please upgrade:
 
 /** 归一化：dsh 会话摘要 → ChatSession（无 deepLink，url 为共用应用壳地址） */
 function toChatSession(s: SessionSummary, url?: string): ChatSession {
+  // title 投影值为 JsonValue，需收窄为 string
+  const title = s.projections?.values?.title;
   return {
     id: s.sessionId,
-    // dsh 标题在 projections.values.title，不在顶层
-    title: s.projections?.values?.title ?? "",
+    title: typeof title === "string" ? title : "",
     updatedAt: s.updatedAt,
     parentId: s.parentSessionId,
     url,

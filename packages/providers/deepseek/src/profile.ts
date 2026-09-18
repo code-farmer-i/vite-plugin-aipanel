@@ -5,7 +5,7 @@
  *  2. @aipanel/dsh-plugin（宿主）：run_diagnostics 审查工具、编辑后自动诊断、事件中继，
  *     providerOptions 设置（agentPreset/permissionPreset/busyEnter）经其 config 下发，
  *     由插件在 dsh boot 期经 ctx.settings 应用。
- *  3. @aipanel/dsh-client（浏览器）：@ 菜单 chip、会话聚焦（sessions.open）、主题/布局/选中元素；
+ *  3. @aipanel/dsh-client（浏览器）：@ 菜单 chip、会话聚焦（uiWorkspace.openSession）、主题/布局/选中元素；
  *     诊断开关与主题初值经其 config 下发。
  */
 import fs from "fs";

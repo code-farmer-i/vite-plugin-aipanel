@@ -10,8 +10,7 @@
  * 本模块据此归一化为 core 的 ProviderEvent（session.status / thinking / session.updated /
  * session.pending）推送 HOST_EVENTS_API_PATH（带每轮启动随机令牌）：
  *   - agent/status running ⇄ idle → session.status running ⇄ idle；
- *   - session/event turn/start·step/start·assistant/chunk → thinking=true，
- *     assistant/message·turn/end → thinking=false；
+ *   - session/event turn/start·step/start → thinking=true，assistant/message·turn/end → thinking=false；
  *   - session/title → session.updated（会话列表标题实时刷新）；
  *   - approval/request、user-questions/request 在途 → session.pending（旁观透传，不改结果）。
  *
@@ -21,7 +20,9 @@
  */
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent, AgentStatus } from "@deepseek-ai/dsh-agent";
-import type { Session, SessionEvent } from "@deepseek-ai/dsh-session";
+import type { Session, SessionEvent, SessionEventType } from "@deepseek-ai/dsh-session";
+// 仅取声明合并：SessionEventMap 的 session/title 由 dsh-session-title 扩展而来
+import type {} from "@deepseek-ai/dsh-session-title";
 import type { ApprovalOutcome } from "@deepseek-ai/dsh-user-approval";
 import type { ApprovalRequestEvent } from "@deepseek-ai/dsh-user-approval/types";
 import type { AskUserQuestionAnswer } from "@deepseek-ai/dsh-user-questions";
@@ -47,11 +48,10 @@ interface SessionUiState {
 const FLUSH_DELAY_MS = 120;
 
 /** session 事件类型 → thinking 迁移（running 由官方 agent/status 权威提供） */
-function thinkingOf(type: string): boolean | null {
+function thinkingOf(type: SessionEventType): boolean | null {
   switch (type) {
     case "turn/start":
     case "step/start":
-    case "assistant/chunk":
       return true;
     case "assistant/message":
     case "turn/end":
@@ -183,29 +183,22 @@ export function setupEventRelay(
   const handleSessionEvent = (session: Session, event: SessionEvent) => {
     const sessionId = String(session?.id ?? "");
     if (!sessionId) return;
-    const type: string = typeof event?.type === "string" ? event.type : "";
 
     // === 标题变更（自动生成 / 用户改名）：映射为 session.updated 单独推送 ====
-    if (type === "session/title") {
-      const titleData = (event as { data?: { title?: unknown } }).data;
-      const title = typeof titleData?.title === "string" ? titleData.title.trim() : "";
+    if (event.type === "session/title") {
+      const title = event.data.title;
       if (title.length > 0 && title !== lastTitles.get(sessionId)) {
         lastTitles.set(sessionId, title);
-        const ts = (event as { time?: unknown }).time;
         post({
           type: "session.updated",
-          session: {
-            id: sessionId,
-            title,
-            updatedAt: typeof ts === "number" ? ts : Date.now(),
-          },
+          session: { id: sessionId, title, updatedAt: event.time },
         });
       }
       return;
     }
 
     // === thinking 迁移 ====
-    const thinking = thinkingOf(type);
+    const thinking = thinkingOf(event.type);
     if (thinking === null) return;
     const s = ensureState(sessionId);
     if (s.thinking === thinking) return;

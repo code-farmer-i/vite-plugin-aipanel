@@ -9,13 +9,29 @@
  *     cwd 兜底仅在匹配不到该目录工作区时启用，不得把游离会话并入项目列表
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { brandString } from "@deepseek-ai/dsh-brand";
 import { DeepSeekAPI } from "../src/api";
-import type { SessionSummary, SessionListResult, WorkspaceListResult, WorkspaceView } from "../src/types";
+import type {
+  SessionListValue,
+  SessionSummary,
+} from "@deepseek-ai/dsh-api-session-controller/types";
+import type {
+  WorkspaceBaseline,
+  WorkspaceView,
+} from "@deepseek-ai/dsh-api-workspace-controller/types";
+
+/** wire 的会话/工作区 id 为官方 Branded 类型，构造夹具时用官方 brandString 打标 */
+type SessionId = SessionSummary["sessionId"];
+type WorkspaceId = WorkspaceView["workspaceId"];
 
 /** 暴露 listSessions 与两个被 mock 的私有 RPC 面（白盒，仅测试用） */
 type ApiSurface = {
-  listSessions(projectDir: string, activeSessionId?: string, retries?: number): Promise<SessionSummary[]>;
-  fetchWorkspaceBaseline: () => Promise<WorkspaceListResult>;
+  listSessions(
+    projectDir: string,
+    activeSessionId?: string,
+    retries?: number,
+  ): Promise<SessionSummary[]>;
+  fetchWorkspaceBaseline: () => Promise<WorkspaceBaseline>;
   call: <T>(method: string, args?: Record<string, unknown>) => Promise<T>;
 };
 
@@ -23,24 +39,40 @@ const PROJ = "/work/proj";
 const OTHER = "/work/other";
 
 function session(id: string, overrides: Partial<SessionSummary> = {}): SessionSummary {
-  return { sessionId: id, updatedAt: 0, running: false, blank: false, ...overrides };
-}
-
-function workspaceView(overrides: Partial<WorkspaceView> & { path: string; sessionIds: string[] }): WorkspaceView {
   return {
-    workspaceId: `ws:${overrides.path}`,
-    title: "proj",
-    createdAt: "2026-09-01T00:00:00.000Z",
-    updatedAt: "2026-09-01T00:00:00.000Z",
+    sessionId: brandString<SessionId>(id),
+    updatedAt: 0,
+    running: false,
+    blank: false,
     ...overrides,
   };
 }
 
+/** 工作区夹具：仅关心 path 与 sessionIds，其余字段取固定默认（workspaceId 由 path 派生） */
+function workspaceView(path: string, sessionIds: string[]): WorkspaceView {
+  return {
+    workspaceId: brandString<WorkspaceId>(`ws:${path}`),
+    path,
+    title: "proj",
+    sessionIds: sessionIds.map((id) => brandString<SessionId>(id)),
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-01T00:00:00.000Z",
+  };
+}
+
+/** workspace/follow baseline 夹具（archivedSessionIds 同属官方 Branded SessionId） */
+function baseline(items: WorkspaceView[], archived: string[] = []): WorkspaceBaseline {
+  return {
+    items,
+    archivedSessionIds: archived.map((id) => brandString<SessionId>(id)),
+  };
+}
+
 /** 实例化 API 并把 workspace/follow baseline 与 session/list 换成内存快照 */
-function makeApi(workspaces: WorkspaceListResult, all: SessionSummary[]): ApiSurface {
+function makeApi(workspaces: WorkspaceBaseline, all: SessionSummary[]): ApiSurface {
   const api = new DeepSeekAPI("127.0.0.1", () => 6097) as unknown as ApiSurface;
   vi.spyOn(api, "fetchWorkspaceBaseline").mockResolvedValue(workspaces);
-  vi.spyOn(api, "call").mockResolvedValue({ items: all } satisfies SessionListResult);
+  vi.spyOn(api, "call").mockResolvedValue({ items: all } satisfies SessionListValue);
   return api;
 }
 
@@ -56,13 +88,13 @@ describe("DeepSeekAPI.listSessions 可见性过滤", () => {
     const OWNED_BLANK = "session-owned-blank";
     const OWNED_ARCHIVED = "session-owned-archived";
     const api = makeApi(
-      {
-        items: [
-          workspaceView({ path: PROJ, sessionIds: [OWNED, OWNED_BLANK, OWNED_ARCHIVED] }),
-          workspaceView({ path: OTHER, sessionIds: ["session-other-ws"] }),
+      baseline(
+        [
+          workspaceView(PROJ, [OWNED, OWNED_BLANK, OWNED_ARCHIVED]),
+          workspaceView(OTHER, ["session-other-ws"]),
         ],
-        archivedSessionIds: [OWNED_ARCHIVED, "session-detached-archived"],
-      },
+        [OWNED_ARCHIVED, "session-detached-archived"],
+      ),
       [
         session(OWNED, { cwd: PROJ, updatedAt: 10 }),
         session(OWNED_BLANK, { cwd: PROJ, updatedAt: 8, blank: true }),
@@ -87,10 +119,7 @@ describe("DeepSeekAPI.listSessions 可见性过滤", () => {
     const OWNED = "session-owned";
     const OWNED_ARCHIVED = "session-owned-archived";
     const api = makeApi(
-      {
-        items: [workspaceView({ path: PROJ, sessionIds: [OWNED, OWNED_ARCHIVED] })],
-        archivedSessionIds: [OWNED_ARCHIVED],
-      },
+      baseline([workspaceView(PROJ, [OWNED, OWNED_ARCHIVED])], [OWNED_ARCHIVED]),
       [
         session(OWNED, { cwd: PROJ, updatedAt: 2 }),
         session(OWNED_ARCHIVED, { cwd: PROJ, updatedAt: 1 }),
@@ -104,37 +133,32 @@ describe("DeepSeekAPI.listSessions 可见性过滤", () => {
   it("匹配不到该目录工作区（全新目录）时 cwd 兜底启用，但仍遵守 subagent/归档/blank 规则", async () => {
     const FRESH = "/work/fresh";
     const ACTIVE_BLANK = "session-fresh-active-blank";
-    const api = makeApi(
-      { items: [], archivedSessionIds: ["session-fresh-archived"] },
-      [
-        session("session-fresh-1", { cwd: FRESH, updatedAt: 12 }),
-        session(ACTIVE_BLANK, { cwd: FRESH, updatedAt: 11, blank: true }),
-        session("session-fresh-blank", { cwd: FRESH, updatedAt: 10, blank: true }),
-        session("session-fresh-archived", { cwd: FRESH, updatedAt: 9 }),
-        session("session-fresh-subagent", { cwd: FRESH, updatedAt: 8, origin: "subagent" }),
-        session("session-fresh-other-cwd", { cwd: OTHER, updatedAt: 7 }),
-        // 兜底路径依赖 wire 的 blank 字段：冷会话投影未命中时 blank=false，失真残留会一并带入，
-        // 这是“仅当工作区匹配失败”的 best-effort 限制（正常路径工作区匹配成功即不会触发）。
-        session("session-fresh-detached-blank-wire", { cwd: FRESH, updatedAt: 6, blank: false }),
-      ],
-    );
+    const api = makeApi(baseline([], ["session-fresh-archived"]), [
+      session("session-fresh-1", { cwd: FRESH, updatedAt: 12 }),
+      session(ACTIVE_BLANK, { cwd: FRESH, updatedAt: 11, blank: true }),
+      session("session-fresh-blank", { cwd: FRESH, updatedAt: 10, blank: true }),
+      session("session-fresh-archived", { cwd: FRESH, updatedAt: 9 }),
+      session("session-fresh-subagent", { cwd: FRESH, updatedAt: 8, origin: "subagent" }),
+      session("session-fresh-other-cwd", { cwd: OTHER, updatedAt: 7 }),
+      // 兜底路径依赖 wire 的 blank 字段：冷会话投影未命中时 blank=false，失真残留会一并带入，
+      // 这是“仅当工作区匹配失败”的 best-effort 限制（正常路径工作区匹配成功即不会触发）。
+      session("session-fresh-detached-blank-wire", { cwd: FRESH, updatedAt: 6, blank: false }),
+    ]);
 
     const result = await api.listSessions(FRESH, ACTIVE_BLANK, 1);
-    expect(ids(result)).toEqual(["session-fresh-1", ACTIVE_BLANK, "session-fresh-detached-blank-wire"]);
+    expect(ids(result)).toEqual([
+      "session-fresh-1",
+      ACTIVE_BLANK,
+      "session-fresh-detached-blank-wire",
+    ]);
   });
 
   it("同一目录匹配到工作区时的归属与排序：updatedAt 降序", async () => {
     const OWNED = "session-owned";
-    const api = makeApi(
-      {
-        items: [workspaceView({ path: PROJ, sessionIds: [OWNED] })],
-        archivedSessionIds: [],
-      },
-      [
-        session("session-detached-newer", { cwd: PROJ, updatedAt: 100 }),
-        session(OWNED, { cwd: PROJ, updatedAt: 1 }),
-      ],
-    );
+    const api = makeApi(baseline([workspaceView(PROJ, [OWNED])]), [
+      session("session-detached-newer", { cwd: PROJ, updatedAt: 100 }),
+      session(OWNED, { cwd: PROJ, updatedAt: 1 }),
+    ]);
 
     // 游离会话即使 updatedAt 更大也不得越权出现在匹配到工作区的项目列表里
     const result = await api.listSessions(PROJ, undefined, 1);

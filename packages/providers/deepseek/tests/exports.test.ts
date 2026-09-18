@@ -2,8 +2,7 @@
  * @aipanel/provider-deepseek 入口（index.ts）导出面测试。
  *
  * 断言约定工厂与各能力面在包入口上可见，且导出的常量/函数与定义模块为同一引用
- * （单一来源，不做镜像副本）。types.ts 为纯类型导出（SESSION_EVENT_TYPES 运行时常量
- * 在 constants.test.ts 覆盖）。
+ * （单一来源，不做镜像副本）。types.ts 为纯类型导出，无运行时常量。
  */
 import { describe, expect, it } from "vitest";
 import * as providerEntry from "../src/index";
@@ -35,9 +34,7 @@ describe("index.ts 导出面", () => {
   });
 
   it("导出的常量引用 constants 定义处（单一来源）", () => {
-    expect(providerEntry.DEFAULT_DEEPSEEK_PROVIDER_OPTIONS).toBe(
-      DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
-    );
+    expect(providerEntry.DEFAULT_DEEPSEEK_PROVIDER_OPTIONS).toBe(DEFAULT_DEEPSEEK_PROVIDER_OPTIONS);
     expect(providerEntry.DSH_LOOPBACK_HOST).toBe(DSH_LOOPBACK_HOST);
     expect(providerEntry.DSH_DEFAULT_PORT).toBe(DSH_DEFAULT_PORT);
   });

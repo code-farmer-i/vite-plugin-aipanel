@@ -3,14 +3,17 @@ import { randomUUID } from "node:crypto";
 import { DEFAULT_RETRIES, withRetries } from "@aipanel/core";
 import { PerformanceTimer, createLogger } from "@aipanel/core/node";
 import { DSH_API_BASE, DSH_REMOTE_MUX_PATH } from "./constants";
+import type { ClientRequest, RpcId, ServerResponse } from "@deepseek-ai/dsh-client-connection";
 import type {
-  ClientRequest,
-  ServerResponse,
-  SessionListResult,
+  SessionCreateValue,
+  SessionListValue,
   SessionSummary,
-  WorkspaceCreateResult,
-  WorkspaceListResult,
-} from "./types";
+} from "@deepseek-ai/dsh-api-session-controller/types";
+import type {
+  WorkspaceBaseline,
+  WorkspaceCreateValue,
+  WorkspaceFollowFrame,
+} from "@deepseek-ai/dsh-api-workspace-controller/types";
 
 const log = createLogger("DeepSeekAPI");
 
@@ -174,7 +177,9 @@ export class DeepSeekAPI {
     // 各方法 args 须按各自参数 wire 名分键：如 session/list 用 { _request }，session/create 用 { request }。
     const message: ClientRequest = {
       type: "client-request",
-      rpcId: randomUUID(),
+      // 官方 RpcId 仅为编译期 brand（运行期即普通字符串），此处按 wire 边界断言，
+      // 避免为一个 brand 把 dsh-client-connection 变成 provider 的运行时依赖。
+      rpcId: randomUUID() as RpcId,
       method,
       payload: { args },
     };
@@ -232,7 +237,7 @@ export class DeepSeekAPI {
 
         // 2) session/list：全量枚举（value 同样是 {items:[...]} 容器）。
         // descriptor 的 args 参数 wire 名为 _request，故 args = { _request: { cursor? } }。
-        const sessions = await this.call<SessionListResult>("session/list", { _request: {} });
+        const sessions = await this.call<SessionListValue>("session/list", { _request: {} });
         const all = sessions.items;
 
         // 可见性规则与 dsh UI（dsh-client-ui-workspace 的 sessionVisible）对齐：
@@ -267,18 +272,15 @@ export class DeepSeekAPI {
   /** 在当前目录下创建会话（dsh 仅返回 { sessionId, agentPreset? }，非完整 SessionSummary）。
    * 与旧逻辑一致：先确保 projectDir 对应的 workspace 存在（workspace/create 幂等 get-or-create），
    * 再用 workspaceId 调 session/create，让新会话挂到该 workspace。 */
-  async createSession(
-    projectDir: string,
-    retries = DEFAULT_RETRIES,
-  ): Promise<{ sessionId: string }> {
+  async createSession(projectDir: string, retries = DEFAULT_RETRIES): Promise<SessionCreateValue> {
     return withRetries(
       async (attempt) => {
         log.debug(`Attempt ${attempt + 1}/${retries}`, { method: "createSession" });
         // 保持原逻辑：workspace/create（get-or-create）→ session/create(workspaceId)。
-        const { workspace } = await this.call<WorkspaceCreateResult>("workspace/create", {
+        const { workspace } = await this.call<WorkspaceCreateValue>("workspace/create", {
           request: { path: projectDir },
         });
-        const session = await this.call<{ sessionId: string }>("session/create", {
+        const session = await this.call<SessionCreateValue>("session/create", {
           request: { workspaceId: workspace.workspaceId },
         });
         return session;
@@ -318,7 +320,7 @@ export class DeepSeekAPI {
    * 直连 dsh web（webPort）并携带 browser-session Cookie（原生 WebSocket 支持自定义请求头），
    * 打开流读到首个 baseline 帧即关闭；启动早期 webPort 已就绪，不存在代理时序竞态。
    */
-  private async fetchWorkspaceBaseline(): Promise<WorkspaceListResult> {
+  private async fetchWorkspaceBaseline(): Promise<WorkspaceBaseline> {
     // 先确保已认证（换取到 Cookie 才能过 /api 的 browser-auth 门禁）
     await this.ensureAuthenticated();
     return new Promise((resolve, reject) => {
@@ -334,7 +336,7 @@ export class DeepSeekAPI {
       } as unknown as string[]);
       const streamId = randomUUID();
       let settled = false;
-      const finish = (err?: Error, value?: WorkspaceListResult) => {
+      const finish = (err?: Error, value?: WorkspaceBaseline) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
@@ -370,14 +372,16 @@ export class DeepSeekAPI {
           const msg = JSON.parse(String(ev.data)) as {
             type?: string;
             streamId?: string;
-            value?: { type?: string; value?: WorkspaceListResult };
+            /** workspace/follow 帧（世代首帧为 baseline） */
+            value?: WorkspaceFollowFrame;
             error?: { message?: string };
           };
           if (!msg || msg.streamId !== streamId) return;
-          if (msg.type === "item" && msg.value?.type === "baseline" && msg.value.value) {
+          if (msg.type === "item" && msg.value?.type === "baseline") {
+            const baseline = msg.value.value;
             finish(undefined, {
-              items: msg.value.value.items ?? [],
-              archivedSessionIds: msg.value.value.archivedSessionIds ?? [],
+              items: baseline.items ?? [],
+              archivedSessionIds: baseline.archivedSessionIds ?? [],
             });
           } else if (msg.type === "error") {
             finish(new Error(`dsh workspace/follow failed: ${msg.error?.message ?? "unknown"}`));

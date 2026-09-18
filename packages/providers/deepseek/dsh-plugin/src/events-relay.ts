@@ -17,6 +17,8 @@
  * 取舍：推送失败静默降级（不影响会话/诊断）；无令牌或 vitePort 缺失时不启用；
  * 定时器全部 unref + 自调度，事件静止后无残留定时器。
  * 类型说明：两路信号载荷与出站事件均引用官方单一来源，不在此维护结构副本。
+ * 通道取舍：官方 $events 转发清单缺 session/event 与 agent/status，迁移会丢 thinking/标题/
+ * 子代理计数（评估见 packages/providers/deepseek/docs/adr/0002-event-relay-channel.md）。
  */
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent, AgentStatus } from "@deepseek-ai/dsh-agent";

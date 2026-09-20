@@ -1,5 +1,63 @@
 # 更新日志
 
+## v1.2.27
+
+`2026-09-20`
+
+### ⚠️ 兼容性
+
+- 子进程调用统一改用 `execa`（ESM-only）。**Node.js 18 及更早版本**、且以 CommonJS 方式加载插件的项目（`vite.config.cjs`，或未声明 `"type": "module"` 的项目里配置被编译成 CJS）启动时会报 `ERR_REQUIRE_ESM`；升级到 Node 20.19+ / 22.12+，或把配置改成 ESM（`vite.config.mjs` 或 `"type": "module"`）即可
+
+### providers
+
+#### 🐛 修复
+
+- 修复**工作区路径含空格或特殊字符时 dsh / opencode 起不来**的问题：此前引擎的启动参数会被拼成一条命令字符串交给 shell 重新解析，路径里的空格直接把参数拆成两半（`|`、`&`、`~`、`$` 之类还会被 shell 当语法执行）；现在参数原样直传，`/Users/me/My Projects/app` 这类目录可以正常启动
+
+#### ⚡ 改进
+
+- 引擎进程现在是直接子进程（不再隔着 shell 启动），停止服务时的进程回收路径更短
+
+### core
+
+#### 🐛 修复
+
+- 同类问题一并修复，覆盖 CLI 探测与代码诊断：`opencode` / `dsh --version` 探测，以及 tsc / vue-tsc / ESLint / oxlint 的调用都改为参数直传；项目路径含空格时，诊断不再因为路径被拆开而落空
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.27/packages/extension/aipanel-assistant.zip)
+
+## v1.2.26
+
+`2026-09-20`
+
+### deepseek
+
+#### 🐛 修复
+
+- 修复嵌入式 dsh 界面里**浏览器 / 终端等右侧面板在宽屏下消失**的问题：布局覆盖样式此前会把 AppFrame 的三轨 grid 压成单轨，右侧面板落进隐式行后被外层裁掉；现在只隐藏 dsh 侧栏列、让主列跨过侧栏轨道，右侧面板照常显示，并补了回归测试
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.26/packages/extension/aipanel-assistant.zip)
+
+## v1.2.25
+
+`2026-09-20`
+
+### deepseek
+
+#### ⚡ 改进
+
+- DeepSeek 启动等待的计时口径更准：启动令牌的 20 秒窗口改为**从 dsh 进程真正拉起那一刻起算**，不再把装插件（`dsh plugin add`，可能数十秒）等编排耗时算进去——编排慢的项目不会再被误判成「没抓到启动令牌」而启动失败
+- 等待期间若停止 / 重启服务，挂起的启动令牌等待会立即失败，不再白等到超时
+- 真失败时仍旧把 dsh 的原始启动输出整段打出来，直接看得到根因
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.2.25/packages/extension/aipanel-assistant.zip)
+
 ## v1.2.24
 
 `2026-09-18`

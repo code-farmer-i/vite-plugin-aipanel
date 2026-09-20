@@ -19,8 +19,6 @@ import {
   runAllChecks,
   runProjectDiagnostics,
   formatDiagnosticsSections,
-  lintSectionTitle,
-  tscSectionTitle,
   isJsFile,
   MUTATING_TOOLS,
   OPENCODE_ENV,
@@ -109,15 +107,10 @@ export default {
         // ESLint 和类型检查并行检查
         const { eslintOutput, tscOutput } = await runAllChecks(filePath, workspace);
 
-        // 构建诊断原文
-        const parts: string[] = [];
-        if (tscOutput.rawOutput.trim()) {
-          parts.push(`## ${tscSectionTitle(tscOutput)}\n\n` + tscOutput.rawOutput.trim());
-        }
-        if (eslintOutput.text) {
-          parts.push(`## ${lintSectionTitle(eslintOutput)}\n\n` + eslintOutput.text);
-        }
-        const diagText = parts.join("\n\n");
+        // 构建诊断原文：与 run_diagnostics / dsh 侧自动诊断共用同一分区格式，只输出有发现的分区
+        const diagText = formatDiagnosticsSections("", eslintOutput, tscOutput, {
+          onlyFindings: true,
+        });
 
         log.debug("Diagnostics result", {
           filePath,

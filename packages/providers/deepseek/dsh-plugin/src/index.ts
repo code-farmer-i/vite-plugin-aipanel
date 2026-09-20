@@ -3,8 +3,12 @@
  *
  * 运行在 dsh 宿主进程（Cordis 插件），向 dsh agent 提供 AIPanel 能力：
  *  1. run_diagnostics 审查工具（对标 opencode 质量门禁，手动触发 ESLint + 类型检查）
- *  2. tools/post-execute：编辑工具（write/edit）执行后自动把诊断并入工具结果（不做回滚）；
- *     PTC（run_code）子调度只登记编辑目标，由外层调用收尾聚合成一条 additionalContexts 回给模型
+ *  2. 编辑后自动诊断（不做回滚）：tools/post-execute 只按 agent 登记本步编辑过的源文件，
+ *     不在这里检查、也不改工具结果；agent/pre-step 在本步送模型前统一诊断一次，插入一条
+ *     plugin 上下文消息（form: notice）。不做"与上次相同就不发"的去重——那会让"仍未修复"
+ *     与"已修好"同样表现为静默；改为每个 step 都投递有界摘要（每分区发现条数上限），
+ *     完整结果仍由手动 run_diagnostics 给出。原生编辑与 PTC（run_code）子调度共用同一路径，
+ *     无需按 rootCallId 分叉
  *
  * 诊断引擎（ESLint/类型检查/格式化/全量诊断）统一由 @aipanel/core/node 提供，
  * 与 opencode 侧质量门禁共用同一实现，保证行为一致。
@@ -27,9 +31,11 @@ import type {
   ToolRuntime,
 } from "@deepseek-ai/dsh-tools";
 import type { UserMessage } from "@deepseek-ai/dsh-llm";
+import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { JsonValue } from "@deepseek-ai/dsh-util-values";
 import {
   runAllChecks,
+  runAllChecksForFiles,
   runProjectDiagnostics,
   isJsFile,
   SEVERITY_ERROR,
@@ -40,6 +46,7 @@ import {
   lintSectionTitle,
   tscSectionTitle,
   type DiagnosticItem,
+  type DiagnosticsResult,
   type EslintOutput,
   type TscResult,
 } from "@aipanel/core/node";
@@ -107,23 +114,44 @@ function buildNodeContext(e: SelectedElement): string {
   return lines.join("\n");
 }
 
-/** 构造 plugin 来源的用户上下文消息（pre-step 节点上下文与 PTC 聚合诊断共用） */
-function buildPluginMessage(text: string): UserMessage {
+/** dsh-llm 的 `notice` 形式要求携带一行 summary（字段形状由官方类型约束） */
+interface PluginNoticeMeta {
+  form: "notice";
+  summary: string;
+}
+
+/** 构造 plugin 来源的用户上下文消息（节点上下文与编辑后诊断共用；notice 元数据可选） */
+function buildPluginMessage(text: string, notice?: PluginNoticeMeta): UserMessage {
   return {
     role: "user",
     id: randomUUID(),
     content: [{ type: "text", text }],
-    source: { kind: "plugin", plugin: name },
+    source: { kind: "plugin", plugin: name, ...notice },
   } as UserMessage;
 }
 
-/** PTC 编辑目标登记表：外层 rootCallId → 本次程序编辑过的源文件绝对路径集合 */
-type PtcEditTargets = Map<string, Set<string>>;
+/** 每个 agent 本步编辑过的源文件：post-execute 登记，pre-step 收尾诊断后清空 */
+type PendingEdits = WeakMap<Agent, Set<string>>;
 
-/** 登记一次 PTC 子调度的编辑目标（仅可诊断的写类工具、成功、accept 决策） */
-function registerPtcEdit(
-  targets: PtcEditTargets,
-  rootKey: string,
+/** 自动诊断上下文消息的字符上限：超出即截断，避免整段 tsc 原始输出灌进下一步 */
+const DIAGNOSTICS_MESSAGE_MAX_CHARS = 4000;
+
+/** 每个文件分区最多列出的发现条数：每步都投递，故以摘要控制重复成本（完整结果走手动 run_diagnostics） */
+const MAX_FINDINGS_PER_SECTION = 3;
+
+/** 取写类工具的目标文件（dsh 官方写工具是 snake_case `file_path`，兼容 camelCase） */
+function editTarget(exec: ToolExecution): string | undefined {
+  const rawArgs = exec.arguments as { file_path?: unknown; filePath?: unknown } | undefined;
+  const filePath = typeof rawArgs?.file_path === "string" ? rawArgs.file_path : rawArgs?.filePath;
+  return typeof filePath === "string" && filePath ? filePath : undefined;
+}
+
+/**
+ * 登记一次成功的写类编辑（原生调用与 PTC 子调度共用）：
+ * 只记录 agent 本步编辑过的可诊断文件，失败结果与非 accept 决策跳过。
+ */
+function registerPendingEdit(
+  pending: PendingEdits,
   exec: ToolExecution,
   result: Readonly<ToolExecutionResult>,
   decision: PostToolDecision,
@@ -132,37 +160,57 @@ function registerPtcEdit(
   if (!MUTATING_TOOLS.has(exec.name)) return;
   if (result.isError) return;
   if (decision.kind !== "accept") return;
-  const rawArgs = exec.arguments as { file_path?: unknown; filePath?: unknown } | undefined;
-  const filePath = typeof rawArgs?.file_path === "string" ? rawArgs.file_path : rawArgs?.filePath;
-  if (typeof filePath !== "string" || !filePath) return;
-  if (!isJsFile(filePath)) return;
-  let files = targets.get(rootKey);
+  const filePath = editTarget(exec);
+  if (!filePath || !isJsFile(filePath)) return;
+  const { agent } = exec;
+  if (!agent) return;
+  let files = pending.get(agent);
   if (!files) {
     files = new Set();
-    targets.set(rootKey, files);
+    pending.set(agent, files);
   }
   files.add(path.resolve(cwd, filePath));
 }
 
+/** 超出上限即截断并说明（完整结果仍可用 run_diagnostics 获取） */
+function truncateDiagnostics(text: string): string {
+  if (text.length <= DIAGNOSTICS_MESSAGE_MAX_CHARS) return text;
+  return `${text.slice(0, DIAGNOSTICS_MESSAGE_MAX_CHARS)}\n\n…（诊断输出过长，已截断；可调用 run_diagnostics 查看完整结果）`;
+}
+
 /**
- * 对本次 PTC 程序登记的文件统一诊断，聚合成一条文本（仅保留有发现的分区）。
- * 复用 run_diagnostics 的 formatDiagnosticsSections 分区格式，两处呈现一致。
+ * 收尾诊断：对本次登记的文件各跑一次检查，聚合成一条文本
+ * （复用 run_diagnostics 的 formatDiagnosticsSections 分区格式）。
+ * 不做内容去重：只要文件仍有发现就每个 step 都投递，避免"仍未修复"与"已修好"都表现为静默；
+ * 重复成本由每分区发现条数上限折叠成有界摘要，完整结果交给手动 run_diagnostics。
+ * 返回空串表示本步没有需要投递的发现。
  */
-async function collectPtcDiagnostics(files: Set<string>, cwd: string): Promise<string> {
+async function collectPendingDiagnostics(pending: Set<string>, cwd: string): Promise<string> {
+  const files = [...pending];
+  // 一次批量检查：类型检查按 tsconfig 项目合并为一次 --build，避免 N 个文件各跑一遍项目构建
+  const checks = await runAllChecksForFiles(files, cwd).catch(
+    (): Map<string, DiagnosticsResult> => new Map(),
+  );
+  const empty: DiagnosticsResult = {
+    eslintOutput: {},
+    tscOutput: { rawOutput: "", exitCode: 0 },
+  };
   const blocks: string[] = [];
   for (const file of files) {
-    const { eslintOutput, tscOutput } = await runAllChecks(file, cwd).catch(
-      (): { eslintOutput: EslintOutput; tscOutput: TscResult } => ({
-        eslintOutput: {},
-        tscOutput: { rawOutput: "", exitCode: 0 },
-      }),
+    const { eslintOutput, tscOutput } = checks.get(file) ?? empty;
+    // 只输出有发现的分区；空串表示该文件已干净（不刷占位噪音），下一个 step 若仍编辑它也不投递
+    const section = formatDiagnosticsSections(
+      `### ${path.relative(cwd, file)}`,
+      eslintOutput,
+      tscOutput,
+      { onlyFindings: true, maxFindingsPerSection: MAX_FINDINGS_PER_SECTION },
     );
-    if (!eslintOutput.text && !tscOutput.rawOutput.trim()) continue;
-    blocks.push(
-      formatDiagnosticsSections(`### ${path.relative(cwd, file)}`, eslintOutput, tscOutput),
-    );
+    if (!section) continue;
+    blocks.push(section);
   }
-  return blocks.length > 0 ? `自动诊断（PTC 批量编辑后）：\n\n${blocks.join("\n\n")}` : "";
+  return blocks.length > 0
+    ? truncateDiagnostics(`自动诊断（编辑后）：\n\n${blocks.join("\n\n")}`)
+    : "";
 }
 
 /** 单条诊断分区（ESLint / 类型检查） */
@@ -393,9 +441,10 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
     };
     tools.register(diagnosticsTool);
 
-    // === 2) 编辑后自动诊断（不做回滚） ===
-    // PTC 编辑目标登记表：外层 rootCallId → 本次程序编辑过的源文件（外层调用收尾时清空）
-    const pendingPtcEdits: PtcEditTargets = new Map();
+    // === 2) 编辑后自动诊断（只登记，不改工具结果；step 边界统一收尾） ===
+    // 每个 agent 本步编辑过的源文件：post-execute 登记，pre-step 送模型前诊断后清空
+    const pendingEdits: PendingEdits = new WeakMap();
+
     ctx.on(
       "tools/post-execute",
       async (
@@ -405,77 +454,40 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
       ) => {
         const decision = await next();
         if (!autoDiagnose) return decision;
+        // 原生调用与 PTC 子调度同一条路径：只登记目标文件，检查推迟到 step 边界。
+        // 一次程序/一步里的多次编辑因此不再各自触发昂贵的 tsc --build，也不再各发一条消息。
+        registerPendingEdit(pendingEdits, exec, result, decision, cwd);
+        return decision;
+      },
+    );
 
-        // PTC 子调度（run_code 程序内调 edit/write）：程序拿到的是 canonical value，
-        // 追加的 content 只进 tool/ptc-dispatch 持久化日志，程序与模型都看不到。
-        // 因此这里只登记编辑目标，等外层调用收尾统一诊断，避免逐次白跑与刷屏。
-        if (exec.parent !== undefined) {
-          registerPtcEdit(pendingPtcEdits, String(exec.rootCallId), exec, result, decision, cwd);
-          return decision;
-        }
-
-        // 外层调用收尾：本次 PTC 程序若登记过编辑目标，聚合诊断并以 additionalContexts
-        // 追加 plugin 上下文消息。该通道经 ptc bridge 的 deferContext 上提到外层 run_code，
-        // 再经 agent-loop 的 acceptContext 回给模型（content 通道在 PTC 下不达模型）。
-        // 用登记表判定而非硬编码 run_code 名：只有 transport 子调度会登记，键即外层 rootCallId。
-        const rootKey = String(exec.rootCallId);
-        const ptcTargets = pendingPtcEdits.get(rootKey);
-        if (ptcTargets !== undefined) {
-          pendingPtcEdits.delete(rootKey);
-          if (decision.kind !== "accept") return decision;
-          const ptcDiagText = await collectPtcDiagnostics(ptcTargets, cwd);
-          if (!ptcDiagText) return decision;
-          return {
-            ...decision,
-            additionalContexts: [
-              ...(decision.additionalContexts ?? []),
-              buildPluginMessage(ptcDiagText),
-            ],
-          };
-        }
-
-        // 原生路径：编辑工具执行后把诊断并入工具结果 content。
-        if (!MUTATING_TOOLS.has(exec.name)) return decision;
-        if (result.isError) return decision;
-        if (decision.kind !== "accept") return decision;
-
-        // exec.arguments 是 unknown，写工具自行校验；这里只取用到的字段。
-        // 注意：dsh 官方写工具的参数字段是 snake_case `file_path`（write/edit），
-        // 兼容 camelCase `filePath`（自定义工具 / 未来变体）。
-        const rawArgs = exec.arguments as { file_path?: unknown; filePath?: unknown } | undefined;
-        const filePath =
-          typeof rawArgs?.file_path === "string" ? rawArgs.file_path : rawArgs?.filePath;
-        if (typeof filePath !== "string" || !filePath) return decision;
-        if (!isJsFile(filePath)) return decision;
-
-        const { eslintOutput, tscOutput } = await runAllChecks(
-          path.resolve(cwd, filePath),
-          cwd,
-        ).catch((): { eslintOutput: EslintOutput; tscOutput: TscResult } => ({
-          eslintOutput: {},
-          tscOutput: { rawOutput: "", exitCode: 0 },
-        }));
-
-        // 与 opencode tool.execute.after 相同的诊断拼装；空结果不改动工具输出
-        const parts: string[] = [];
-        if (tscOutput.rawOutput.trim())
-          parts.push(`## ${tscSectionTitle(tscOutput)}\n\n` + tscOutput.rawOutput.trim());
-        if (eslintOutput.text)
-          parts.push(`## ${lintSectionTitle(eslintOutput)}\n\n` + eslintOutput.text);
-        const diagText = parts.join("\n\n");
-        if (!diagText) return decision;
-
-        // 诊断并入编辑工具的结果 content（对齐 opencode tool.execute.after 的
-        // `output.output += diagText` 行为）：不新增 user 消息，UI 展示为工具结果卡片的一部分，
-        // 模型在同一个 tool/result 里看到诊断，会话流不被额外消息污染。
-        // 注意：post-execute 默认决策是 { kind: "accept" }（无 content），decision.content 可能为
-        // undefined，必须基于工具原始结果 result.content 追加，否则会覆盖 write/edit 的渲染内容。
-        const existing = (decision.kind === "accept" && decision.content) || result.content;
+    // step 边界收尾：对本步编辑过的文件统一诊断一次，插入一条 plugin 上下文消息（form: notice）。
+    // 发现未变也照样投递（摘要形态），因此"有通知 = 仍有问题、无通知 = 已干净"；消息随本 step
+    // 的决策持久化给模型，原生编辑与 PTC 子调度走同一路径，不再需要按 rootCallId 分叉的聚合逻辑。
+    ctx.on(
+      "agent/pre-step",
+      async ({ agent }, next) => {
+        const decision = await next();
+        if (!autoDiagnose) return decision;
+        const files = pendingEdits.get(agent);
+        if (!files || files.size === 0) return decision;
+        pendingEdits.delete(agent);
+        // step 被否决：本次登记随 turn 终止丢弃，避免遗留到下一个 turn
+        if (decision.kind === "reject") return decision;
+        const text = await collectPendingDiagnostics(files, cwd);
+        if (!text) return decision;
         return {
-          kind: "accept" as const,
-          content: [...existing, { type: "text", text: `\n\n${diagText}` }],
+          ...decision,
+          messages: [
+            ...decision.messages,
+            buildPluginMessage(text, {
+              form: "notice",
+              summary: `编辑后自动诊断：${files.size} 个文件`,
+            }),
+          ],
         };
       },
+      { prepend: true },
     );
   } // 诊断功能（run_diagnostics + 自动诊断）注册结束
 

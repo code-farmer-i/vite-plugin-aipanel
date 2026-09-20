@@ -289,4 +289,4 @@ aipanelAssistant({
 | `providerOptions.permissionPreset`  | `string`  | -        | 默认权限预设                           |
 | `providerOptions.busyEnter`         | `string`  | -        | 繁忙时 Enter 行为（`queue` / `steer`） |
 | `providerOptions.enableDiagnostics` | `boolean` | `true`   | 诊断功能总开关（`run_diagnostics` 等） |
-| `providerOptions.autoDiagnose`      | `boolean` | `true`   | 编辑文件后自动运行诊断并并入工具输出   |
+| `providerOptions.autoDiagnose`      | `boolean` | `true`   | 编辑文件后自动诊断，以上下文消息插入   |

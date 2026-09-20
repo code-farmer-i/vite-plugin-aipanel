@@ -540,6 +540,29 @@ function parseTscDiags(
   return diags;
 }
 
+/**
+ * 只保留目标文件的类型检查输出（含缩进续行）：tsc 输出行形如 `path(line,col): error TSxxxx: msg`，
+ * 详情续行以空白开头。单文件路径与批量路径共用同一过滤规则。
+ */
+function filterTscOutputForFile(rawOutput: string, filePath: string, projectDir: string): string {
+  const resolved = path.resolve(filePath);
+  const errorLinePat = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS\d+:/;
+  const filtered: string[] = [];
+  let keep = false;
+
+  for (const line of rawOutput.split("\n")) {
+    const m = errorLinePat.exec(line);
+    if (m) {
+      keep = path.resolve(projectDir, m[1]) === resolved;
+    } else if (!/^\s/.test(line)) {
+      keep = false;
+    }
+    if (keep) filtered.push(line);
+  }
+
+  return filtered.join("\n");
+}
+
 /** 运行 TypeScript 类型检查（tsc / vue-tsc 按项目自动选择）--build --noEmit，返回原始输出 */
 export async function runTypeCheck(filePath: string | undefined, cwd: string): Promise<TscResult> {
   const dir = cwd;
@@ -580,23 +603,7 @@ export async function runTypeCheck(filePath: string | undefined, cwd: string): P
 
   // 单文件模式：保留目标文件的错误行及其续行（缩进的多行详情）
   if (filePath) {
-    const resolved = path.resolve(filePath);
-    const errorLinePat = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS\d+:/;
-    const lines = rawOutput.split("\n");
-    const filtered: string[] = [];
-    let keep = false;
-
-    for (const line of lines) {
-      const m = errorLinePat.exec(line);
-      if (m) {
-        keep = path.resolve(projectDir, m[1]) === resolved;
-      } else if (!/^\s/.test(line)) {
-        keep = false;
-      }
-      if (keep) filtered.push(line);
-    }
-
-    rawOutput = filtered.join("\n");
+    rawOutput = filterTscOutputForFile(rawOutput, filePath, projectDir);
   }
 
   log.debug("type-check finished", {
@@ -609,6 +616,43 @@ export async function runTypeCheck(filePath: string | undefined, cwd: string): P
   return { rawOutput, exitCode, diagnostics, source: engine.source };
 }
 
+/**
+ * 多文件类型检查：按最近的 tsconfig 项目分组，每个项目只跑一次 `--build --noEmit`，
+ * 再把项目输出切分回各文件（与单文件路径共用 filterTscOutputForFile）。
+ * 一次编辑批次里的 N 个文件因此从 N 次项目构建降到 1 次。
+ */
+export async function runTypeChecksForFiles(
+  files: string[],
+  cwd: string,
+): Promise<Map<string, TscResult>> {
+  const groups = new Map<string, string[]>();
+  for (const file of files) {
+    const resolved = path.resolve(file);
+    const projectDir = findTsconfigDir(resolved) ?? cwd;
+    const group = groups.get(projectDir);
+    if (group) group.push(resolved);
+    else groups.set(projectDir, [resolved]);
+  }
+
+  const results = new Map<string, TscResult>();
+  for (const [projectDir, group] of groups) {
+    // 单个项目失败降级为空结果，不让整批诊断落空
+    const whole = await runTypeCheck(undefined, projectDir).catch((): TscResult => ({
+      rawOutput: "",
+      exitCode: 0,
+    }));
+    for (const file of group) {
+      results.set(file, {
+        rawOutput: filterTscOutputForFile(whole.rawOutput, file, projectDir),
+        exitCode: whole.exitCode,
+        diagnostics: (whole.diagnostics ?? []).filter((d) => d.file === file),
+        source: whole.source,
+      });
+    }
+  }
+  return results;
+}
+
 /** 并行运行 ESLint + 类型检查（单文件或 glob） */
 export async function runAllChecks(pattern: string, cwd: string): Promise<DiagnosticsResult> {
   log.debug("runAllChecks", { pattern, cwd });
@@ -617,6 +661,29 @@ export async function runAllChecks(pattern: string, cwd: string): Promise<Diagno
     runTypeCheck(pattern, cwd),
   ]);
   return { eslintOutput, tscOutput };
+}
+
+/**
+ * 批量运行 ESLint + 类型检查：Lint 逐文件（ESLint 进程内、oxlint 单次 CLI），
+ * 类型检查按 tsconfig 项目合并为一次（见 runTypeChecksForFiles）。
+ * 返回"文件绝对路径 → 诊断结果"，供 step 边界的一次性收尾诊断使用。
+ */
+export async function runAllChecksForFiles(
+  files: string[],
+  cwd: string,
+): Promise<Map<string, DiagnosticsResult>> {
+  const targets = [...new Set(files.map((file) => path.resolve(file)))];
+  // 耗时主体是类型检查：按 tsconfig 项目合并为一次 --build。
+  // Lint 逐文件串行执行，避免一次批量编辑同时拉起 N 个 linter 进程。
+  const tscByFile = await runTypeChecksForFiles(targets, cwd);
+  const results = new Map<string, DiagnosticsResult>();
+  for (const file of targets) {
+    results.set(file, {
+      eslintOutput: await lintFiles(file, cwd),
+      tscOutput: tscByFile.get(file) ?? { rawOutput: "", exitCode: 0 },
+    });
+  }
+  return results;
 }
 
 /**
@@ -657,18 +724,53 @@ export function lintSectionTitle(lintOutput: EslintOutput): string {
   return lintOutput.engines?.length ? lintOutput.engines.join(" + ") : "ESLint";
 }
 
-/** 组装统一的分区诊断文本（Lint / 类型检查，空结果显示占位文案） */
+/** 分区发现被条数上限折叠时的提示（自动诊断摘要与 run_diagnostics 完整输出的分界） */
+export function omittedFindingsHint(omitted: number): string {
+  return `…还有 ${omitted} 条，完整结果请调用 run_diagnostics`;
+}
+
+/**
+ * 把分区正文的发现限制在 maxFindings 条以内，超出部分折叠成一行省略提示。
+ * 不传上限或未超限时原样返回（run_diagnostics 手动路径的完整输出语义不变）。
+ */
+function boundFindings(
+  text: string | undefined,
+  maxFindings: number | undefined,
+): string | undefined {
+  if (!maxFindings || !text) return text;
+  const lines = text.split("\n").filter((line) => line.trim() !== "");
+  if (lines.length <= maxFindings) return text;
+  return [...lines.slice(0, maxFindings), omittedFindingsHint(lines.length - maxFindings)].join(
+    "\n",
+  );
+}
+
+/**
+ * 组装统一的分区诊断文本（Lint / 类型检查）。
+ * 默认保留空分区的占位文案（run_diagnostics 要正面回答"有没有问题"）；
+ * `onlyFindings: true` 只输出有发现的分区、全空返回空串（编辑后自动诊断不刷占位噪音）；
+ * `maxFindingsPerSection` 把每个分区的发现折叠成有界摘要——编辑后自动诊断每个 step 都会投递，
+ * 因此用条数上限控制重复成本，完整结果仍由不带上限的 run_diagnostics 给出。
+ * `title` 允许为空串，此时直接返回分区正文（追加式投递场景无需标题）。
+ */
 export function formatDiagnosticsSections(
   title: string,
   eslintOutput: EslintOutput,
   tscOutput: TscResult,
+  options: { onlyFindings?: boolean; maxFindingsPerSection?: number } = {},
 ): string {
+  const lintLines = boundFindings(eslintOutput.text, options.maxFindingsPerSection);
+  const tscLines = boundFindings(tscOutput.rawOutput.trim(), options.maxFindingsPerSection);
   const parts: string[] = [];
 
-  parts.push(`## ${lintSectionTitle(eslintOutput)}\n\n` + (eslintOutput.text || "没有发现问题"));
+  if (!options.onlyFindings || lintLines) {
+    parts.push(`## ${lintSectionTitle(eslintOutput)}\n\n` + (lintLines || "没有发现问题"));
+  }
+  if (!options.onlyFindings || tscLines) {
+    parts.push(`## ${tscSectionTitle(tscOutput)}\n\n` + (tscLines || "没有发现类型错误"));
+  }
 
-  const tscLines = tscOutput.rawOutput.trim();
-  parts.push(`## ${tscSectionTitle(tscOutput)}\n\n` + (tscLines || "没有发现类型错误"));
-
-  return `${title}\n\n` + parts.join("\n\n");
+  if (parts.length === 0) return "";
+  const body = parts.join("\n\n");
+  return title ? `${title}\n\n${body}` : body;
 }

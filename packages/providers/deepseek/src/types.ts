@@ -27,7 +27,8 @@ export type DeepSeekProviderOptions = {
   busyEnter?: DeepSeekBusyEnter;
   /**
    * 编辑后自动诊断（对应 opencode providerOptions.enableLsp 的质量门禁语义）：
-   * write/edit/apply_patch 执行后自动补跑 ESLint + vue-tsc 并把结果并入工具输出。
+   * write/edit/apply_patch 执行后自动补跑 ESLint + vue-tsc：登记到 step 边界统一诊断，按文件内容
+   * 去重后以 plugin 上下文消息插入下一步（原生编辑与 PTC 子调度同一路径）。
    * 与 opencode 一致默认开启；需与 enableDiagnostics 配合（总开关关闭时整体不注入）。
    */
   autoDiagnose?: boolean;

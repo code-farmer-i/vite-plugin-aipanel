@@ -20,6 +20,7 @@ import {
   DIAGNOSTICS_TOOL_DESCRIPTION,
   formatDiagnosticsSections,
   isJsFile,
+  omittedFindingsHint,
 } from "../src/node/diagnostics";
 
 type DiagnosticModule = typeof import("../src/node/diagnostics");
@@ -490,6 +491,118 @@ describe("runAllChecks", () => {
   });
 });
 
+describe("runTypeChecksForFiles（批量类型检查）", () => {
+  /** 建临时项目目录：package.json + tsconfig.json */
+  function makeProject(deps: Record<string, string> = {}): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aipanel-batch-"));
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "probe", dependencies: deps }),
+    );
+    fs.writeFileSync(path.join(dir, "tsconfig.json"), "{}");
+    return dir;
+  }
+
+  it("同一项目的多个文件只跑一次 --build，并把输出切分到各文件", async () => {
+    const dir = makeProject({ react: "^19" });
+    const a = path.join(dir, "src", "a.ts");
+    const b = path.join(dir, "src", "b.ts");
+    let calls = 0;
+    execaImpl = (_file, args, opts) => {
+      calls += 1;
+      expect(opts.cwd).toBe(dir);
+      expect(args[0]).toContain("/fake-bin/tsc.js");
+      return {
+        stdout: [
+          `${path.join("src", "a.ts")}(3,5): error TS2322: Type 'X' is not assignable`,
+          `${path.join("src", "b.ts")}(1,2): warning TS6133: 'v' is declared but never used`,
+        ].join("\n"),
+        exitCode: 1,
+      };
+    };
+    try {
+      const mod = await freshModule();
+      const results = await mod.runTypeChecksForFiles([a, b], dir);
+
+      expect(calls).toBe(1);
+      expect(results.size).toBe(2);
+      expect(results.get(a)?.rawOutput).toContain("TS2322");
+      expect(results.get(a)?.rawOutput).not.toContain("TS6133");
+      expect(results.get(b)?.rawOutput).toContain("TS6133");
+      expect(results.get(a)?.exitCode).toBe(1);
+      expect(results.get(a)?.diagnostics).toHaveLength(1);
+      expect(results.get(a)?.diagnostics![0]).toMatchObject({ file: a, source: "tsc" });
+      expect(results.get(b)?.diagnostics![0]).toMatchObject({ file: b });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("不同 tsconfig 项目的文件各跑一次", async () => {
+    const dirA = makeProject({ react: "^19" });
+    const dirB = makeProject({ react: "^19" });
+    const cwds: string[] = [];
+    execaImpl = (_file, _args, opts) => {
+      cwds.push(opts.cwd ?? "");
+      return { stdout: "", exitCode: 0 };
+    };
+    try {
+      const mod = await freshModule();
+      await mod.runTypeChecksForFiles(
+        [path.join(dirA, "a.ts"), path.join(dirB, "b.ts")],
+        "/fallback",
+      );
+      expect(cwds.sort()).toEqual([dirA, dirB].sort());
+    } finally {
+      fs.rmSync(dirA, { recursive: true, force: true });
+      fs.rmSync(dirB, { recursive: true, force: true });
+    }
+  });
+
+  it("找不到 tsconfig 的文件回退到 cwd 项目", async () => {
+    let cwdSeen = "";
+    execaImpl = (_file, _args, opts) => {
+      cwdSeen = opts.cwd ?? "";
+      return { stdout: "", exitCode: 0 };
+    };
+    const mod = await freshModule();
+    await mod.runTypeChecksForFiles(["/virtual/nowhere/x.ts"], "/proj");
+    expect(cwdSeen).toBe("/proj");
+  });
+});
+
+describe("runAllChecksForFiles（批量 lint + 类型检查）", () => {
+  it("返回每个文件的 lint 与类型检查结果，类型检查只跑一次", async () => {
+    eslintLintImpl = async (pattern) =>
+      pattern.endsWith("a.ts")
+        ? [
+            {
+              filePath: pattern,
+              messages: [{ severity: 2, line: 1, column: 1, message: "lint-a", ruleId: "r" }],
+            },
+          ]
+        : [];
+    let tscCalls = 0;
+    execaImpl = () => {
+      tscCalls += 1;
+      return { stdout: "/proj/a.ts(2,3): error TS1: boom", exitCode: 1 };
+    };
+    const mod = await freshModule();
+    const results = await mod.runAllChecksForFiles(
+      ["/proj/a.ts", "/proj/b.ts", "/proj/a.ts"],
+      "/proj",
+    );
+
+    expect(tscCalls).toBe(1);
+    // 重复输入去重，保持首次出现的顺序
+    expect([...results.keys()]).toEqual(["/proj/a.ts", "/proj/b.ts"]);
+    expect(results.get("/proj/a.ts")?.eslintOutput.text).toContain("lint-a");
+    expect(results.get("/proj/a.ts")?.tscOutput.rawOutput).toContain("TS1");
+    expect(results.get("/proj/b.ts")?.eslintOutput.text).toBeUndefined();
+    expect(results.get("/proj/b.ts")?.tscOutput.rawOutput).toBe("");
+  });
+});
+
 describe("runProjectDiagnostics", () => {
   it("builds the workspace once when a root tsconfig exists", async () => {
     const ws = fs.mkdtempSync(path.join(os.tmpdir(), "aipanel-diag-root-"));
@@ -585,5 +698,87 @@ describe("formatDiagnosticsSections", () => {
       { rawOutput: "", exitCode: 0, source: "tsc" },
     );
     expect(text).toContain("## ESLint + oxlint");
+  });
+
+  it("onlyFindings 只输出有发现的分区，不刷占位文案", () => {
+    const onlyLint = formatDiagnosticsSections(
+      "# 报告",
+      { text: "ERROR [a.ts:1:1] nope (r)" },
+      { rawOutput: "", exitCode: 0, source: "vue-tsc" },
+      { onlyFindings: true },
+    );
+    expect(onlyLint).toBe("# 报告\n\n## ESLint\n\nERROR [a.ts:1:1] nope (r)");
+    expect(onlyLint).not.toContain("没有发现类型错误");
+
+    const onlyTsc = formatDiagnosticsSections(
+      "# 报告",
+      {},
+      { rawOutput: "src/a.ts(1,1): error TS1: bad", exitCode: 1, source: "tsc" },
+      { onlyFindings: true },
+    );
+    expect(onlyTsc).toContain("## tsc");
+    expect(onlyTsc).not.toContain("没有发现问题");
+  });
+
+  it("onlyFindings 且两侧都为空时返回空串；title 为空时直接返回正文", () => {
+    const none = formatDiagnosticsSections(
+      "# 报告",
+      {},
+      { rawOutput: "", exitCode: 0, source: "tsc" },
+      { onlyFindings: true },
+    );
+    expect(none).toBe("");
+
+    const untitled = formatDiagnosticsSections(
+      "",
+      { text: "WARN [a.ts:1:1] meh (r)" },
+      { rawOutput: "", exitCode: 0, source: "tsc" },
+      { onlyFindings: true },
+    );
+    expect(untitled).toBe("## ESLint\n\nWARN [a.ts:1:1] meh (r)");
+  });
+
+  it("maxFindingsPerSection 逐分区折叠超限发现并给出省略提示", () => {
+    const lintLines = Array.from(
+      { length: 5 },
+      (_, i) => `ERROR [a.ts:${i + 1}:1] nope${i} (r)`,
+    ).join("\n");
+    const tscLines = [
+      "a.ts(1,1): error TS1: bad",
+      "a.ts(2,1): error TS2: bad",
+      "a.ts(3,1): error TS3: bad",
+    ].join("\n");
+
+    const text = formatDiagnosticsSections(
+      "# 报告",
+      { text: lintLines },
+      { rawOutput: tscLines, exitCode: 1, source: "tsc" },
+      { onlyFindings: true, maxFindingsPerSection: 2 },
+    );
+
+    expect(text).toContain("nope0");
+    expect(text).toContain("nope1");
+    expect(text).not.toContain("nope2");
+    expect(text).toContain(omittedFindingsHint(3));
+    expect(text).toContain("error TS2: bad");
+    expect(text).not.toContain("error TS3: bad");
+    expect(text).toContain(omittedFindingsHint(1));
+  });
+
+  it("未传上限或未超限时输出原样：run_diagnostics 的完整语义不变", () => {
+    const lintBody = "ERROR [a.ts:1:1] nope (r)";
+    const tsc = { rawOutput: "", exitCode: 0, source: "tsc" };
+
+    const noLimit = formatDiagnosticsSections("# 报告", { text: lintBody }, tsc, {
+      onlyFindings: true,
+    });
+    expect(noLimit).toBe(`# 报告\n\n## ESLint\n\n${lintBody}`);
+
+    const underLimit = formatDiagnosticsSections("# 报告", { text: lintBody }, tsc, {
+      onlyFindings: true,
+      maxFindingsPerSection: 3,
+    });
+    expect(underLimit).toBe(noLimit);
+    expect(underLimit).not.toContain("还有");
   });
 });

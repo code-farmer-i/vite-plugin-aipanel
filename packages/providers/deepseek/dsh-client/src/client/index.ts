@@ -36,6 +36,7 @@ import type {
 } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type { ThemePreference, ThemeRuntime } from "@deepseek-ai/dsh-client-ui-theme/client";
 import { registerDiagnosticsView } from "./diagnostics-view";
+import { buildLayoutOverridesCss, LAYOUT_STYLE_ID } from "./layout-overrides";
 
 const MSG = WIDGET_MSG;
 
@@ -319,37 +320,14 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
     };
 
     // ---- 布局：嵌入式时隐藏 dsh 侧栏（与 AIPanel 自带会话列表去重） ----
-    // dsh 仅在折叠态给 grid 容器挂 data-sidebar-collapsed；宽屏（>=1024px）侧栏默认展开，
-    // 该属性缺失，只按它隐藏会在宽屏失效。改为用侧栏列的 CSS Module 类名锚定 grid 容器，
-    // 展开/折叠一律隐藏，不保留 dsh 的紧凑轨道或拖拽手柄。
-    // 类名取自 dsh-client-ui-layout 的 AppFrame（形如 <hash>_sidebarCol），
-    // 只模糊匹配语义后缀，不硬编码随构建变化的 hash 前缀。
-    const LAYOUT_STYLE_ID = "aipanel-layout-overrides";
-    const SIDEBAR_COLUMN_SELECTOR = '[class*="sidebarCol"]';
+    // 隐藏范围、轨道回收方式与原因见 ./layout-overrides（单一来源，另有回归测试）。
     const injectLayoutOverrides = () => {
       if (!embedded) return;
       try {
         if (document.getElementById(LAYOUT_STYLE_ID)) return;
         const style = document.createElement("style");
         style.id = LAYOUT_STYLE_ID;
-        style.textContent = [
-          // 侧栏列（grid 容器的直接子级）
-          `:has(> ${SIDEBAR_COLUMN_SELECTOR}) > ${SIDEBAR_COLUMN_SELECTOR} {`,
-          "  display: none !important;",
-          "}",
-          // grid 容器：回收侧栏轨道，覆盖内联 grid-template-columns
-          `:has(> ${SIDEBAR_COLUMN_SELECTOR}) {`,
-          "  grid-template-columns: auto !important;",
-          "}",
-          // 展开态会渲染侧栏拖拽手柄，一并隐藏
-          '[data-side="sidebar"] {',
-          "  display: none !important;",
-          "}",
-          // 工作区下拉
-          '[aria-label="\u9009\u62E9\u5DE5\u4F5C\u533A"] {',
-          "  display: none !important;",
-          "}",
-        ].join("\n");
+        style.textContent = buildLayoutOverridesCss();
         document.head.appendChild(style);
       } catch {
         /* ignore */

@@ -16,11 +16,28 @@ export class LaunchToken {
   private waiters: {
     resolve: (token: string) => void;
     reject: (err: Error) => void;
-    timer: NodeJS.Timeout;
   }[] = [];
   /** dsh 进程原始输出尾部缓存，超时报错时回填，便于定位真实根因 */
   private stdoutTail = "";
   private stderrTail = "";
+  /** dsh 进程是否已 spawn：token 只可能在 spawn 后打印，超时窗口自 arm 起算 */
+  private spawned = false;
+  private windowTimer?: NodeJS.Timeout;
+
+  /** @param timeoutMs token 等待窗口（自 arm 起算，默认 20s） */
+  constructor(private readonly timeoutMs = 20000) {}
+
+  /**
+   * 标记 dsh 进程已 spawn，窗口开始计时。
+   * provider.start 在 spawn 之前还有编排耗时（ensureDshPackage 装插件等，可能数十秒），
+   * 那段时间 web 进程尚未 launch、不可能产出 token，若计入窗口就会误报“token 未捕获”。
+   */
+  arm(): void {
+    if (this.spawned) return;
+    this.spawned = true;
+    if (this.token !== undefined || this.failure) return;
+    this.windowTimer = setTimeout(() => this.expire(), this.timeoutMs);
+  }
 
   /** 记录 dsh 进程原始输出（只保留末尾，防止内存无限增长），用于超时报错时辅助诊断 */
   recordOutput(stream: "stdout" | "stderr", text: string): void {
@@ -34,11 +51,32 @@ export class LaunchToken {
     if (this.token !== undefined) return;
     this.token = token;
     this.failure = undefined;
+    clearTimeout(this.windowTimer);
     for (const w of this.waiters) {
-      clearTimeout(w.timer);
       w.resolve(token);
     }
     this.waiters = [];
+  }
+
+  /** 令所有等待者失败：本启动不会再产出 token（窗口超时 / provider 已停止） */
+  fail(err: Error): void {
+    if (this.failure || this.token !== undefined) return;
+    this.failure = err;
+    clearTimeout(this.windowTimer);
+    for (const w of this.waiters) {
+      w.reject(err);
+    }
+    this.waiters = [];
+  }
+
+  /** 窗口到点：输出 dsh web 启动原始日志辅助诊断，再按未捕获 token 判定本次启动失败 */
+  private expire(): void {
+    this.printStartupOutput();
+    this.fail(
+      new Error(
+        `dsh launch token was not captured from stdout within ${this.timeoutMs}ms (dsh >= 0.1.2 should print the "dsh web: http://127.0.0.1:<port>/?token=..." URL)`,
+      ),
+    );
   }
 
   /** 报错时把 dsh web 启动的原始日志作为一条日志整体输出（幂等：每实例只打一次） */
@@ -59,25 +97,12 @@ export class LaunchToken {
     return this.token;
   }
 
-  /** 等待 token 就绪（默认 20s 超时；未打印则抛错并快速失败，调用方降级处理） */
-  wait(timeoutMs = 20000): Promise<string> {
+  /** 等待 token 就绪（未 arm 时一直等；arm 后窗口到点即抛错并快速失败，调用方降级处理） */
+  wait(): Promise<string> {
     if (this.token !== undefined) return Promise.resolve(this.token);
     if (this.failure) return Promise.reject(this.failure);
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.printStartupOutput();
-        const err = new Error(
-          `dsh launch token was not captured from stdout within ${timeoutMs}ms (dsh >= 0.1.2 should print the "dsh web: http://127.0.0.1:<port>/?token=..." URL)`,
-        );
-        this.failure = err;
-        for (const w of this.waiters) {
-          clearTimeout(w.timer);
-          w.reject(err);
-        }
-        this.waiters = [];
-        reject(err);
-      }, timeoutMs);
-      this.waiters.push({ resolve, reject, timer });
+      this.waiters.push({ resolve, reject });
     });
   }
 }
@@ -129,6 +154,9 @@ export function startDeepSeekWeb(options: DeepSeekWebOptions): ResultPromise {
     cwd,
     home: home ?? process.env.DSH_HOME,
   });
+
+  // 从这里起才可能有 token：超时窗口自 spawn 起算（此前 provider 的编排/装机耗时不计入）
+  launchToken?.arm();
 
   const proc = execa("dsh", args, {
     cwd,

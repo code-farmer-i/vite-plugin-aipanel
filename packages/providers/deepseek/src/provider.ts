@@ -66,6 +66,8 @@ export class DeepSeekWebProvider implements WebProvider {
   private readonly api: DeepSeekAPI;
   private deps: DeepSeekWebProviderDeps;
   private process: ResultPromise | null = null;
+  /** 本次启动的 token 捕获器：stop 时令其等待者快速失败，避免请求一直挂起 */
+  private launchToken: LaunchToken | null = null;
   /** AIPanel 侧下发的主题偏好（AIPanelWidgetTheme，default auto）：随 client 插件 config 注入，作为启动初值 */
   private uiTheme: AIPanelWidgetTheme = "auto";
   private readonly opts: DeepSeekProviderOptions;
@@ -138,6 +140,7 @@ Please upgrade:
     // 尽早绑定 launch token 等待源：start 中段有耗时装机（ensureDshPackage），启动早期
     // widget 的会话请求可能在源绑定前到达。提前绑定让其在 ensureAuthenticated 走等待路径而非误报。
     const launchToken = new LaunchToken();
+    this.launchToken = launchToken;
     this.api.setLaunchTokenSource(() => launchToken.wait());
 
     const devClientDir = resolveDevDshPackageSource(import.meta.url, "dsh-client", "lib/client.js");
@@ -254,6 +257,9 @@ Please upgrade:
   }
 
   async stop(): Promise<void> {
+    // 进程停止后 stdout 不会再有 token：让仍在等待的调用方快速失败，而不是一直挂着
+    this.launchToken?.fail(new Error("dsh web stopped before launch token was captured"));
+    this.launchToken = null;
     if (this.process) {
       log.debug("Killing dsh web process", { pid: this.process.pid });
       this.process.kill("SIGTERM");

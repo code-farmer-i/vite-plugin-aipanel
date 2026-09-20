@@ -108,7 +108,13 @@ describe("startDeepSeekWeb 启动参数", () => {
   });
 
   it("home 写入 DSH_HOME、verbose 写入 VERBOSE=1；缺省不追加", () => {
-    startDeepSeekWeb({ port: PORT, hostname: HOST, cwd: "/work/proj", home: "/tmp/dsh-home", verbose: true });
+    startDeepSeekWeb({
+      port: PORT,
+      hostname: HOST,
+      cwd: "/work/proj",
+      home: "/tmp/dsh-home",
+      verbose: true,
+    });
     let env = lastExecaCall()[2].env;
     expect(env.DSH_HOME).toBe("/tmp/dsh-home");
     expect(env.VERBOSE).toBe("1");
@@ -183,7 +189,9 @@ describe("startDeepSeekWeb 输出与退出处理", () => {
   });
 
   it("进程启动失败（promise reject）时记录 error 不抛出", async () => {
-    vi.mocked(execa).mockReturnValue(fakeProcess({ exitCode: null, signal: "__reject__" }) as never);
+    vi.mocked(execa).mockReturnValue(
+      fakeProcess({ exitCode: null, signal: "__reject__" }) as never,
+    );
     expect(() => startDeepSeekWeb({ port: PORT, hostname: HOST, cwd: "/work/proj" })).not.toThrow();
     await flush();
     expect(mocks.logError.mock.calls.some((c) => c[0] === "[dsh spawn failed]")).toBe(true);
@@ -196,30 +204,80 @@ describe("LaunchToken 捕获语义", () => {
     lt.set("first");
     lt.set("second");
     expect(lt.get()).toBe("first");
-    await expect(lt.wait(1)).resolves.toBe("first");
+    await expect(lt.wait()).resolves.toBe("first");
+  });
+
+  it("窗口自 arm（spawn）起算：arm 前的编排耗时不计入超时", async () => {
+    vi.useFakeTimers();
+    const lt = new LaunchToken(1000);
+    const waiting = lt.wait();
+    // provider 编排/装机阶段远超窗口时长：尚未 spawn，不应判失败
+    vi.advanceTimersByTime(60000);
+    lt.arm();
+    lt.set("tok");
+    await expect(waiting).resolves.toBe("tok");
+  });
+
+  it("arm 后窗口到点即失败：spawn 后未打印 token 不无限等待", async () => {
+    vi.useFakeTimers();
+    const lt = new LaunchToken(1000);
+    const waiting = lt.wait();
+    lt.arm();
+    vi.advanceTimersByTime(1000);
+    await expect(waiting).rejects.toThrow(/dsh launch token was not captured/);
+  });
+
+  it("startDeepSeekWeb 在 spawn 时 arm：窗口不早于 spawn 起算", async () => {
+    vi.useFakeTimers();
+    const lt = new LaunchToken(1000);
+    // spawn 前就到达的等待（provider 编排阶段的早到请求）不受窗口约束
+    const waiting = lt.wait();
+    vi.advanceTimersByTime(30000);
+
+    vi.mocked(execa).mockReturnValue(fakeProcess() as never);
+    startDeepSeekWeb({ port: PORT, hostname: HOST, cwd: "/work/proj", launchToken: lt });
+    vi.advanceTimersByTime(1000);
+    await expect(waiting).rejects.toThrow(/dsh launch token was not captured/);
+  });
+
+  it("fail 令等待者快速失败（provider 停止后不会再有 token）", async () => {
+    const lt = new LaunchToken();
+    const waiting = lt.wait();
+    lt.fail(new Error("dsh web stopped before launch token was captured"));
+    await expect(waiting).rejects.toThrow(/stopped before launch token/);
+    await expect(lt.wait()).rejects.toThrow(/stopped before launch token/);
+  });
+
+  it("已捕获 token 时 fail 不生效：wait 仍解析 token", async () => {
+    const lt = new LaunchToken();
+    lt.set("tok");
+    lt.fail(new Error("boom"));
+    await expect(lt.wait()).resolves.toBe("tok");
   });
 
   it("超时后缓存失败：后续 wait 快速失败且不重复输出原始日志", async () => {
     vi.useFakeTimers();
-    const lt = new LaunchToken();
+    const lt = new LaunchToken(1000);
     lt.recordOutput("stdout", "boot noise");
 
-    const first = lt.wait(1000);
+    const first = lt.wait();
+    lt.arm();
     vi.advanceTimersByTime(1000);
     await expect(first).rejects.toThrow(/dsh launch token was not captured/);
     expect(mocks.logWarn).toHaveBeenCalledTimes(1);
 
     // 已缓存失败：无需再等超时窗口即拒绝
-    await expect(lt.wait(1000)).rejects.toThrow(/dsh launch token was not captured/);
+    await expect(lt.wait()).rejects.toThrow(/dsh launch token was not captured/);
     expect(mocks.logWarn).toHaveBeenCalledTimes(1);
   });
 
   it("recordOutput 只保留末尾 4096 字符（超时诊断日志不无限增长）", async () => {
     vi.useFakeTimers();
-    const lt = new LaunchToken();
+    const lt = new LaunchToken(1000);
     lt.recordOutput("stdout", "START_MARK" + "x".repeat(5000));
 
-    const waiting = lt.wait(1000);
+    const waiting = lt.wait();
+    lt.arm();
     vi.advanceTimersByTime(1000);
     await expect(waiting).rejects.toThrow();
 

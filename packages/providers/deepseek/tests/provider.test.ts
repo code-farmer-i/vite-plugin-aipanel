@@ -80,7 +80,8 @@ describe("LaunchToken 超时诊断", () => {
       const lt = new LaunchToken();
       lt.recordOutput("stdout", "cordis 1.2.3\nbooted\n");
       lt.recordOutput("stderr", "warn: frontend not built\n");
-      const waiting = lt.wait(20000);
+      const waiting = lt.wait();
+      lt.arm();
       vi.advanceTimersByTime(20000);
       await expect(waiting).rejects.toThrow(/dsh launch token was not captured/);
       // 只有一条 warn，且整段原始输出都在该条内
@@ -99,6 +100,6 @@ describe("LaunchToken 超时诊断", () => {
     const lt = new LaunchToken();
     lt.set("abc123");
     lt.recordOutput("stdout", "busy noise\n");
-    await expect(lt.wait(1)).resolves.toBe("abc123");
+    await expect(lt.wait()).resolves.toBe("abc123");
   });
 });

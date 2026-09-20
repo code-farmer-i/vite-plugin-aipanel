@@ -7,13 +7,13 @@
  * 类型检查引擎按项目自动选择：package.json 直接依赖 vue/nuxt → vue-tsc（支持 .vue）；
  * 否则用项目自身的 tsc（版本与项目一致、无 Volar 开销），解析不到时回退 vue-tsc。
  *
- * 本模块零运行时静态依赖：eslint / vue-tsc / typescript 均通过 createRequire 动态解析
+ * 检查器均按运行时动态解析：eslint / vue-tsc / typescript 通过 createRequire 解析
  * （eslint / tsc 从被诊断的 workspace 解析，vue-tsc 从本模块自身 node_modules 解析），
  * 因此任何宿主（opencode / dsh）bundle 本模块后都可直接使用，无需用户安装检查器。
  */
 import fs from "node:fs";
 import path from "node:path";
-import { exec } from "node:child_process";
+import { execa } from "execa";
 import { createRequire } from "node:module";
 import { SEVERITY_ERROR, SEVERITY_WARN } from "../common/constants";
 import { createLogger } from "./node-logger";
@@ -343,41 +343,38 @@ async function runOxlintFiles(
   const bin = resolveOxlintBin(cwd);
   if (!bin) return {};
 
-  return new Promise((resolve) => {
-    exec(
-      // 与 ESLint 默认行为对齐：忽略 node_modules（oxlint 默认不排除）
-      `node "${bin}" --format=json --ignore-pattern node_modules "${pattern}"`,
-      { cwd, timeout: 60000, maxBuffer: 50 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        const killed = error?.killed;
-        if (killed) {
-          log.warn("oxlint timed out", { pattern });
-          resolve({
-            text: "[oxlint] 运行失败：检查超时，请尝试缩小检查范围。",
-            diagnostics: [],
-            engines: ["oxlint"],
-          });
-          return;
-        }
-        try {
-          const messages = parseOxlintOutput(stdout, cwd);
-          log.debug("oxlint lint", {
-            pattern,
-            messageCount: messages.length,
-            stderr: stderr || undefined,
-          });
-          resolve(formatLintMessages(messages, { label: "oxlint", source: "oxlint" }, warnLimit));
-        } catch (e) {
-          log.warn("oxlint failed", { pattern, error: (e as Error).message });
-          resolve({
-            text: `[oxlint] 运行失败：${(e as Error).message}`,
-            diagnostics: [],
-            engines: ["oxlint"],
-          });
-        }
-      },
-    );
-  });
+  // 与 ESLint 默认行为对齐：忽略 node_modules（oxlint 默认不排除）
+  const result = await execa(
+    "node",
+    [bin, "--format=json", "--ignore-pattern", "node_modules", pattern],
+    { cwd, timeout: 60000, maxBuffer: 50 * 1024 * 1024, reject: false },
+  );
+
+  if (result.timedOut || result.isTerminated || result.isMaxBuffer) {
+    log.warn("oxlint timed out", { pattern });
+    return {
+      text: "[oxlint] 运行失败：检查超时，请尝试缩小检查范围。",
+      diagnostics: [],
+      engines: ["oxlint"],
+    };
+  }
+
+  try {
+    const messages = parseOxlintOutput(result.stdout, cwd);
+    log.debug("oxlint lint", {
+      pattern,
+      messageCount: messages.length,
+      stderr: result.stderr || undefined,
+    });
+    return formatLintMessages(messages, { label: "oxlint", source: "oxlint" }, warnLimit);
+  } catch (e) {
+    log.warn("oxlint failed", { pattern, error: (e as Error).message });
+    return {
+      text: `[oxlint] 运行失败：${(e as Error).message}`,
+      diagnostics: [],
+      engines: ["oxlint"],
+    };
+  }
 }
 
 // ---- TypeScript 类型检查（引擎按项目自动选择） ----
@@ -564,52 +561,52 @@ export async function runTypeCheck(filePath: string | undefined, cwd: string): P
   const timeout = filePath ? 60000 : 120000;
   const maxBuffer = filePath ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
 
-  return new Promise((resolve) => {
-    exec(
-      `node "${engine.bin}" --build --noEmit --pretty false`,
-      { cwd: projectDir, timeout, maxBuffer },
-      (error, stdout, stderr) => {
-        let rawOutput = stdout + stderr;
-        const killed = error?.killed;
-        const exitCode = typeof error?.code === "number" ? error.code : killed ? 1 : 0;
-
-        if (killed && !rawOutput) {
-          rawOutput = `${engine.source} 检查超时，请尝试缩小检查范围或优化项目配置。`;
-        }
-
-        const diagnostics = parseTscDiags(rawOutput, filePath, projectDir, engine.source);
-
-        // 单文件模式：保留目标文件的错误行及其续行（缩进的多行详情）
-        if (filePath) {
-          const resolved = path.resolve(filePath);
-          const errorLinePat = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS\d+:/;
-          const lines = rawOutput.split("\n");
-          const filtered: string[] = [];
-          let keep = false;
-
-          for (const line of lines) {
-            const m = errorLinePat.exec(line);
-            if (m) {
-              keep = path.resolve(projectDir, m[1]) === resolved;
-            } else if (!/^\s/.test(line)) {
-              keep = false;
-            }
-            if (keep) filtered.push(line);
-          }
-
-          rawOutput = filtered.join("\n");
-        }
-
-        log.debug("type-check finished", {
-          engine: engine.source,
-          filePath: filePath || "(all)",
-          exitCode,
-          outputLength: rawOutput.length,
-        });
-        resolve({ rawOutput, exitCode, diagnostics, source: engine.source });
-      },
-    );
+  const result = await execa("node", [engine.bin, "--build", "--noEmit", "--pretty", "false"], {
+    cwd: projectDir,
+    timeout,
+    maxBuffer,
+    reject: false,
   });
+
+  let rawOutput = result.stdout + result.stderr;
+  const killed = result.timedOut || result.isTerminated || result.isMaxBuffer;
+  const exitCode = typeof result.exitCode === "number" ? result.exitCode : killed ? 1 : 0;
+
+  if (killed && !rawOutput) {
+    rawOutput = `${engine.source} 检查超时，请尝试缩小检查范围或优化项目配置。`;
+  }
+
+  const diagnostics = parseTscDiags(rawOutput, filePath, projectDir, engine.source);
+
+  // 单文件模式：保留目标文件的错误行及其续行（缩进的多行详情）
+  if (filePath) {
+    const resolved = path.resolve(filePath);
+    const errorLinePat = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS\d+:/;
+    const lines = rawOutput.split("\n");
+    const filtered: string[] = [];
+    let keep = false;
+
+    for (const line of lines) {
+      const m = errorLinePat.exec(line);
+      if (m) {
+        keep = path.resolve(projectDir, m[1]) === resolved;
+      } else if (!/^\s/.test(line)) {
+        keep = false;
+      }
+      if (keep) filtered.push(line);
+    }
+
+    rawOutput = filtered.join("\n");
+  }
+
+  log.debug("type-check finished", {
+    engine: engine.source,
+    filePath: filePath || "(all)",
+    exitCode,
+    outputLength: rawOutput.length,
+  });
+
+  return { rawOutput, exitCode, diagnostics, source: engine.source };
 }
 
 /** 并行运行 ESLint + 类型检查（单文件或 glob） */

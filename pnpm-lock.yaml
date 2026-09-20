@@ -258,6 +258,9 @@ importers:
 
   packages/core:
     dependencies:
+      execa:
+        specifier: ^9.6.1
+        version: 9.6.1
       vue-tsc:
         specifier: ^3.3.6
         version: 3.3.11(typescript@6.0.3)
@@ -396,6 +399,9 @@ importers:
 
   packages/providers/deepseek/dsh-plugin:
     dependencies:
+      execa:
+        specifier: ^9.6.1
+        version: 9.6.1
       vue-tsc:
         specifier: ^3.3.6
         version: 3.3.11(typescript@6.0.3)

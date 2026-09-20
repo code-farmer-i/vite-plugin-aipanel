@@ -5,11 +5,11 @@
  * - 纯函数（isJsFile / DIAGNOSTICS_TOOL_DESCRIPTION / formatDiagnosticsSections）静态导入直接测；
  * - 依赖模块级缓存的函数（loadESLint 的 ESLintClass、resolveVueTscBin）每用例
  *   vi.resetModules + 动态 import 取全新模块实例；
- * - node:module（createRequire）与 node:child_process（exec）整体替换为可控 mock，
+ * - node:module（createRequire）与 execa 整体替换为可控 mock，
  *   禁止真实解析/执行 vue-tsc、eslint。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { exec } from "node:child_process";
+import { execa } from "execa";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
@@ -39,15 +39,23 @@ interface FakeLintResult {
   messages: FakeLintMessage[];
 }
 
-type ExecCb = (err: unknown, stdout: string, stderr: string) => void;
-type ExecImpl = (cmd: string, opts: { cwd?: string }, cb: ExecCb) => void;
+interface FakeExecaResult {
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number;
+  timedOut?: boolean;
+  isTerminated?: boolean;
+  isMaxBuffer?: boolean;
+}
 
-// --- node:module / node:child_process mock（hoisted） ---
+type ExecaImpl = (file: string, args: string[], opts: { cwd?: string }) => FakeExecaResult;
+
+// --- node:module / execa mock（hoisted） ---
 vi.mock("node:module", () => ({ createRequire: vi.fn() }));
-vi.mock("node:child_process", () => ({ exec: vi.fn() }));
+vi.mock("execa", () => ({ execa: vi.fn() }));
 
 const mockedCreateRequire = vi.mocked(createRequire);
-const mockedExec = vi.mocked(exec);
+const mockedExeca = vi.mocked(execa);
 
 // --- 每用例可调状态 ---
 let eslintAvailable: boolean;
@@ -57,7 +65,7 @@ let vueTscResolvable: boolean;
 let tscResolvable: boolean;
 /** oxlint/package.json 的真实磁盘路径（非 null 时视为 workspace 已安装 oxlint） */
 let oxlintPkgJsonPath: string | null;
-let execImpl: ExecImpl;
+let execaImpl: ExecaImpl;
 
 class FakeESLint {
   cwd: string;
@@ -109,12 +117,14 @@ beforeEach(() => {
   vueTscResolvable = true;
   tscResolvable = true;
   oxlintPkgJsonPath = null;
-  execImpl = (_cmd, _opts, cb) => cb(null, "", "");
+  execaImpl = () => ({ stdout: "", stderr: "", exitCode: 0 });
   mockedCreateRequire.mockImplementation(() => fakeRequire);
-  (mockedExec as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-    (cmd: string, opts: unknown, cb: ExecCb) => {
-      execImpl(cmd, opts as { cwd?: string }, cb);
-    },
+  (mockedExeca as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+    async (file: unknown, args: unknown, opts: unknown) => ({
+      stdout: "",
+      stderr: "",
+      ...execaImpl(file as string, args as string[], opts as { cwd?: string }),
+    }),
   );
 });
 
@@ -271,11 +281,11 @@ describe("lintFiles with oxlint", () => {
     eslintAvailable = false;
     const ws = makeOxlintWorkspace();
     oxlintPkgJsonPath = path.join(ws, "node_modules", "oxlint", "package.json");
-    execImpl = (cmd, opts, cb) => {
-      expect(cmd).toContain("/bin/oxlint");
-      expect(cmd).toContain("--format=json");
+    execaImpl = (_file, args, opts) => {
+      expect(args[0]).toContain("/bin/oxlint");
+      expect(args).toContain("--format=json");
       expect(opts.cwd).toBe(ws);
-      cb({ code: 0 }, OXLINT_JSON, "");
+      return { stdout: OXLINT_JSON, exitCode: 0 };
     };
     try {
       const mod = await freshModule();
@@ -304,7 +314,7 @@ describe("lintFiles with oxlint", () => {
         messages: [{ severity: 2, line: 2, column: 1, message: "eslint problem", ruleId: "r" }],
       },
     ];
-    execImpl = (_cmd, _opts, cb) => cb({ code: 0 }, OXLINT_JSON, "");
+    execaImpl = () => ({ stdout: OXLINT_JSON, exitCode: 0 });
     try {
       const mod = await freshModule();
       const out = await mod.lintFiles("a.js", ws);
@@ -322,8 +332,7 @@ describe("lintFiles with oxlint", () => {
     eslintAvailable = false;
     const ws = makeOxlintWorkspace();
     oxlintPkgJsonPath = path.join(ws, "node_modules", "oxlint", "package.json");
-    execImpl = (_cmd, _opts, cb) =>
-      cb({ code: 0 }, `No files found to lint.\n${OXLINT_JSON}\n`, "");
+    execaImpl = () => ({ stdout: `No files found to lint.\n${OXLINT_JSON}\n`, exitCode: 0 });
     try {
       const mod = await freshModule();
       const out = await mod.lintFiles("a.js", ws);
@@ -337,7 +346,7 @@ describe("lintFiles with oxlint", () => {
     eslintAvailable = false;
     const ws = makeOxlintWorkspace();
     oxlintPkgJsonPath = path.join(ws, "node_modules", "oxlint", "package.json");
-    execImpl = (_cmd, _opts, cb) => cb({ code: 1 }, "not json at all", "");
+    execaImpl = () => ({ stdout: "not json at all", exitCode: 1 });
     try {
       const mod = await freshModule();
       const out = await mod.lintFiles("a.js", ws);
@@ -360,13 +369,14 @@ describe("runTypeCheck", () => {
   });
 
   it("parses tsc diagnostics and reports the exit code in full-project mode", async () => {
-    execImpl = (_cmd, opts, cb) => {
+    execaImpl = (_file, args, opts) => {
       expect(opts.cwd).toBe("/proj");
-      cb(
-        { code: 1 },
-        "src/a.ts(3,5): error TS2322: Type 'X' is not assignable\nsrc/b.ts(1,2): warning TS6133: 'v' is declared but never used",
-        "",
-      );
+      expect(args).toEqual(["/fake-bin/vue-tsc.js", "--build", "--noEmit", "--pretty", "false"]);
+      return {
+        stdout:
+          "src/a.ts(3,5): error TS2322: Type 'X' is not assignable\nsrc/b.ts(1,2): warning TS6133: 'v' is declared but never used",
+        exitCode: 1,
+      };
     };
     const mod = await freshModule();
     const result = await mod.runTypeCheck(undefined, "/proj");
@@ -389,7 +399,7 @@ describe("runTypeCheck", () => {
   });
 
   it("flags a killed process as exit code 1 with a timeout message", async () => {
-    execImpl = (_cmd, _opts, cb) => cb({ code: null, killed: true }, "", "");
+    execaImpl = () => ({ timedOut: true });
     const mod = await freshModule();
     const result = await mod.runTypeCheck(undefined, "/proj");
     expect(result.exitCode).toBe(1);
@@ -412,10 +422,10 @@ describe("runTypeCheck 引擎选择", () => {
   it("非 Vue 项目（react 依赖）用项目自身的 tsc", async () => {
     const dir = makeProject({ react: "^19" });
     let ranBin = "";
-    execImpl = (cmd, opts, cb) => {
-      ranBin = cmd;
+    execaImpl = (_file, args, opts) => {
+      ranBin = args[0];
       expect(opts.cwd).toBe(dir);
-      cb({ code: 1 }, "a.ts(1,1): error TS1: boom", "");
+      return { stdout: "a.ts(1,1): error TS1: boom", exitCode: 1 };
     };
     try {
       const mod = await freshModule();
@@ -431,9 +441,9 @@ describe("runTypeCheck 引擎选择", () => {
   it("Vue 项目（vue 依赖）用 vue-tsc", async () => {
     const dir = makeProject({ vue: "^3.5" });
     let ranBin = "";
-    execImpl = (cmd, _opts, cb) => {
-      ranBin = cmd;
-      cb({ code: 0 }, "", "");
+    execaImpl = (_file, args) => {
+      ranBin = args[0];
+      return { exitCode: 0 };
     };
     try {
       const mod = await freshModule();
@@ -449,9 +459,9 @@ describe("runTypeCheck 引擎选择", () => {
     const dir = makeProject({ react: "^19" });
     tscResolvable = false;
     let ranBin = "";
-    execImpl = (cmd, _opts, cb) => {
-      ranBin = cmd;
-      cb({ code: 0 }, "", "");
+    execaImpl = (_file, args) => {
+      ranBin = args[0];
+      return { exitCode: 0 };
     };
     try {
       const mod = await freshModule();
@@ -472,7 +482,7 @@ describe("runAllChecks", () => {
         messages: [{ severity: 2, line: 1, column: 1, message: "lint problem", ruleId: "r" }],
       },
     ];
-    execImpl = (_cmd, opts, cb) => cb({ code: 2 }, "ignored(1,1): error TS1: nope", "");
+    execaImpl = () => ({ stdout: "ignored(1,1): error TS1: nope", exitCode: 2 });
     const mod = await freshModule();
     const result = await mod.runAllChecks("/virtual/x.ts", "/proj");
     expect(result.eslintOutput.text).toContain("ERROR [/proj/x.ts:1:1] lint problem (r)");
@@ -484,9 +494,9 @@ describe("runProjectDiagnostics", () => {
   it("builds the workspace once when a root tsconfig exists", async () => {
     const ws = fs.mkdtempSync(path.join(os.tmpdir(), "aipanel-diag-root-"));
     fs.writeFileSync(path.join(ws, "tsconfig.json"), "{}");
-    execImpl = (_cmd, opts, cb) => {
+    execaImpl = (_file, _args, opts) => {
       expect(opts.cwd).toBe(ws);
-      cb({ code: 0 }, "a.ts(10,4): warning TS6133: unused var", "");
+      return { stdout: "a.ts(10,4): warning TS6133: unused var", exitCode: 0 };
     };
     try {
       const mod = await freshModule();
@@ -511,12 +521,11 @@ describe("runProjectDiagnostics", () => {
     fs.writeFileSync(path.join(ws, "src2", "tsconfig.json"), "{}");
     fs.writeFileSync(path.join(ws, "node_modules", "pkg", "tsconfig.json"), "{}");
     fs.writeFileSync(path.join(ws, ".hidden", "tsconfig.json"), "{}");
-    execImpl = (_cmd, opts, cb) => {
+    execaImpl = (_file, _args, opts) => {
       if (opts.cwd === path.join(ws, "src1")) {
-        cb({ code: 1 }, "x.ts(2,2): error TS1: in src1", "");
-      } else {
-        cb({ code: 3 }, "y.ts(5,5): error TS2: in src2", "");
+        return { stdout: "x.ts(2,2): error TS1: in src1", exitCode: 1 };
       }
+      return { stdout: "y.ts(5,5): error TS2: in src2", exitCode: 3 };
     };
     try {
       const mod = await freshModule();

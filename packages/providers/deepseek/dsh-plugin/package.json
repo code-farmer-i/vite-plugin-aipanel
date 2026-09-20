@@ -12,10 +12,11 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --target=node18 --external:@deepseek-ai/* --external:node:* --external:vue-tsc",
+    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --target=node18 --external:@deepseek-ai/* --external:node:* --external:vue-tsc --external:execa",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "execa": "^9.6.1",
     "vue-tsc": "^3.3.9"
   },
   "devDependencies": {

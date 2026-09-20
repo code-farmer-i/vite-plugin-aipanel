@@ -162,13 +162,12 @@ export function startDeepSeekWeb(options: DeepSeekWebOptions): ResultPromise {
     cwd,
     reject: false,
     cleanup: true,
-    shell: true,
     env: {
       ...process.env,
       ...(home ? { DSH_HOME: home } : {}),
       ...(verbose ? { VERBOSE: "1" } : {}),
     },
-  } as Parameters<typeof execa>[1]);
+  });
 
   // dsh 启动后若退出，记录退出码（崩溃排查关键：fail-loud 插件/CLI 错误都会在这里暴露）
   proc

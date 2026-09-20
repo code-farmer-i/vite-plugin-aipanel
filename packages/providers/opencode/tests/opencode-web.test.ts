@@ -68,7 +68,13 @@ function lastExecaCall() {
   const calls = vi.mocked(execa).mock.calls as unknown as [
     string,
     string[],
-    { cwd: string; env: Record<string, string>; reject: boolean; cleanup: boolean; shell: boolean },
+    {
+      cwd: string;
+      env: Record<string, string>;
+      reject: boolean;
+      cleanup: boolean;
+      shell?: boolean;
+    },
   ][];
   return calls[calls.length - 1];
 }
@@ -169,7 +175,7 @@ describe("startOpenCodeWeb 参数与环境变量", () => {
     expect(options.cwd).toBe(cwd);
     expect(options.reject).toBe(false);
     expect(options.cleanup).toBe(true);
-    expect(options.shell).toBe(true);
+    expect(options.shell).toBeUndefined();
   });
 
   it("无 CORS 源时不追加 --cors", () => {

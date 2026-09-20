@@ -181,12 +181,12 @@ describe("ensureDshPackage", () => {
     const [command, args, options] = vi.mocked(execa).mock.calls[0] as unknown as [
       string,
       string[],
-      { reject: boolean; shell: boolean; env: Record<string, string> },
+      { reject: boolean; shell?: boolean; env: Record<string, string> },
     ];
     expect(command).toBe("dsh");
     expect(args).toEqual(["plugin", "--profile", "web", "add", "/dev/dsh-client"]);
     expect(options.reject).toBe(true);
-    expect(options.shell).toBe(true);
+    expect(options.shell).toBeUndefined();
     expect(options.env.DSH_HOME).toBe("/tmp/home");
   });
 

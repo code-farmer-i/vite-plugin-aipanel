@@ -98,7 +98,6 @@ export async function ensureDshPackage(
     log.debug(`installing ${target} into dsh profile via dsh plugin add`);
     await execa("dsh", ["plugin", "--profile", "web", "add", target], {
       reject: true,
-      shell: true,
       env: {
         ...process.env,
         ...(home ? { DSH_HOME: home } : {}),

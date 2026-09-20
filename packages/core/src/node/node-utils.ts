@@ -3,6 +3,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { execa } from "execa";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import http from "node:http";
@@ -197,45 +198,23 @@ export function findGitRoot(startDir: string, maxDepth = 10): string {
  */
 export async function checkCliInstalled(bin: string): Promise<boolean> {
   const timer = new PerformanceTimer(`checkCliInstalled:${bin}`);
-  return new Promise((resolve) => {
-    const proc = spawn(bin, ["--version"], { stdio: "ignore", shell: true });
-    proc.on("close", (code) => {
-      const installed = code === 0;
-      timer.end(installed ? `✓ ${bin} is installed` : `✖ ${bin} not found`);
-      resolve(installed);
-    });
-    proc.on("error", (err) => {
-      log.debug(`Failed to check ${bin} installation`, { error: err.message });
-      timer.end("✖ Check failed");
-      resolve(false);
-    });
-  });
+  const result = await execa(bin, ["--version"], { reject: false, stdio: "ignore" });
+  const installed = result.exitCode === 0;
+  if (!installed && result.exitCode === undefined) {
+    log.debug(`Failed to check ${bin} installation`, { error: result.message });
+  }
+  timer.end(installed ? `✓ ${bin} is installed` : `✖ ${bin} not found`);
+  return installed;
 }
 
 /**
  * 获取某 CLI 版本号（<bin> --version，退出码 0 时取 stdout 首段，stdout 为空回退 stderr；败路返回 null）
  * stderr 回退：部分 CLI（如个别平台的 dsh）把版本打在 stderr，仅读 stdout 会误判为“未解析出版本”。
  */
-export function getCliVersion(bin: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    const proc = spawn(bin, ["--version"], { stdio: "pipe", shell: true });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout?.on("data", (data) => {
-      stdout += data.toString();
-    });
-    proc.stderr?.on("data", (data) => {
-      stderr += data.toString();
-    });
-    proc.on("close", (code) => {
-      if (code !== 0) {
-        resolve(null);
-        return;
-      }
-      resolve(stdout.trim() || stderr.trim() || null);
-    });
-    proc.on("error", () => resolve(null));
-  });
+export async function getCliVersion(bin: string): Promise<string | null> {
+  const result = await execa(bin, ["--version"], { reject: false });
+  if (result.exitCode !== 0) return null;
+  return result.stdout.trim() || result.stderr.trim() || null;
 }
 
 /** 孤儿进程清理配置（提供商的 check/kill 统一实现） */

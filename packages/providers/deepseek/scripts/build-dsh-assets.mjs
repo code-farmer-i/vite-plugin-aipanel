@@ -24,7 +24,7 @@ async function main() {
     platform: "node",
     format: "esm",
     target: "node18",
-    external: ["@deepseek-ai/*", "node:*", "vue-tsc"],
+    external: ["@deepseek-ai/*", "node:*", "vue-tsc", "execa"],
     bundle: true,
     logLevel: "info",
   });

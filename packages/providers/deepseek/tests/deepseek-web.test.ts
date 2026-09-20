@@ -66,7 +66,13 @@ function lastExecaCall() {
   const calls = vi.mocked(execa).mock.calls as unknown as [
     string,
     string[],
-    { cwd: string; env: Record<string, string>; reject: boolean; cleanup: boolean; shell: boolean },
+    {
+      cwd: string;
+      env: Record<string, string>;
+      reject: boolean;
+      cleanup: boolean;
+      shell?: boolean;
+    },
   ][];
   return calls[calls.length - 1];
 }
@@ -92,7 +98,7 @@ describe("startDeepSeekWeb 启动参数", () => {
     expect(options.cwd).toBe("/work/proj");
     expect(options.reject).toBe(false);
     expect(options.cleanup).toBe(true);
-    expect(options.shell).toBe(true);
+    expect(options.shell).toBeUndefined();
     expect(proc).toBe(vi.mocked(execa).mock.results[0].value);
   });
 
@@ -105,6 +111,23 @@ describe("startDeepSeekWeb 启动参数", () => {
     expect(patchAt).toBeGreaterThan(profileAt);
     expect(patchAt).toBeLessThan(args.indexOf("--port"));
     expect(args[patchAt + 1]).toBe("/tmp/o.yml");
+  });
+
+  it("含空格的 patchPath 原样作为单个 argv 传递（工作区路径含空格不再拆参数）", () => {
+    startDeepSeekWeb({
+      port: PORT,
+      hostname: HOST,
+      cwd: "/work/my proj",
+      patchPath: "/work/my proj/.aipanel/cache/dsh/dsh-overlay.cordis.yml",
+    });
+
+    const [command, args, options] = lastExecaCall();
+    expect(options.cwd).toBe("/work/my proj");
+    expect(args[args.indexOf("--patch") + 1]).toBe(
+      "/work/my proj/.aipanel/cache/dsh/dsh-overlay.cordis.yml",
+    );
+    expect(options.shell).toBeUndefined();
+    expect(command).toBe("dsh");
   });
 
   it("home 写入 DSH_HOME、verbose 写入 VERBOSE=1；缺省不追加", () => {

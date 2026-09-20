@@ -38,6 +38,7 @@
     "typecheck": "tsc -p tsconfig.declaration.json --noEmit"
   },
   "dependencies": {
+    "execa": "^9.6.1",
     "vue-tsc": "^3.3.9"
   }
 }

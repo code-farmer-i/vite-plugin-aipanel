@@ -133,13 +133,28 @@ export function sanitizeState(state: InspectorState[]): Record<string, unknown> 
 
 // ==================== safeStringify ====================
 
+/**
+ * JSON 序列化：函数/符号/bigint/undefined 换成可读占位，并处理循环引用。
+ *
+ * 判环用**当前路径上的祖先链**，而不是"见过的所有对象"：
+ * 同一对象被多处引用是合法结构（DAG）——例如路由记录会被顶层数组与嵌套 children 同时引用
+ * （实测 `routes[0].meta === routes[6].children[0].meta` 且不是环）。seen-anywhere 会把它误标成
+ * `[Circular Reference]`，agent 读到假值、还以为数据真有环。真环仍标该占位；共享对象**重复输出**而不是被吞掉。
+ */
 export function safeStringify(obj: unknown): string {
-  const seen = new WeakSet();
+  /**
+   * 我们"正身处其中"的容器链（每个元素都是被序列化过的一个对象/数组）。
+   * 出栈判据是"栈顶 !== 当前容器（replacer 的 this）"，这是 JSON.stringify 深度优先遍历下
+   * 唯一可靠的"离开上一层"信号 —— 用父容器比较会在下降时误弹出祖先，真环就漏判了。
+   */
+  const ancestors: unknown[] = [];
 
-  return JSON.stringify(obj, (_key, value) => {
+  return JSON.stringify(obj, function replacer(this: unknown, _key: string, value: unknown) {
     if (typeof value === "object" && value !== null) {
-      if (seen.has(value)) return "[Circular Reference]";
-      seen.add(value);
+      while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) ancestors.pop();
+      if (ancestors.includes(value)) return "[Circular Reference]";
+      ancestors.push(value);
+      return value;
     }
     if (typeof value === "function") return "[Function]";
     if (typeof value === "symbol") return value.toString();

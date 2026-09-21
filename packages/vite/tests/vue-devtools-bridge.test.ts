@@ -80,6 +80,30 @@ describe("safeStringify", () => {
     expect(exposed.safeStringify(obj)).toContain("[Circular Reference]");
   });
 
+  it("深层真环（a.b.c = a）也标记为循环引用", () => {
+    const a: Record<string, any> = { name: "a" };
+    const b: Record<string, any> = { a };
+    a.b = b;
+    b.c = a;
+    expect(exposed.safeStringify(a)).toContain("[Circular Reference]");
+  });
+
+  it("共享引用（DAG，非环）不被误标，而是重复输出", () => {
+    const shared = { title: "共享 meta" };
+    // 同一对象被顶层与嵌套 children 同时引用：真实场景就是 routes[0].meta === routes[6].children[0].meta
+    const payload = { routes: [{ meta: shared }, { path: "/guide", children: [{ meta: shared }] }] };
+    const text = exposed.safeStringify(payload);
+    expect(text).not.toContain("[Circular Reference]");
+    expect(text.match(/共享 meta/g)).toHaveLength(2);
+  });
+
+  it("数组里同一对象出现两次同样不被误标", () => {
+    const shared = { id: 1 };
+    const text = exposed.safeStringify([shared, shared]);
+    expect(text).not.toContain("[Circular Reference]");
+    expect(JSON.parse(text)).toEqual([{ id: 1 }, { id: 1 }]);
+  });
+
   it("函数 / undefined / bigint / symbol 转为可读占位", () => {
     expect(exposed.safeStringify({ fn: () => 1 })).toContain("[Function]");
     expect(exposed.safeStringify({ v: undefined })).toContain("__undefined__");

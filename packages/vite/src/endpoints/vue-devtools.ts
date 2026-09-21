@@ -99,8 +99,8 @@ function buildCallExpr(action: string, args?: Record<string, unknown>): string {
     case VUE_DEVTOOLS_ACTIONS.TOGGLE_APP:
       return `async () => { await window.__aipanel_vue.api.toggleApp(${JSON.stringify(args?.appId)}); return "ok" }`;
     case VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO:
-      // currentRoute / routes 必须各自 safeStringify：safeStringify 的 seen 是调用级共享的，
-      // 放在一起序列化时，currentRoute.matched 与 getRoutes() 共享的同一批路由记录会被误判成循环引用
+      // 两段各自 safeStringify：判环按"当前路径上的祖先"，但两段放在同一次调用里仍会互相牵连
+      // （currentRoute.matched 与 getRoutes() 共享同一批路由记录），分开序列化更清晰也更省体积
       return `async () => { const r = window.__aipanel_vue.router.value; const s = window.__aipanel_vue.safeStringify; return { currentRoute: JSON.parse(s(r?.currentRoute?.value ?? null)), routes: JSON.parse(s(r?.getRoutes?.() ?? [])) } }`;
     case VUE_DEVTOOLS_ACTIONS.GET_TIMELINE:
       return timelineExpr(`timeline.get(${JSON.stringify(withoutPageId(args))})`);

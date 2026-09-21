@@ -51,7 +51,7 @@
 - **数据是"最近一段"，不是"某次会话"**：环容量 1000 条约覆盖 9~18 次路由跳转；高频页面（动画/输入）只覆盖最近几秒。`buffer.dropped`、`notes` 负责把"数据不完整"讲清楚，不让 agent 误读。
 - **整页刷新会清空**：SPA 路由切换保留，硬刷新/新开页重新开始；`buffer.bootId` 与 `notes` 用于把这种情况和"没有活动"区分开。
 - **不含网络与 console**：这两块仍由 `chrome-devtools_*` 工具负责，时间线只做组件/路由/事件维度。
-- **`safeStringify` 的 `seen` 是调用级共享的，不能一次序列化两段互相引用的数据**：`get_current_route` / `get_routes` 底层共用 `GET_ROUTER_INFO`，而 `currentRoute.matched` 与 `getRoutes()` 返回的是同一批路由记录对象；放在同一次调用里序列化会把其中一部分判成循环引用（实测 8 条记录里 2 条整体退化成 `"[Circular Reference]"`、2 处 `meta` 损坏）。现在两段各自 `safeStringify`。
+- **`safeStringify` 按"当前路径上的祖先"判环，而不是"出现过的所有对象"**：后者会把**被多处共用的对象**当成循环引用——实测 `routes[0].meta === routes[6].children[0].meta`（同一对象、不是环）被写成 `"[Circular Reference]"`，agent 读 `meta.title` 拿到假值还以为数据有环。改为祖先链判环后：真环照旧标记（序列化不失败），共享引用重复输出（路由表 3588→3788 字节，代价可忽略）。`get_current_route` / `get_routes` 另外各自 `safeStringify`，让两段互不牵连。
 - **术语**：本 ADR 的"时间线"指 aipanel 自己的页面侧采集缓冲，**不是** Vue DevTools UI 的 Timeline 面板（后者无存储、也不受我们控制）。
 - **单一来源**：层名与默认值定义在 `@aipanel/core` 常量（`VUE_DEVTOOLS_TIMELINE_LAYERS` / `VUE_DEVTOOLS_TIMELINE_DEFAULTS`），工具 schema 与页面侧采集器共用；原始 hook 事件名在采集器里集中定义一次（devtools-kit 的 `DevToolsHooks` 只有 d.ts 声明、运行时未导出，无法 import）。
 - 生命周期计数是**累计值**（自页面加载或上次 `clear`），与 `windowMs` 窗口无关，摘要在 `summary.lifecycle.note` 里标注。

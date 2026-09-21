@@ -1,5 +1,20 @@
 # 更新日志
 
+## v1.3.3
+
+`2026-09-21`
+
+### core
+
+#### ⚡ 改进
+
+- **诊断检查器优先用「你项目里装的那套」**：ESLint、oxlint、tsc、vue-tsc 都先按被诊断的项目解析，项目没装才回落到插件自带的 vue-tsc。变化在 Vue / Nuxt 项目上最明显：以前无论项目里装了什么，跑的都是插件自带的那份 vue-tsc——它背后的 TypeScript 比老项目新得多，Vue 2、旧版 tsconfig 这类老项目容易拿到不可信的结果
+- **老项目（TypeScript 5.6 以下）的类型检查方式变了**：以前固定用 `tsc --build --noEmit`，这个组合在 5.6 之前不被允许，这类项目只会收到一条「Compiler option '--noEmit' may not be used with '--build'」，一条类型错误都看不到；现在改成逐个 tsconfig 的 `-p --noEmit`，create-vue 这种根配置只声明 `references` 的布局也会顺着找到 `tsconfig.app.json` 等真正的子项目，能正常拿到类型错误。TypeScript 5.6 及以上的项目不受影响，仍是一次构建查全项目
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.3.3/packages/extension/aipanel-assistant.zip)
+
 ## v1.3.2
 
 `2026-09-21`

@@ -1,5 +1,15 @@
 # 更新日志
 
+## v1.3.2
+
+`2026-09-21`
+
+### mcp
+
+#### 🐛 修复
+
+- 修复**共用同一个对象的字段被误写成 `[Circular Reference]`**：判定循环引用时，原来记的是「序列化过程中出现过的所有对象」，于是**被多处引用的对象**（例如同一个路由 `meta` 既挂在顶层记录、又挂在嵌套 children 上）也被当成了环——AI 读 `meta.title` 只能拿到 `"[Circular Reference]"`，还会以为数据真的有环。现在改为按**当前路径上的祖先**判环：真正的环照旧标记（序列化不会失败），共享引用正常展开，`get_routes` 里嵌套 children 的 `meta`（title / lang / prefix）也能正常读到
+
 ## v1.3.0 & v1.3.1
 
 `2026-09-21`
@@ -19,7 +29,7 @@
 
 #### 🐛 修复
 
-- 修复**路由表返回里的 `"[Circular Reference]"` 噪声**：`get_current_route` 与 `get_routes` 取的是共享同一批路由记录的数据，原来一起序列化时会被判成循环引用，导致路由表里混进字符串元素、部分 `meta` 被替换成占位符；现在两段各自序列化，路由记录的 `meta`（title / lang / prefix）能正常读到，描述也改成了实际的扁平列表形态
+- 修复**两个路由工具互相牵连产生的 `[Circular Reference]` 噪声**：`get_current_route` 与 `get_routes` 底层取的是同一批路由记录，原来放在一次序列化里会互相影响——路由表里会混进字符串元素、顶层 `meta` 被替换成占位符；现在两段各自序列化，`get_routes` 的描述也改成了实际的扁平列表形态
 - 修复**时间线数据「看起来完整、实际缺了一段」**：窗口内被缓冲淘汰、明细被条数/体积裁剪、渲染缺 start 或 end（耗时为**缺失**而不是 0ms）这三种情况，现在都会显式给出计数与自然语言说明，AI 不会把「没看到」读成「没发生」、把「耗时缺失」读成「很快」
 - 修复**同名组件在统计摘要里出现两行**：页面挂载最早那一瞬还拿不到 app 标识，部分记录会落到匿名分组；现在按 devtools 自身的退路解析，这些记录也能拿到正确的 nodeId
 
@@ -31,7 +41,7 @@
 
 ### 📦 产物
 
-- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.3.0/packages/extension/aipanel-assistant.zip)
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.3.1/packages/extension/aipanel-assistant.zip)
 
 ## v1.2.28
 

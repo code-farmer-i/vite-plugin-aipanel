@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execa } from "execa";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -62,10 +63,8 @@ const mockedExeca = vi.mocked(execa);
 let eslintAvailable: boolean;
 let eslintLintThrows: boolean;
 let eslintLintImpl: (pattern: string) => Promise<FakeLintResult[]>;
-let vueTscResolvable: boolean;
-let tscResolvable: boolean;
-/** oxlint/package.json 的真实磁盘路径（非 null 时视为 workspace 已安装 oxlint） */
-let oxlintPkgJsonPath: string | null;
+/** 本包自带的 vue-tsc 是否可解析（项目没装检查器时的兜底） */
+let bundledVueTscResolvable: boolean;
 let execaImpl: ExecaImpl;
 
 class FakeESLint {
@@ -79,29 +78,64 @@ class FakeESLint {
   }
 }
 
-const fakeRequire = ((id: string) => {
-  if (id === "eslint") {
-    if (!eslintAvailable) throw new Error("Cannot find module 'eslint'");
-    return { ESLint: FakeESLint };
-  }
-  throw new Error("Cannot find module '" + id + "'");
-}) as unknown as NodeRequire;
+/** 在 <root>/node_modules/<name>/package.json 写一个假包（bin / version 由用例决定） */
+function writePackage(
+  root: string,
+  name: string,
+  pkg: { version?: string; bin?: Record<string, string> },
+): string {
+  const pkgDir = path.join(root, "node_modules", name);
+  fs.mkdirSync(pkgDir, { recursive: true });
+  const pkgJsonPath = path.join(pkgDir, "package.json");
+  fs.writeFileSync(pkgJsonPath, JSON.stringify({ name, version: "1.0.0", ...pkg }));
+  return pkgJsonPath;
+}
 
-fakeRequire.resolve = ((id: string) => {
-  if (id === "vue-tsc/bin/vue-tsc.js") {
-    if (!vueTscResolvable) throw new Error("Cannot find module 'vue-tsc/bin/vue-tsc.js'");
-    return "/fake-bin/vue-tsc.js";
+/**
+ * 模拟 Node 的包解析：从 createRequire 起点目录向上找 node_modules/<pkg>/package.json。
+ * 项目自身安装的检查器读的就是临时项目里真实的 package.json（bin / version 可控）；
+ * 起点是 file://（本模块自身）时走的正是仓库里真实安装的 vue-tsc / typescript。
+ */
+function resolvePackageJson(base: string | URL, pkgName: string): string {
+  const from = typeof base === "string" ? base : base.href;
+  if (from.startsWith("file://")) {
+    if (pkgName === "vue-tsc" && !bundledVueTscResolvable) {
+      throw new Error("Cannot find module 'vue-tsc/package.json'");
+    }
+    return walkUp(fileURLToPath(from), pkgName);
   }
-  if (id === "typescript/bin/tsc") {
-    if (!tscResolvable) throw new Error("Cannot find module 'typescript/bin/tsc'");
-    return "/fake-bin/tsc.js";
+  return walkUp(from, pkgName);
+}
+
+/** 从起点目录向上找 node_modules/<pkg>/package.json（与 Node 解析同序） */
+function walkUp(from: string, pkgName: string): string {
+  let dir = path.dirname(from);
+  while (true) {
+    const candidate = path.join(dir, "node_modules", pkgName, "package.json");
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
   }
-  if (id === "oxlint/package.json") {
-    if (!oxlintPkgJsonPath) throw new Error("Cannot find module 'oxlint/package.json'");
-    return oxlintPkgJsonPath;
-  }
-  throw new Error("Cannot resolve '" + id + "'");
-}) as unknown as NodeRequire["resolve"];
+  throw new Error(`Cannot find module '${pkgName}/package.json'`);
+}
+
+function makeFakeRequire(base: string | URL): NodeRequire {
+  const req = ((id: string) => {
+    if (id === "eslint") {
+      if (!eslintAvailable) throw new Error("Cannot find module 'eslint'");
+      return { ESLint: FakeESLint };
+    }
+    throw new Error("Cannot find module '" + id + "'");
+  }) as unknown as NodeRequire;
+
+  req.resolve = ((id: string) => {
+    const pkgName = /^(.+)\/package\.json$/.exec(id)?.[1];
+    if (!pkgName) throw new Error("Cannot resolve '" + id + "'");
+    return resolvePackageJson(base, pkgName);
+  }) as NodeRequire["resolve"];
+  return req;
+}
 
 function silenceConsole(): void {
   for (const method of ["log", "warn", "error"] as const) {
@@ -115,11 +149,9 @@ beforeEach(() => {
   eslintAvailable = true;
   eslintLintThrows = false;
   eslintLintImpl = async () => [];
-  vueTscResolvable = true;
-  tscResolvable = true;
-  oxlintPkgJsonPath = null;
+  bundledVueTscResolvable = true;
   execaImpl = () => ({ stdout: "", stderr: "", exitCode: 0 });
-  mockedCreateRequire.mockImplementation(() => fakeRequire);
+  mockedCreateRequire.mockImplementation((base) => makeFakeRequire(base));
   (mockedExeca as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     async (file: unknown, args: unknown, opts: unknown) => ({
       stdout: "",
@@ -281,7 +313,6 @@ describe("lintFiles with oxlint", () => {
   it("仅 oxlint 可用时用它兜底并解析自有 JSON 格式", async () => {
     eslintAvailable = false;
     const ws = makeOxlintWorkspace();
-    oxlintPkgJsonPath = path.join(ws, "node_modules", "oxlint", "package.json");
     execaImpl = (_file, args, opts) => {
       expect(args[0]).toContain("/bin/oxlint");
       expect(args).toContain("--format=json");
@@ -308,7 +339,6 @@ describe("lintFiles with oxlint", () => {
 
   it("ESLint 与 oxlint 均可用时并行互补并合并结果", async () => {
     const ws = makeOxlintWorkspace();
-    oxlintPkgJsonPath = path.join(ws, "node_modules", "oxlint", "package.json");
     eslintLintImpl = async () => [
       {
         filePath: "/proj/e.ts",
@@ -332,7 +362,6 @@ describe("lintFiles with oxlint", () => {
   it("容忍 stdout 混入人类可读前缀消息（截取 JSON 主体解析）", async () => {
     eslintAvailable = false;
     const ws = makeOxlintWorkspace();
-    oxlintPkgJsonPath = path.join(ws, "node_modules", "oxlint", "package.json");
     execaImpl = () => ({ stdout: `No files found to lint.\n${OXLINT_JSON}\n`, exitCode: 0 });
     try {
       const mod = await freshModule();
@@ -346,7 +375,6 @@ describe("lintFiles with oxlint", () => {
   it("JSON 完全不可解析时明确报 oxlint 运行失败", async () => {
     eslintAvailable = false;
     const ws = makeOxlintWorkspace();
-    oxlintPkgJsonPath = path.join(ws, "node_modules", "oxlint", "package.json");
     execaImpl = () => ({ stdout: "not json at all", exitCode: 1 });
     try {
       const mod = await freshModule();
@@ -361,10 +389,10 @@ describe("lintFiles with oxlint", () => {
 });
 
 describe("runTypeCheck", () => {
-  it("returns an empty success when the vue-tsc bin cannot be resolved", async () => {
-    vueTscResolvable = false;
+  it("returns an empty success when no engine can be resolved", async () => {
+    bundledVueTscResolvable = false;
     const mod = await freshModule();
-    // /proj 无 package.json → 走 vue-tsc 回退路径；两边都解析不到 → 空结果
+    // /proj 无 package.json → 项目自身没装检查器，自带 vue-tsc 也解析不到 → 空结果
     const result = await mod.runTypeCheck(undefined, "/proj");
     expect(result).toEqual({ rawOutput: "", exitCode: 0 });
   });
@@ -372,7 +400,13 @@ describe("runTypeCheck", () => {
   it("parses tsc diagnostics and reports the exit code in full-project mode", async () => {
     execaImpl = (_file, args, opts) => {
       expect(opts.cwd).toBe("/proj");
-      expect(args).toEqual(["/fake-bin/vue-tsc.js", "--build", "--noEmit", "--pretty", "false"]);
+      expect(args).toEqual([
+        expect.stringContaining("vue-tsc"),
+        "--build",
+        "--noEmit",
+        "--pretty",
+        "false",
+      ]);
       return {
         stdout:
           "src/a.ts(3,5): error TS2322: Type 'X' is not assignable\nsrc/b.ts(1,2): warning TS6133: 'v' is declared but never used",
@@ -409,29 +443,44 @@ describe("runTypeCheck", () => {
 });
 
 describe("runTypeCheck 引擎选择", () => {
-  /** 建临时项目目录：package.json + tsconfig.json（保证从项目目录起解析） */
-  function makeProject(deps: Record<string, string>): string {
+  /** 建临时项目目录：package.json + tsconfig.json，可预装假检查器（bin / TS 版本可控） */
+  function makeProject(
+    deps: Record<string, string>,
+    packages: Record<string, { version?: string; bin?: Record<string, string> }> = {},
+  ): string {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aipanel-engine-"));
     fs.writeFileSync(
       path.join(dir, "package.json"),
       JSON.stringify({ name: "probe", dependencies: deps }),
     );
     fs.writeFileSync(path.join(dir, "tsconfig.json"), "{}");
+    for (const [name, pkg] of Object.entries(packages)) writePackage(dir, name, pkg);
     return dir;
   }
 
-  it("非 Vue 项目（react 依赖）用项目自身的 tsc", async () => {
-    const dir = makeProject({ react: "^19" });
-    let ranBin = "";
+  const WORKSPACE_TSC = { typescript: { version: "6.0.3", bin: { tsc: "./bin/tsc" } } };
+  const WORKSPACE_VUE_TSC = {
+    "vue-tsc": { version: "3.3.11", bin: { "vue-tsc": "./bin/vue-tsc.js" } },
+  };
+
+  it("非 Vue 项目用项目自身的 tsc（版本与项目一致）", async () => {
+    const dir = makeProject({ react: "^19" }, WORKSPACE_TSC);
+    let ranArgs: string[] = [];
     execaImpl = (_file, args, opts) => {
-      ranBin = args[0];
+      ranArgs = args;
       expect(opts.cwd).toBe(dir);
       return { stdout: "a.ts(1,1): error TS1: boom", exitCode: 1 };
     };
     try {
       const mod = await freshModule();
       const result = await mod.runTypeCheck(undefined, dir);
-      expect(ranBin).toContain("/fake-bin/tsc.js");
+      expect(ranArgs).toEqual([
+        path.join(dir, "node_modules/typescript/bin/tsc"),
+        "--build",
+        "--noEmit",
+        "--pretty",
+        "false",
+      ]);
       expect(result.source).toBe("tsc");
       expect(result.diagnostics![0]).toMatchObject({ source: "tsc" });
     } finally {
@@ -439,8 +488,8 @@ describe("runTypeCheck 引擎选择", () => {
     }
   });
 
-  it("Vue 项目（vue 依赖）用 vue-tsc", async () => {
-    const dir = makeProject({ vue: "^3.5" });
+  it("Vue 项目优先项目自身的 vue-tsc，而不是本包自带的", async () => {
+    const dir = makeProject({ vue: "^3.5" }, { ...WORKSPACE_VUE_TSC, ...WORKSPACE_TSC });
     let ranBin = "";
     execaImpl = (_file, args) => {
       ranBin = args[0];
@@ -449,16 +498,15 @@ describe("runTypeCheck 引擎选择", () => {
     try {
       const mod = await freshModule();
       const result = await mod.runTypeCheck(undefined, dir);
-      expect(ranBin).toContain("/fake-bin/vue-tsc.js");
+      expect(ranBin).toBe(path.join(dir, "node_modules/vue-tsc/bin/vue-tsc.js"));
       expect(result.source).toBe("vue-tsc");
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("非 Vue 项目但 tsc 解析失败时回退 vue-tsc", async () => {
-    const dir = makeProject({ react: "^19" });
-    tscResolvable = false;
+  it("Vue 项目没装 vue-tsc 时回落本包自带", async () => {
+    const dir = makeProject({ vue: "^3.5" }, WORKSPACE_TSC);
     let ranBin = "";
     execaImpl = (_file, args) => {
       ranBin = args[0];
@@ -467,8 +515,110 @@ describe("runTypeCheck 引擎选择", () => {
     try {
       const mod = await freshModule();
       const result = await mod.runTypeCheck(undefined, dir);
-      expect(ranBin).toContain("/fake-bin/vue-tsc.js");
+      expect(ranBin).toContain("vue-tsc");
+      expect(ranBin.startsWith(dir)).toBe(false);
       expect(result.source).toBe("vue-tsc");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("非 Vue 项目没装 tsc 但装了 vue-tsc 时用项目的 vue-tsc", async () => {
+    const dir = makeProject({ react: "^19" }, WORKSPACE_VUE_TSC);
+    let ranBin = "";
+    execaImpl = (_file, args) => {
+      ranBin = args[0];
+      return { exitCode: 0 };
+    };
+    try {
+      const mod = await freshModule();
+      const result = await mod.runTypeCheck(undefined, dir);
+      expect(ranBin).toBe(path.join(dir, "node_modules/vue-tsc/bin/vue-tsc.js"));
+      expect(result.source).toBe("vue-tsc");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("老版本 TS（< 5.6）不支持 --build --noEmit：逐项目 -p 并按 references 展开", async () => {
+    const dir = makeProject(
+      { vue: "^2.7" },
+      {
+        "vue-tsc": { version: "1.8.27", bin: { "vue-tsc": "./bin/vue-tsc.js" } },
+        typescript: { version: "5.5.4", bin: { tsc: "./bin/tsc" } },
+      },
+    );
+    fs.writeFileSync(
+      path.join(dir, "tsconfig.json"),
+      JSON.stringify({ files: [], references: [{ path: "./tsconfig.app.json" }] }),
+    );
+    fs.writeFileSync(path.join(dir, "tsconfig.app.json"), JSON.stringify({ include: ["src"] }));
+
+    const runs: string[][] = [];
+    execaImpl = (_file, args) => {
+      if (args.includes("--showConfig")) {
+        // execa 的 argv[0] 是引擎 bin；solution 式根配置自身没有程序（只有 references）
+        const config = args[2];
+        return {
+          stdout: JSON.stringify(
+            config.endsWith("tsconfig.app.json")
+              ? { include: ["src"] }
+              : { references: [{ path: "./tsconfig.app.json" }] },
+          ),
+          exitCode: 0,
+        };
+      }
+      runs.push(args);
+      return { stdout: "src/a.ts(1,1): error TS1: old", exitCode: 1 };
+    };
+    try {
+      const mod = await freshModule();
+      const result = await mod.runTypeCheck(undefined, dir);
+      expect(runs).toEqual([
+        [
+          path.join(dir, "node_modules/vue-tsc/bin/vue-tsc.js"),
+          "-p",
+          "tsconfig.app.json",
+          "--noEmit",
+          "--pretty",
+          "false",
+        ],
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(result.source).toBe("vue-tsc");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("TS 版本解析不到时用最保守的 -p 模式（不吃 TS5094）", async () => {
+    // 装了 vue-tsc 但解析不出它背后的 typescript 版本（如软链安装、NODE_PATH 干扰）
+    const dir = makeProject(
+      { vue: "^3.5" },
+      { "vue-tsc": { version: "3.3.11", bin: { "vue-tsc": "./bin/vue-tsc.js" } } },
+    );
+    const runs: string[][] = [];
+    execaImpl = (_file, args) => {
+      if (args.includes("--showConfig")) {
+        // 普通配置：自身有程序，就地 -p 检查
+        return { stdout: JSON.stringify({ include: ["src"] }), exitCode: 0 };
+      }
+      runs.push(args);
+      return { stdout: "", exitCode: 0 };
+    };
+    try {
+      const mod = await freshModule();
+      await mod.runTypeCheck(undefined, dir);
+      expect(runs).toEqual([
+        [
+          path.join(dir, "node_modules/vue-tsc/bin/vue-tsc.js"),
+          "-p",
+          "tsconfig.json",
+          "--noEmit",
+          "--pretty",
+          "false",
+        ],
+      ]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -492,7 +642,7 @@ describe("runAllChecks", () => {
 });
 
 describe("runTypeChecksForFiles（批量类型检查）", () => {
-  /** 建临时项目目录：package.json + tsconfig.json */
+  /** 建临时项目目录：package.json + tsconfig.json + 项目自身的 tsc */
   function makeProject(deps: Record<string, string> = {}): string {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aipanel-batch-"));
     fs.writeFileSync(
@@ -500,6 +650,7 @@ describe("runTypeChecksForFiles（批量类型检查）", () => {
       JSON.stringify({ name: "probe", dependencies: deps }),
     );
     fs.writeFileSync(path.join(dir, "tsconfig.json"), "{}");
+    writePackage(dir, "typescript", { version: "6.0.3", bin: { tsc: "./bin/tsc" } });
     return dir;
   }
 
@@ -511,7 +662,7 @@ describe("runTypeChecksForFiles（批量类型检查）", () => {
     execaImpl = (_file, args, opts) => {
       calls += 1;
       expect(opts.cwd).toBe(dir);
-      expect(args[0]).toContain("/fake-bin/tsc.js");
+      expect(args[0]).toBe(path.join(dir, "node_modules/typescript/bin/tsc"));
       return {
         stdout: [
           `${path.join("src", "a.ts")}(3,5): error TS2322: Type 'X' is not assignable`,

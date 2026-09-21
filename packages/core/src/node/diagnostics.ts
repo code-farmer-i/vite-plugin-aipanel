@@ -4,11 +4,14 @@
  * 职责：ESLint（Node API）+ TypeScript 类型检查（CLI）两类检查，支持单文件诊断与
  * 全量项目诊断，输出统一的分区文本格式。
  *
- * 类型检查引擎按项目自动选择：package.json 直接依赖 vue/nuxt → vue-tsc（支持 .vue）；
- * 否则用项目自身的 tsc（版本与项目一致、无 Volar 开销），解析不到时回退 vue-tsc。
+ * 检查器一律优先用被诊断项目自身的版本：eslint / oxlint / tsc / vue-tsc 都先按项目解析，
+ * 项目没装才回落到本包自带的 vue-tsc——老项目不会因为自带检查器版本过新而误判。
  *
- * 检查器均按运行时动态解析：eslint / vue-tsc / typescript 通过 createRequire 解析
- * （eslint / tsc 从被诊断的 workspace 解析，vue-tsc 从本模块自身 node_modules 解析），
+ * 类型检查引擎按项目自动选择：package.json 直接依赖 vue/nuxt → vue-tsc（支持 .vue）；
+ * 否则优先项目自身的 tsc（版本与项目一致、无 Volar 开销）。TS 5.6 起 `--build` 才允许
+ * `--noEmit`，更早的项目引擎退化为逐项目 `-p --noEmit`（按 references 展开子项目）。
+ *
+ * 检查器均按运行时动态解析：通过 createRequire 从被诊断的 workspace 解析，
  * 因此任何宿主（opencode / dsh）bundle 本模块后都可直接使用，无需用户安装检查器。
  */
 import fs from "node:fs";
@@ -55,6 +58,39 @@ export const DIAGNOSTICS_TOOL_DESCRIPTION = [
   "- 排查编辑器未显示但实际存在的类型问题",
   "- 不传参数可全量诊断整个项目",
 ].join("\n");
+
+// ---- 依赖解析（统一入口：优先项目自身安装的检查器） ----
+
+/** 解析缓存：同一目录会解析多个工具，key 带包名，避免互相覆盖；null 表示"解析不到"，同样缓存 */
+function cachedResolve<T>(cache: Map<string, T>, key: string, resolve: () => T): T {
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+  const value = resolve();
+  cache.set(key, value);
+  return value;
+}
+
+const _packageBinCache = new Map<string, string | null>();
+
+/**
+ * 从 basePkgJson 出发解析依赖包的 bin 绝对路径（解析不到返回 null）。
+ * 包的 exports map 通常不暴露 bin 子路径，因此经 "<pkg>/package.json" 定位后按 bin 字段拼接。
+ */
+function resolvePackageBin(basePkgJson: string, pkgName: string, binName: string): string | null {
+  return cachedResolve(_packageBinCache, `${basePkgJson}\0${pkgName}`, () => {
+    try {
+      const req = createRequire(basePkgJson);
+      const pkgJsonPath = req.resolve(`${pkgName}/package.json`);
+      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) as {
+        bin?: string | Record<string, string>;
+      };
+      const binRel = typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.[binName];
+      return binRel ? path.join(path.dirname(pkgJsonPath), binRel) : null;
+    } catch {
+      return null;
+    }
+  });
+}
 
 // ESLint severity: 2=error, 1=warn → LSP DiagnosticSeverity: 1=Error, 2=Warning
 // 参考 eslint/lib/shared/severity.js、shared/constants.ts
@@ -106,20 +142,28 @@ type ESLintConstructor = new (opts: { cwd: string }) => {
   lintFiles: (p: string) => Promise<Array<{ filePath: string; messages: LintMessage[] }>>;
 };
 
-let ESLintClass: ESLintConstructor | undefined;
+/** 各 workspace 的 ESLint 构造器缓存（用户项目装了什么大版本就用什么；解析失败缓存 null） */
+const _eslintClassByBase = new Map<string, ESLintConstructor | null>();
 
 /** 从被诊断的 workspace 解析 eslint（用户项目已安装）；解析失败则跳过 ESLint 检查 */
-function loadESLint(workspace: string): void {
-  if (ESLintClass) return;
-  log.debug("Loading eslint", { workspace });
-  try {
-    const req = createRequire(path.join(workspace, "package.json"));
-    const eslintModule = req("eslint");
-    ESLintClass ??= eslintModule.ESLint ?? eslintModule.FlatESLint;
-    log.debug("eslint loaded", { hasClass: !!ESLintClass });
-  } catch (e) {
-    log.warn("eslint not found", { error: (e as Error).message });
-  }
+function loadESLint(workspace: string): ESLintConstructor | null {
+  const basePkgJson = path.join(workspace, "package.json");
+  return cachedResolve(_eslintClassByBase, basePkgJson, () => {
+    log.debug("Loading eslint", { workspace });
+    try {
+      const req = createRequire(basePkgJson);
+      const eslintModule = req("eslint") as {
+        ESLint?: ESLintConstructor;
+        FlatESLint?: ESLintConstructor;
+      };
+      const eslintClass = eslintModule.ESLint ?? eslintModule.FlatESLint ?? null;
+      log.debug("eslint loaded", { hasClass: !!eslintClass });
+      return eslintClass;
+    } catch (e) {
+      log.warn("eslint not found", { error: (e as Error).message });
+      return null;
+    }
+  });
 }
 
 /**
@@ -131,12 +175,12 @@ export async function lintFiles(
   cwd: string,
   warnLimit = 5,
 ): Promise<EslintOutput> {
-  loadESLint(cwd);
+  const eslintClass = loadESLint(cwd);
 
   // create-vue 官方约定 ESLint + oxlint 互补并用（规则去重由项目的 eslint-plugin-oxlint 承担）：
   // 两引擎均可用时并行跑；仅可用其一则用其一；均不可用明确报"未运行"，不静默假装干净
   const [eslintOutput, oxlintOutput] = await Promise.all([
-    ESLintClass ? runEslintFiles(pattern, cwd, warnLimit) : Promise.resolve(null),
+    eslintClass ? runEslintFiles(eslintClass, pattern, cwd, warnLimit) : Promise.resolve(null),
     runOxlintFiles(pattern, cwd, warnLimit),
   ]);
 
@@ -219,12 +263,13 @@ function formatLintMessages(
 
 /** ESLint Node API 检查（引擎可用时由 lintFiles 调度） */
 async function runEslintFiles(
+  eslintClass: ESLintConstructor,
   pattern: string,
   cwd: string,
   warnLimit: number,
 ): Promise<EslintOutput> {
   try {
-    const eslint = new ESLintClass!({ cwd });
+    const eslint = new eslintClass({ cwd });
     const results = await eslint.lintFiles(pattern);
     const messages: (LintMessage & { filePath: string })[] = results.flatMap((r) =>
       (r.messages ?? []).map((m) => ({ ...m, filePath: r.filePath })),
@@ -247,26 +292,9 @@ async function runEslintFiles(
 
 // ---- oxlint（Rust linter，与 ESLint 互补；create-vue 约定 oxlint 先跑） ----
 
-let _oxlintBin: string | null | undefined;
-
-/**
- * 解析 oxlint CLI 路径（从被诊断 workspace 解析，用户项目已安装才会启用）。
- * oxlint 的 exports map 未暴露 bin 子路径，经 "oxlint/package.json" 定位后按 bin 字段拼接。
- */
+/** oxlint CLI 路径（从被诊断 workspace 解析，用户项目已安装才会启用） */
 function resolveOxlintBin(workspace: string): string | null {
-  if (_oxlintBin !== undefined) return _oxlintBin;
-  try {
-    const req = createRequire(path.join(workspace, "package.json"));
-    const pkgJsonPath = req.resolve("oxlint/package.json");
-    const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) as {
-      bin?: string | Record<string, string>;
-    };
-    const binRel = typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.oxlint;
-    _oxlintBin = binRel ? path.join(path.dirname(pkgJsonPath), binRel) : null;
-  } catch {
-    _oxlintBin = null;
-  }
-  return _oxlintBin;
+  return resolvePackageBin(path.join(workspace, "package.json"), "oxlint", "oxlint");
 }
 
 /** oxlint --format=json 的诊断条目（自有格式，非 ESLint 兼容数组） */
@@ -377,29 +405,25 @@ async function runOxlintFiles(
   }
 }
 
-// ---- TypeScript 类型检查（引擎按项目自动选择） ----
+// ---- TypeScript 类型检查（引擎按项目自动选择，优先项目自身版本） ----
 
-let _vueTscBin: string | null | undefined;
-
-/**
- * 解析 vue-tsc CLI 路径。
- * 从本模块自身 node_modules 解析（vue-tsc 为本包 dependency），无需用户安装。
- * 注意：模块被宿主 bundle 后，import.meta.url 指向 bundle 文件（如 dsh-plugin/dist/index.js），
- * 因此宿主也须把 vue-tsc 声明为可解析依赖。
- */
-function resolveVueTscBin(): string | null {
-  if (_vueTscBin !== undefined) return _vueTscBin;
-  try {
-    const req = createRequire(import.meta.url);
-    _vueTscBin = req.resolve("vue-tsc/bin/vue-tsc.js");
-  } catch {
-    _vueTscBin = null;
-  }
-  return _vueTscBin;
+/** 类型检查引擎（bin / 标题名 / 归属 / 背后的 TypeScript 版本） */
+interface TypeCheckEngine {
+  /** CLI 入口绝对路径 */
+  bin: string;
+  /** 分区标题与 DiagnosticItem.source */
+  source: "tsc" | "vue-tsc";
+  /** 项目自身安装 / 本包自带兜底（日志用） */
+  origin: "workspace" | "bundled";
+  /** 引擎背后的 TypeScript 版本（决定 CLI 参数）；解析不到为 null，走最保守的 -p 模式 */
+  tsVersion: string | null;
 }
 
-/** tsc bin 解析缓存（key 为 package.json 所在目录） */
-const _tscBinByPkgDir = new Map<string, string | null>();
+/** 没有项目 package.json 时共用同一份自带引擎解析结果 */
+const BUNDLED_ENGINE_KEY = "<bundled>";
+
+const _engineCache = new Map<string, TypeCheckEngine | null>();
+const _tsVersionCache = new Map<string, string | null>();
 
 /** 从起始目录向上查找最近的 package.json 所在目录（找不到返回 null） */
 function nearestPackageJsonDir(startDir: string): string | null {
@@ -426,33 +450,97 @@ function isVuePackage(pkgDir: string): boolean {
   }
 }
 
-/**
- * 解析类型检查引擎：Vue 项目（vue/nuxt 依赖）→ vue-tsc；否则 → 项目自身的 tsc
- * （React 等纯 TS 项目无需 Volar 层，且 tsc 版本与项目一致）。
- * 项目未装 typescript 或无 package.json 时回退 vue-tsc（vue-tsc 为 tsc 超集）。
- */
-function resolveTypeCheckBin(projectDir: string): { bin: string; source: string } | null {
-  const pkgDir = nearestPackageJsonDir(projectDir);
-  if (!pkgDir || isVuePackage(pkgDir)) {
-    const bin = resolveVueTscBin();
-    return bin ? { bin, source: "vue-tsc" } : null;
+/** 读取 package.json 的 name / version（读不到返回 null） */
+function readPackageMeta(pkgJsonPath: string): { name?: string; version?: string } | null {
+  try {
+    return JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) as { name?: string; version?: string };
+  } catch {
+    return null;
   }
+}
 
-  let bin = _tscBinByPkgDir.get(pkgDir);
-  if (bin === undefined) {
+/**
+ * 引擎背后的 TypeScript 版本：tsc 直接看自己所在包的版本；
+ * vue-tsc 则解析它实际会加载的那份 typescript（peer 依赖）。
+ */
+function resolveEngineTsVersion(bin: string): string | null {
+  const pkgDir = nearestPackageJsonDir(path.dirname(bin));
+  if (!pkgDir) return null;
+  return cachedResolve(_tsVersionCache, pkgDir, () => {
+    const own = readPackageMeta(path.join(pkgDir, "package.json"));
+    if (own?.name === "typescript" && own.version) return own.version;
+
     try {
       const req = createRequire(path.join(pkgDir, "package.json"));
-      bin = req.resolve("typescript/bin/tsc");
+      return readPackageMeta(req.resolve("typescript/package.json"))?.version ?? null;
     } catch {
-      bin = null;
+      return null;
     }
-    _tscBinByPkgDir.set(pkgDir, bin);
-    if (!bin) log.debug("workspace tsc not resolvable, fallback to vue-tsc", { pkgDir });
-  }
+  });
+}
 
-  if (bin) return { bin, source: "tsc" };
-  const vueBin = resolveVueTscBin();
-  return vueBin ? { bin: vueBin, source: "vue-tsc" } : null;
+/** 把 bin 解析结果包装成引擎描述（解析不到返回 null） */
+function toEngine(
+  bin: string | null,
+  source: TypeCheckEngine["source"],
+  origin: TypeCheckEngine["origin"],
+): TypeCheckEngine | null {
+  return bin ? { bin, source, origin, tsVersion: resolveEngineTsVersion(bin) } : null;
+}
+
+/** 项目自身安装的 tsc / vue-tsc（版本与项目一致） */
+function resolveWorkspaceEngine(pkgDir: string, kind: "tsc" | "vue-tsc"): TypeCheckEngine | null {
+  const basePkgJson = path.join(pkgDir, "package.json");
+  return kind === "tsc"
+    ? toEngine(resolvePackageBin(basePkgJson, "typescript", "tsc"), "tsc", "workspace")
+    : toEngine(resolvePackageBin(basePkgJson, "vue-tsc", "vue-tsc"), "vue-tsc", "workspace");
+}
+
+/**
+ * 本包自带的 vue-tsc（项目没装检查器时的兜底；tsc 超集，能检查 .vue）。
+ * 注意：模块被宿主 bundle 后 import.meta.url 指向 bundle 文件（如 dsh-plugin/dist/index.js），
+ * 因此宿主也须把 vue-tsc 声明为可解析依赖。
+ */
+function resolveBundledVueTscEngine(): TypeCheckEngine | null {
+  return toEngine(resolvePackageBin(import.meta.url, "vue-tsc", "vue-tsc"), "vue-tsc", "bundled");
+}
+
+/**
+ * 解析类型检查引擎：一律优先项目自身的版本（与项目的 tsconfig / TypeScript 版本匹配，老项目
+ * 不会因为自带检查器版本过新而误判）。Vue 项目（vue/nuxt 依赖）用 vue-tsc——只有它能检查
+ * .vue；非 Vue 项目优先项目自身的 tsc（React 等纯 TS 项目无需 Volar 层）。项目都没装才回落
+ * 到本包自带的 vue-tsc。
+ */
+function resolveTypeCheckEngine(projectDir: string): TypeCheckEngine | null {
+  const pkgDir = nearestPackageJsonDir(projectDir);
+  return cachedResolve(_engineCache, pkgDir ?? BUNDLED_ENGINE_KEY, () => {
+    if (!pkgDir) return resolveBundledVueTscEngine();
+
+    const candidates = isVuePackage(pkgDir)
+      ? [resolveWorkspaceEngine(pkgDir, "vue-tsc")]
+      : [resolveWorkspaceEngine(pkgDir, "tsc"), resolveWorkspaceEngine(pkgDir, "vue-tsc")];
+    for (const engine of candidates) {
+      if (engine) return engine;
+    }
+    return resolveBundledVueTscEngine();
+  });
+}
+
+/** TS 5.6 起 `--build` 才允许 `--noEmit`（更早版本直接报 TS5094） */
+const BUILD_NO_EMIT_MIN_TS = { major: 5, minor: 6 } as const;
+
+/**
+ * 引擎的 TypeScript 是否**确定**支持 `--build --noEmit`（TS 5.6 起才允许）。
+ * 版本解析不到时按不支持处理：`-p` 模式在任何 TS 版本上都成立，
+ * 而猜错方向的代价是老项目直接收到 TS5094、类型检查整体落空。
+ */
+function supportsBuildNoEmit(tsVersion: string | null): boolean {
+  if (!tsVersion) return false;
+  const [major, minor] = tsVersion.split(".").map((part) => Number.parseInt(part, 10));
+  return (
+    major > BUILD_NO_EMIT_MIN_TS.major ||
+    (major === BUILD_NO_EMIT_MIN_TS.major && minor >= BUILD_NO_EMIT_MIN_TS.minor)
+  );
 }
 
 /** 从文件路径向上查找最近的 tsconfig.json 所在目录 */
@@ -563,11 +651,130 @@ function filterTscOutputForFile(rawOutput: string, filePath: string, projectDir:
   return filtered.join("\n");
 }
 
-/** 运行 TypeScript 类型检查（tsc / vue-tsc 按项目自动选择）--build --noEmit，返回原始输出 */
+/** tsc --showConfig 输出（只取展开项目图所需字段） */
+interface ResolvedTsconfig {
+  files?: string[];
+  include?: string[];
+  references?: Array<{ path?: string }>;
+}
+
+/**
+ * 让引擎自己解析 tsconfig（会展开 extends）；失败返回 null。
+ * 配置路径一律相对 projectDir 传入：tsc 对绝对 -p 与相对 -p 的输出路径基准不同，
+ * 相对写法才能让诊断路径稳定地相对 cwd（= projectDir）解析。
+ */
+async function readResolvedTsconfig(
+  engine: TypeCheckEngine,
+  configPath: string,
+  projectDir: string,
+): Promise<ResolvedTsconfig | null> {
+  const result = await execa(
+    "node",
+    [
+      engine.bin,
+      "-p",
+      projectRelativeConfig(projectDir, configPath),
+      "--showConfig",
+      "--pretty",
+      "false",
+    ],
+    { cwd: projectDir, timeout: 30000, maxBuffer: 10 * 1024 * 1024, reject: false },
+  ).catch(() => null);
+  if (!result || result.timedOut || result.isTerminated || result.isMaxBuffer) return null;
+
+  const stdout = result.stdout ?? "";
+  const start = stdout.indexOf("{");
+  const end = stdout.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(stdout.slice(start, end + 1)) as ResolvedTsconfig;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 老版本 TS 需要逐个 `-p` 检查的项目配置：solution 式根配置（files 为空、只声明 references）
+ * 自身没有程序，必须跟着 references 展开到真正的子项目，否则会"跑了检查但什么都没查"。
+ */
+async function resolveProjectConfigs(
+  engine: TypeCheckEngine,
+  projectDir: string,
+): Promise<string[]> {
+  const configs: string[] = [];
+  const visited = new Set<string>();
+
+  const visit = async (configPath: string): Promise<void> => {
+    const resolved = path.resolve(configPath);
+    if (visited.has(resolved)) return;
+    visited.add(resolved);
+    // 解析不出配置时按"自身有程序"处理：让 -p 直接报错，而不是静默跳过
+    const config = await readResolvedTsconfig(engine, resolved, projectDir);
+    const hasProgram =
+      !config || (config.files?.length ?? 0) > 0 || (config.include?.length ?? 0) > 0;
+    if (hasProgram) configs.push(resolved);
+    for (const ref of config?.references ?? []) {
+      if (ref.path) await visit(path.resolve(path.dirname(resolved), ref.path));
+    }
+  };
+
+  const rootConfig = path.join(projectDir, "tsconfig.json");
+  await visit(fs.existsSync(rootConfig) ? rootConfig : projectDir);
+  return configs;
+}
+
+/** 配置相对 projectDir 的写法（tsc 相对 -p 才有稳定的输出路径基准） */
+function projectRelativeConfig(projectDir: string, configPath: string): string {
+  return path.relative(projectDir, configPath) || ".";
+}
+
+/**
+ * 类型检查的参数组：TS 5.6 起一次 `--build --noEmit` 覆盖整个项目图；
+ * 更早的 TS 不允许该组合（`-b` 不带 --noEmit 会真实写产物），退化为逐项目 `-p --noEmit`。
+ */
+async function typeCheckArgGroups(
+  engine: TypeCheckEngine,
+  projectDir: string,
+): Promise<string[][]> {
+  const pretty = ["--pretty", "false"];
+  if (supportsBuildNoEmit(engine.tsVersion)) return [["--build", "--noEmit", ...pretty]];
+  const configs = await resolveProjectConfigs(engine, projectDir);
+  return configs.map((config) => [
+    "-p",
+    projectRelativeConfig(projectDir, config),
+    "--noEmit",
+    ...pretty,
+  ]);
+}
+
+/** 跑一次类型检查 CLI，返回原始输出与退出码（超时/被杀按失败处理） */
+async function runTypeCheckCli(
+  engine: TypeCheckEngine,
+  args: string[],
+  cwd: string,
+  timeout: number,
+  maxBuffer: number,
+): Promise<{ rawOutput: string; exitCode: number }> {
+  const result = await execa("node", [engine.bin, ...args], {
+    cwd,
+    timeout,
+    maxBuffer,
+    reject: false,
+  });
+  let rawOutput = result.stdout + result.stderr;
+  const killed = result.timedOut || result.isTerminated || result.isMaxBuffer;
+  const exitCode = typeof result.exitCode === "number" ? result.exitCode : killed ? 1 : 0;
+  if (killed && !rawOutput) {
+    rawOutput = `${engine.source} 检查超时，请尝试缩小检查范围或优化项目配置。`;
+  }
+  return { rawOutput, exitCode };
+}
+
+/** 运行 TypeScript 类型检查（引擎按项目自动选择，优先项目自身版本），返回原始输出 */
 export async function runTypeCheck(filePath: string | undefined, cwd: string): Promise<TscResult> {
   const dir = cwd;
   // 如果有文件路径，从文件向上找最近的 tsconfig.json 所在目录，
-  // 确保 --build 使用正确的项目 tsconfig 而非 monorepo 根目录
+  // 确保使用正确的项目 tsconfig 而非 monorepo 根目录
   const projectDir = filePath ? (findTsconfigDir(filePath) ?? dir) : dir;
   log.debug("runTypeCheck", {
     filePath: filePath || "(all)",
@@ -575,7 +782,7 @@ export async function runTypeCheck(filePath: string | undefined, cwd: string): P
     projectDir,
     processCwd: process.cwd(),
   });
-  const engine = resolveTypeCheckBin(projectDir);
+  const engine = resolveTypeCheckEngine(projectDir);
   if (!engine) {
     log.warn("type-check bin not found", { projectDir });
     return { rawOutput: "", exitCode: 0 };
@@ -583,21 +790,16 @@ export async function runTypeCheck(filePath: string | undefined, cwd: string): P
 
   const timeout = filePath ? 60000 : 120000;
   const maxBuffer = filePath ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
+  const argGroups = await typeCheckArgGroups(engine, projectDir);
+  const results = await Promise.all(
+    argGroups.map((args) => runTypeCheckCli(engine, args, projectDir, timeout, maxBuffer)),
+  );
 
-  const result = await execa("node", [engine.bin, "--build", "--noEmit", "--pretty", "false"], {
-    cwd: projectDir,
-    timeout,
-    maxBuffer,
-    reject: false,
-  });
-
-  let rawOutput = result.stdout + result.stderr;
-  const killed = result.timedOut || result.isTerminated || result.isMaxBuffer;
-  const exitCode = typeof result.exitCode === "number" ? result.exitCode : killed ? 1 : 0;
-
-  if (killed && !rawOutput) {
-    rawOutput = `${engine.source} 检查超时，请尝试缩小检查范围或优化项目配置。`;
-  }
+  let rawOutput = results
+    .map((result) => result.rawOutput)
+    .filter(Boolean)
+    .join("\n");
+  const exitCode = results.reduce((max, result) => Math.max(max, result.exitCode), 0);
 
   const diagnostics = parseTscDiags(rawOutput, filePath, projectDir, engine.source);
 
@@ -608,6 +810,8 @@ export async function runTypeCheck(filePath: string | undefined, cwd: string): P
 
   log.debug("type-check finished", {
     engine: engine.source,
+    engineOrigin: engine.origin,
+    tsVersion: engine.tsVersion,
     filePath: filePath || "(all)",
     exitCode,
     outputLength: rawOutput.length,
@@ -617,7 +821,8 @@ export async function runTypeCheck(filePath: string | undefined, cwd: string): P
 }
 
 /**
- * 多文件类型检查：按最近的 tsconfig 项目分组，每个项目只跑一次 `--build --noEmit`，
+ * 多文件类型检查：按最近的 tsconfig 项目分组，每个项目只检查一次
+ * （TS >= 5.6 为一次 `--build --noEmit`，更早的 TS 按 references 逐项目 `-p`），
  * 再把项目输出切分回各文件（与单文件路径共用 filterTscOutputForFile）。
  * 一次编辑批次里的 N 个文件因此从 N 次项目构建降到 1 次。
  */
@@ -673,7 +878,7 @@ export async function runAllChecksForFiles(
   cwd: string,
 ): Promise<Map<string, DiagnosticsResult>> {
   const targets = [...new Set(files.map((file) => path.resolve(file)))];
-  // 耗时主体是类型检查：按 tsconfig 项目合并为一次 --build。
+  // 耗时主体是类型检查：按 tsconfig 项目合并为一次。
   // Lint 逐文件串行执行，避免一次批量编辑同时拉起 N 个 linter 进程。
   const tscByFile = await runTypeChecksForFiles(targets, cwd);
   const results = new Map<string, DiagnosticsResult>();

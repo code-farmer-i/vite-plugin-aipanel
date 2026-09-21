@@ -37,6 +37,11 @@ const STATE_PATH = path.join(rootDir, ".release-state.json");
 const STATE_NAME = path.relative(rootDir, STATE_PATH);
 const MAX_PUBLISH_ATTEMPTS = 3;
 const MAX_REGISTRY_ATTEMPTS = 3;
+/** registry 写入有同步延迟：判定失败前先复查几次，别把「已上传但还没查到」当成没发 */
+const FAILURE_PROBE = { attempts: 2, delayMs: 2000 };
+const FINAL_PROBE = { attempts: 4, delayMs: 3000 };
+/** 发布命令返回成功后的复核：只用于提示，不参与成败判定 */
+const SUCCESS_PROBE = { attempts: 3, delayMs: 3000 };
 
 /** 发布流程阶段：失败时据此判断「有没有可能已经上传过」 */
 const Stage = {
@@ -217,6 +222,22 @@ async function inspectTarget(targetVersion) {
     published,
     pending: packages.filter((pkg) => !published.includes(pkg.name)).map((pkg) => pkg.name),
   };
+}
+
+/**
+ * 轮询 registry，直到目标版本的包都可见或次数用尽，返回最后一次实况。
+ * npm 写入后 packument 需要一段时间才更新，单次查询会把刚发布的包读成「没发出去」。
+ */
+async function verifyPublished(targetVersion, { attempts, delayMs }) {
+  let progress = await inspectTarget(targetVersion);
+  for (let attempt = 1; attempt < attempts && progress.pending.length; attempt += 1) {
+    console.log(
+      `   … registry 还没同步到 v${targetVersion}（${progress.published.length}/${progress.packages.length}），${delayMs / 1000} 秒后复查`,
+    );
+    await sleep(delayMs);
+    progress = await inspectTarget(targetVersion);
+  }
+  return progress;
 }
 
 // ---------------------------------------------------------------- 命令行
@@ -443,7 +464,7 @@ async function publish(options, targetVersion) {
         console.log("   已带上验证码重试…");
       }
     }
-    const progress = await inspectTarget(targetVersion);
+    const progress = await verifyPublished(targetVersion, FAILURE_PROBE);
     console.log(
       `\n⚠️  第 ${attempt} 次发布中断：registry 上已有 ${progress.published.length}/${progress.packages.length} 个包`,
     );
@@ -483,17 +504,25 @@ function commitAndPush(targetVersion) {
   console.log(`   ✅ 已提交、推送并打 tag ${tag}`);
 }
 
-/** 发布成功后的收尾：校验 registry 覆盖 → 部署文档 → git 入库 */
+/** 发布成功后的收尾：复核 registry → 部署文档 → git 入库 */
 async function finish(options, targetVersion) {
-  console.log("\n🔎 校验 registry 覆盖情况…");
-  const progress = await inspectTarget(targetVersion);
-  if (progress.pending.length) {
+  // 发布命令返回 0 即成功；registry 有同步延迟，这里的查询只用来提示，不参与成败判定
+  console.log("\n🔎 复核 registry（仅供参考，不影响发布结果）…");
+  try {
+    const progress = await verifyPublished(targetVersion, SUCCESS_PROBE);
+    if (progress.pending.length) {
+      console.error(`⚠️  暂时还查不到 v${targetVersion}：${progress.pending.join("、")}`);
+      console.error(
+        "   registry 同步有延迟，pnpm 已返回成功，稍后可用 pnpm view <包名>@<版本> version 复核。",
+      );
+    } else {
+      console.log(
+        `   ✅ ${progress.packages.length}/${progress.packages.length} 个包都已在 registry 上`,
+      );
+    }
+  } catch (error) {
     console.error(
-      `⚠️  以下包在 registry 上还查不到 v${targetVersion}（可能是同步延迟，也可能确实没发出去）：${progress.pending.join("、")}`,
-    );
-  } else {
-    console.log(
-      `   ✅ ${progress.packages.length}/${progress.packages.length} 个包都已在 registry 上`,
+      `⚠️  registry 复核失败（${error instanceof Error ? error.message : String(error)}），不影响发布结果`,
     );
   }
 
@@ -518,19 +547,8 @@ async function finish(options, targetVersion) {
     );
   }
 
-  if (progress.pending.length) {
-    saveState({
-      fromVersion: releaseRun.fromVersion,
-      targetVersion,
-      published: progress.published,
-      remaining: progress.pending,
-      reason: "发布后 registry 校验仍有缺失",
-      updatedAt: new Date().toISOString(),
-    });
-    console.error(`⚠️  已记录现场到 ${STATE_NAME}：稍后执行 pnpm run release:resume 补齐缺的包。`);
-  } else {
-    clearState();
-  }
+  // 发布命令成功、版本号与会话都已完成，清掉可能残留的现场文件
+  clearState();
 
   if (docsError) console.error("\n⚠️  文档部署失败，请手动执行：pnpm run deploy:docs");
   releaseRun.stage = Stage.DONE;
@@ -573,7 +591,7 @@ async function handleFailure(error) {
   let progress = null;
   if (!beforePublish || releaseRun.resumed) {
     try {
-      progress = await inspectTarget(targetVersion);
+      progress = await verifyPublished(targetVersion, FINAL_PROBE);
     } catch (inspectError) {
       const detail = inspectError instanceof Error ? inspectError.message : String(inspectError);
       console.error(`\n⚠️  无法查询 registry 确认发布进度：${detail}`);

@@ -6,7 +6,13 @@
  * 工具层限制（白名单、必填 pageId、仅项目页）由本文件 + endpoints/mcp.ts 的 tools/call 共同执行。
  */
 
-import { VUE_DEVTOOLS_ACTIONS, type VueDevtoolsAction } from "@aipanel/core";
+import {
+  VUE_DEVTOOLS_ACTIONS,
+  VUE_DEVTOOLS_TIMELINE_DEFAULTS,
+  VUE_DEVTOOLS_TIMELINE_INCLUDES,
+  VUE_DEVTOOLS_TIMELINE_LAYERS,
+  type VueDevtoolsAction,
+} from "@aipanel/core";
 import { OFFICIAL_TOOL_META, type OfficialToolMeta } from "./official-meta";
 
 /** 模型可见名前缀：官方短名 → chrome-devtools_<name> */
@@ -143,6 +149,13 @@ export const CUSTOM_TOOLS: CustomTool[] = [
  * 页面桥接工具：描述与输入 schema（模型可见）+ 后端 action（调用分发）单一来源。
  * tools/list 与 tools/call 都取自本定义，避免"清单"与"路由"两份来源各自漂移。
  * 只在注入 Vue DevTools 桥的项目（Vue 项目）暴露。
+ *
+ * 描述写法（description 是模型唯一能看到的说明书，会随每次请求注入，所以既要准也要省）：
+ * 1. 第一行一句话说清"给什么"；
+ * 2. **何时使用**：正向场景 + 与相邻工具的分工；
+ * 3. **返回**：字段与形态（够推理即可，不重复 inputSchema 的参数说明）；
+ * 4. **注意**：会误导判断的边界必须写明"缺失 ≠ 没有 / ≠ 0"；
+ * 5. 只承诺实现里真有的能力——被裁剪/丢弃的数据要显式说明，不能让模型按描述去查一个永远为空的东西。
  */
 export interface VueDevtoolsTool extends CustomTool {
   /** 页面桥后端 action（endpoints/vue-devtools.ts executeAction） */
@@ -153,17 +166,25 @@ export const VUE_DEVTOOLS_TOOLS: readonly VueDevtoolsTool[] = [
   {
     name: `${VUE_DEVTOOLS_PREFIX}get_apps`,
     action: VUE_DEVTOOLS_ACTIONS.GET_APPS,
-    description: `获取指定页面所有 Vue 应用实例列表。
+    description: `列出页面里的 Vue 应用实例（微前端 / 多实例场景用）。
 
 **何时使用**：
-- 排查微前端/多实例场景下操作的是哪个应用
-- 切换活跃应用前查看有哪些可用`,
+- 页面上不止一个 Vue 应用，先确认要查哪个
+- 调 set_active_app 前取可用 appId
+
+**返回**：[{ id, name }]，id 供 set_active_app 使用。`,
     inputSchema: withPageIdSchema({ type: "object", properties: {} }),
   },
   {
     name: `${VUE_DEVTOOLS_PREFIX}set_active_app`,
     action: VUE_DEVTOOLS_ACTIONS.TOGGLE_APP,
-    description: `切换指定页面的活跃 Vue 应用实例。后续所有 vue-devtools_* 工具都操作这个应用。`,
+    description: `切换后续 vue-devtools_* 组件/路由工具操作的活跃 Vue 应用。
+
+**何时使用**：
+- get_apps 显示多个应用，而组件树/状态查的是另一个
+- 微前端子应用里组件怎么都查不到（很可能活跃应用不是它）
+
+**注意**：只改后续查询的目标应用，不改页面本身。`,
     inputSchema: withPageIdSchema({
       type: "object",
       properties: {
@@ -175,32 +196,46 @@ export const VUE_DEVTOOLS_TOOLS: readonly VueDevtoolsTool[] = [
   {
     name: `${VUE_DEVTOOLS_PREFIX}get_component_tree`,
     action: VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_TREE,
-    description: `获取指定页面当前活跃 Vue 应用的组件树。
+    description: `获取活跃 Vue 应用的组件树（每个节点带 nodeId 与源码路径）。
 
 **何时使用**：
-- 了解页面组件层级结构
-- 找到目标组件的 nodeId（后续查状态用）
-- 排查组件未渲染问题
-- 只关心某类组件时用 filter 缩小范围
+- 取组件的 nodeId：get_component_state / get_component_render_code 都要它
+- 了解组件层级；确认某个组件是否渲染、被谁渲染
+- 由 file 反查某个 .vue 文件对应哪个组件
 
-**返回**：组件树 [{ id, name, children, file, ... }]`,
+**返回**：组件节点数组 [{ id, name, uid, file, children, ... }]
+- id 就是 nodeId（形如 app-1:57；根节点为 app-1:root）
+- file 是源码路径；空字符串表示取不到（框架内置或匿名组件）
+
+**filter 的真实语义（容易踩）**：
+- **大小写敏感**：内部用小写化的组件名（classify / kebabize 两种形态）匹配，**传全小写最稳**
+  （filter:"App" 返回空，filter:"app" 才有结果）
+- 命中组件会连带返回它整个子树（后代不要求匹配）
+- 匹配的是组件名，不是 file 路径
+
+**注意**：树可能很大（UI 库内置组件占比很高），拿不准就先 filter。`,
     inputSchema: withPageIdSchema({
       type: "object",
       properties: {
-        filter: { type: "string", description: "按组件名过滤（大小写不敏感的子串匹配），可选" },
+        filter: { type: "string", description: "按组件名过滤（见描述：大小写敏感，传全小写最稳）" },
       },
     }),
   },
   {
     name: `${VUE_DEVTOOLS_PREFIX}get_component_state`,
     action: VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_STATE,
-    description: `获取指定组件的完整运行时状态。
+    description: `获取指定组件的运行时状态。
 
 **何时使用**：
-- 排查 props 传值是否正确
-- 查看 ref/reactive 响应式数据的当前值
-- 检查 computed 计算结果
-- 查看 attrs / events / inject / provide / template refs`,
+- 核对 props 传值、ref/reactive 当前值、computed 结果
+- 排查"值没更新"：先看状态，再用 get_timeline 看是哪次渲染/更新引起的
+
+**返回**：{ state: { <分类>: { <字段>: { value, type? } } } }
+- 分类随组件而定，常见：props / setup / setup (other) / computed / data / attrs（Vuex 项目还有 vuex bindings）
+- 值可能被裁剪成**占位记号**，别当成真实值：__undefined__（该值是 undefined，即未传/未设置）、[Function]（函数）、<max depth>（超出裁剪深度）、<前缀... (N chars)>（长字符串截断）；Vue 内部对象（dep/subs/effect 等）直接丢弃
+
+**注意（别把"看不到"当成"不存在"）**：provided / injected / event listeners / template refs
+**被刻意裁掉以省 token**，永远查不到；要确认这些请用 chrome-devtools_evaluate_script。`,
     inputSchema: withPageIdSchema({
       type: "object",
       properties: {
@@ -215,7 +250,13 @@ export const VUE_DEVTOOLS_TOOLS: readonly VueDevtoolsTool[] = [
   {
     name: `${VUE_DEVTOOLS_PREFIX}get_component_render_code`,
     action: VUE_DEVTOOLS_ACTIONS.GET_COMPONENT_RENDER_CODE,
-    description: `获取组件的渲染函数源码。`,
+    description: `获取组件渲染函数的源码（编译产物，用来看模板最终生成了什么）。
+
+**何时使用**：
+- 模板行为反直觉，需要看编译结果
+- 配合 get_component_tree 的 file 一起定位源码
+
+**参数**：nodeId 来自 get_component_tree（write-类工具改完代码后，nodeId 可能因 HMR 失效，需重新取）。`,
     inputSchema: withPageIdSchema({
       type: "object",
       properties: { nodeId: { type: "string", description: "组件节点 ID" } },
@@ -225,23 +266,135 @@ export const VUE_DEVTOOLS_TOOLS: readonly VueDevtoolsTool[] = [
   {
     name: `${VUE_DEVTOOLS_PREFIX}get_current_route`,
     action: VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO,
-    description: `获取 Vue Router 的当前路由信息。
+    description: `获取当前路由（含 path/params/query/hash/matched）。
 
 **何时使用**：
-- 排查路由跳转问题
-- 查看当前路由 path/params/query/hash
-- 确认路由守卫和 matched 记录`,
+- 排查路由跳转是否发生、跳到了哪、参数对不对
+- 看当前路由命中了哪些路由记录（matched，含各自 meta）
+
+**返回**：当前路由对象；与 get_routes 的区别是这里只给当前这一条。`,
     inputSchema: withPageIdSchema({ type: "object", properties: {} }),
   },
   {
     name: `${VUE_DEVTOOLS_PREFIX}get_routes`,
     action: VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO,
-    description: `获取 Vue Router 的完整路由表。
+    description: `获取完整路由表（vue-router 的 getRoutes() 输出，已展开为**扁平**记录列表）。
 
 **何时使用**：
-- 查看所有已注册路由
-- 确认路由配置是否正确
-- 查看路由嵌套关系`,
+- 确认路由是否注册、path / name / meta 是否正确
+- 需要路由清单来判断某个 path 是否可达
+
+**返回**：路由记录数组 [{ path, name, meta, children, redirect, aliasOf, props, components, ... }]
+- 嵌套路由已展开：children 通常为空，每层各占一条记录
+- 元数据在 meta（title / lang / prefix 等）；值同样会出现 __undefined__ 等占位记号`,
+    inputSchema: withPageIdSchema({ type: "object", properties: {} }),
+  },
+  {
+    name: `${VUE_DEVTOOLS_PREFIX}get_timeline`,
+    action: VUE_DEVTOOLS_ACTIONS.GET_TIMELINE,
+    description: `获取页面最近一段的 Vue 运行时事件时间线：组件渲染耗时、组件事件、路由跳转、agent 标记。
+
+**何时使用**：
+- 页面卡顿/白屏/内容不更新，定位是哪个组件的哪次渲染引起
+- 刚做完一次交互，想看它引发了哪些组件重渲染、各耗时多少
+- 排查过度渲染：某组件在窗口内渲染/更新了几次、总耗时多少
+
+**两条最常用的路径**：
+- 现象已经发生（用户说"刚才很卡"）→ 直接 get_timeline
+- 要精确归因自己的动作 → mark_timeline → 触发动作 → get_timeline({ sinceMark })
+- 全程常驻采集，不需要 start；整页刷新会清空缓冲，SPA 路由切换保留
+
+**返回**：
+- summary：perf（按组件的次数/总耗时/最慢几次）、lifecycle（累计增删改）、emit、navigate、agent
+- records：明细（t 为相对现在的毫秒、负数=过去；dur；nodeId；file）
+- buffer：容量、丢弃、窗口完整性、耗时缺失计数
+- omitted + notes：明细被裁剪的去向，以及"为什么缺数据"的自然语言说明
+
+**读数契约（缺失 ≠ 没有，更 ≠ 0ms）**：
+- 明细不是全量：默认只留耗时 ≥ minDurationMs 的渲染，再受 limit 与体积上限约束。**判断"明细是否完整"请看 detailComplete**（= omitted 三项全为 0）；truncated 只表示被 limit/体积裁剪过，slow 档的阈值过滤不计入它。**次数与耗时一律以 summary 为准**
+- buffer.windowTruncated=true：窗口起点之前的数据已被缓冲淘汰，窗口内不完整
+- buffer.unpaired / prunedStarts > 0：这些渲染没配到完整 start/end，耗时是**缺失**，不要读成很快
+- 没有 nodeId：解析不出可靠组件 id，别猜也别复用别的 id
+- records.data（emit 参数等）与 get_component_state 用同一套裁剪，占位记号含义相同
+- lifecycle 的 added/updated/removed 是自页面加载起的**全页累计**（不受 windowMs，也不受 component 过滤；只有 byComponent 受过滤）；byComponent 只覆盖最近活跃的 200 个组件，componentEvictions > 0 表示有组件被淘汰出该表
+- include: "summary" 时 records 按请求为空、detailComplete 恒 true（这是"按请求口径"，不代表窗口内没有事件，次数看 summary）
+
+**下一步**：拿到 nodeId → get_component_state；拿到 file → 直接去改那个文件。
+
+**不要用它**：查网络请求或 console（用 chrome-devtools_*）；当全量事件流用（明细有阈值与上限）。`,
+    inputSchema: withPageIdSchema({
+      type: "object",
+      properties: {
+        windowMs: {
+          type: "number",
+          description: `回溯窗口（毫秒），默认 ${VUE_DEVTOOLS_TIMELINE_DEFAULTS.windowMs}`,
+          default: VUE_DEVTOOLS_TIMELINE_DEFAULTS.windowMs,
+        },
+        sinceMark: {
+          type: "string",
+          description: "从最近一次 mark_timeline 的标记开始（优先于 windowMs）",
+        },
+        layers: {
+          type: "array",
+          items: { type: "string", enum: [...VUE_DEVTOOLS_TIMELINE_LAYERS] },
+          description: "只看指定层，默认全部（lifecycle 只影响摘要）",
+        },
+        minDurationMs: {
+          type: "number",
+          description: `组件渲染明细的耗时下限（毫秒），默认 ${VUE_DEVTOOLS_TIMELINE_DEFAULTS.minDurationMs}；16 约等于只看掉帧`,
+          default: VUE_DEVTOOLS_TIMELINE_DEFAULTS.minDurationMs,
+        },
+        component: {
+          type: "string",
+          description:
+            "按组件名子串过滤（大小写不敏感）明细与 byComponent；路由与标记不受影响，lifecycle 的 added/updated/removed 仍是全页累计",
+        },
+        include: {
+          type: "string",
+          enum: [...VUE_DEVTOOLS_TIMELINE_INCLUDES],
+          description: "summary 只给摘要、slow 只给慢的明细（默认）、all 给窗口内全部明细",
+          default: VUE_DEVTOOLS_TIMELINE_DEFAULTS.include,
+        },
+        limit: {
+          type: "integer",
+          description: `明细条数上限：all 档是总条数上限；slow 档是「最慢的 perf」与「其它层」各自的上限（总条数最多 2×limit）。默认 ${VUE_DEVTOOLS_TIMELINE_DEFAULTS.limit}，最大 ${VUE_DEVTOOLS_TIMELINE_DEFAULTS.maxLimit}`,
+          default: VUE_DEVTOOLS_TIMELINE_DEFAULTS.limit,
+        },
+      },
+    }),
+  },
+  {
+    name: `${VUE_DEVTOOLS_PREFIX}mark_timeline`,
+    action: VUE_DEVTOOLS_ACTIONS.MARK_TIMELINE,
+    description: `在时间线上插一个标记，把"我接下来要做的动作"和它引发的事件对齐（不清空历史）。
+
+**何时使用**：
+- 准备用 chrome-devtools_click / fill 触发操作，想只看这次操作引起的变化
+- 一次调查里要多个检查点（"点击前""提交后"）
+
+**用法**：mark_timeline({ label }) → 执行动作 → get_timeline({ sinceMark: 返回的 markId })
+
+**返回**：{ markId, buffered }。markId 传给 sinceMark；buffered 是当前缓冲条数。`,
+    inputSchema: withPageIdSchema({
+      type: "object",
+      properties: {
+        label: { type: "string", description: "标记名称，例如“点击提交按钮”" },
+      },
+      required: ["label"],
+    }),
+  },
+  {
+    name: `${VUE_DEVTOOLS_PREFIX}clear_timeline`,
+    action: VUE_DEVTOOLS_ACTIONS.CLEAR_TIMELINE,
+    description: `清空时间线缓冲并重置累计计数——等价于"从现在开始录"（没有 start/stop 状态机）。
+
+**何时使用**：
+- 只想看本次操作引起的事件，不要混入页面之前的活动
+- get_timeline 报 buffer.dropped 很大（缓冲被高频活动塞满）后，重开一个干净窗口
+
+**返回**：{ cleared, marks }。
+
+**注意**：不可撤销；清空后此前的事件不再可查。想保留历史又要新边界，请用 mark_timeline。`,
     inputSchema: withPageIdSchema({ type: "object", properties: {} }),
   },
 ];

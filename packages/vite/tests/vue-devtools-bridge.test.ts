@@ -32,6 +32,11 @@ type BridgeGlobal = {
       router: unknown;
       ctx: unknown;
       safeStringify: (v: unknown) => string;
+      timeline: {
+        get: (query?: Record<string, unknown>) => Promise<Record<string, any>>;
+        mark: (label: string) => { markId: string; buffered: number };
+        clear: () => { cleared: number; marks: number };
+      };
     };
   };
 };
@@ -55,6 +60,16 @@ describe("vue-devtools-bridge — 初始化与暴露", () => {
     expect(exposed.router).toBe(h.router);
     expect(exposed.ctx).toBe(h.ctx);
     expect(typeof exposed.safeStringify).toBe("function");
+  });
+
+  it("暴露时间线采集器：mark/clear 可用，无 devtools hook 时查询降级为说明性结果", async () => {
+    expect(typeof exposed.timeline.get).toBe("function");
+    expect(exposed.timeline.mark("点击")).toEqual({ markId: "m1", buffered: 1 });
+    expect(exposed.timeline.clear()).toEqual({ cleared: 1, marks: 1 });
+
+    const result = await exposed.timeline.get({ windowMs: 1000 });
+    expect(result.records).toEqual([]);
+    expect(result.buffer.capture.hook).toBe(false);
   });
 });
 

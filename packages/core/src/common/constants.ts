@@ -208,9 +208,60 @@ export const VUE_DEVTOOLS_ACTIONS = {
   GET_APPS: "getApps",
   TOGGLE_APP: "toggleApp",
   GET_ROUTER_INFO: "getRouterInfo",
+  GET_TIMELINE: "getTimeline",
+  MARK_TIMELINE: "markTimeline",
+  CLEAR_TIMELINE: "clearTimeline",
 } as const;
 
 export type VueDevtoolsAction = (typeof VUE_DEVTOOLS_ACTIONS)[keyof typeof VUE_DEVTOOLS_ACTIONS];
+
+/**
+ * 时间线层名（工具 schema 的 layer 枚举与页面侧采集器共用）。
+ * lifecycle 只累计计数、不产生明细记录；其余层都是明细记录。
+ */
+export const VUE_DEVTOOLS_TIMELINE_LAYERS = [
+  "perf",
+  "lifecycle",
+  "emit",
+  "navigate",
+  "agent",
+] as const;
+
+export type VueDevtoolsTimelineLayer = (typeof VUE_DEVTOOLS_TIMELINE_LAYERS)[number];
+
+/** 时间线明细档位（唯一来源）：数组、类型与页面侧的分支比较都引用这里，避免散落字面量 */
+export const VUE_DEVTOOLS_TIMELINE_INCLUDE = {
+  SUMMARY: "summary",
+  SLOW: "slow",
+  ALL: "all",
+} as const;
+
+export const VUE_DEVTOOLS_TIMELINE_INCLUDES = [
+  VUE_DEVTOOLS_TIMELINE_INCLUDE.SUMMARY,
+  VUE_DEVTOOLS_TIMELINE_INCLUDE.SLOW,
+  VUE_DEVTOOLS_TIMELINE_INCLUDE.ALL,
+] as const;
+
+export type VueDevtoolsTimelineInclude = (typeof VUE_DEVTOOLS_TIMELINE_INCLUDES)[number];
+
+/** 默认明细档位 */
+const DEFAULT_TIMELINE_INCLUDE: VueDevtoolsTimelineInclude = VUE_DEVTOOLS_TIMELINE_INCLUDE.SLOW;
+
+/** 时间线查询默认值（MCP 工具 schema 与页面侧采集器共用，避免两处漂移） */
+export const VUE_DEVTOOLS_TIMELINE_DEFAULTS = {
+  /** 默认回溯窗口（毫秒） */
+  windowMs: 5000,
+  /** 默认只返回耗时 ≥ 该值的组件渲染记录（毫秒） */
+  minDurationMs: 4,
+  /** 默认明细档位 */
+  include: DEFAULT_TIMELINE_INCLUDE,
+  /** 默认明细条数上限 */
+  limit: 30,
+  /** 明细条数上限的硬上限 */
+  maxLimit: 200,
+  /** 页面侧环形缓冲容量（条） */
+  capacity: 1000,
+} as const;
 
 /** ==================== 写类工具名单 ==================== */
 

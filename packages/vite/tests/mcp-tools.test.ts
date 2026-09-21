@@ -22,8 +22,11 @@ import {
   isOfficialExtraTool,
   officialDefaultShorts,
   officialExtraCandidates,
+  VUE_DEVTOOLS_TOOLS,
   withPageIdSchema,
 } from "../src/core/mcp-tools";
+import { SANITIZE_PLACEHOLDERS, SKIP_STATE_TYPES } from "../src/client/vue-devtools-sanitize";
+import { VUE_DEVTOOLS_TIMELINE_DEFAULTS, VUE_DEVTOOLS_TIMELINE_INCLUDES } from "@aipanel/core";
 import { OFFICIAL_TOOL_META } from "../src/core/official-meta";
 
 /** 非 safe 分类（与源码 UNSAFE_CATEGORIES 一致，用于白名单外推校验） */
@@ -185,6 +188,80 @@ describe("configureToolScope / currentOfficialShorts / isAllowedToolName", () =>
     expect(isAllowedToolName("click")).toBe(false);
     expect(isAllowedToolName("chrome-devtools_click")).toBe(false);
     expect(isAllowedToolName("get_tab_id")).toBe(true);
+  });
+});
+
+describe("vue-devtools 工具描述 — 不得承诺实现里没有的能力", () => {
+  const descriptionOf = (name: string): string => {
+    const tool = VUE_DEVTOOLS_TOOLS.find((item) => item.name === name);
+    if (!tool) throw new Error(`缺少工具定义: ${name}`);
+    return tool.description;
+  };
+
+  it("被裁剪的状态分类必须在 get_component_state 描述里逐一说明（否则模型会读成「不存在」）", () => {
+    const description = descriptionOf("vue-devtools_get_component_state");
+    for (const skipped of SKIP_STATE_TYPES) {
+      expect(description).toContain(skipped);
+    }
+    expect(description).toContain("被刻意裁掉");
+  });
+
+  it("值级占位记号必须在描述里解释（否则 __undefined__ 会被读成一个字符串值）", () => {
+    const state = descriptionOf("vue-devtools_get_component_state");
+    for (const placeholder of SANITIZE_PLACEHOLDERS) {
+      expect(state).toContain(placeholder);
+    }
+    expect(state).toContain("(N chars)");
+    // timeline 的 data 用同一套裁剪，描述里要点明不是另一套规则
+    expect(descriptionOf("vue-devtools_get_timeline")).toContain("占位记号含义相同");
+  });
+
+  it("get_component_tree 描述写明 filter 大小写敏感（否则驼峰查询必然空手而归）", () => {
+    const description = descriptionOf("vue-devtools_get_component_tree");
+    expect(description).toContain("大小写敏感");
+    expect(description).toContain("app-1:root");
+  });
+
+  it("get_timeline 描述写明读数契约：缺失 ≠ 0ms、明细非全量、summary 为准", () => {
+    const description = descriptionOf("vue-devtools_get_timeline");
+    expect(description).toContain("缺失");
+    expect(description).toContain("summary 为准");
+    expect(description).toContain("windowTruncated");
+  });
+
+  it("每个 vue-devtools 工具描述都有一行式能力说明且带 pageId", () => {
+    for (const tool of VUE_DEVTOOLS_TOOLS) {
+      expect(tool.description.length).toBeGreaterThan(20);
+      expect(tool.inputSchema.required).toContain("pageId");
+    }
+  });
+
+  it("get_timeline 的 limit 语义写清楚（slow 档不是总条数上限）", () => {
+    const tool = VUE_DEVTOOLS_TOOLS.find((item) => item.name === "vue-devtools_get_timeline");
+    const limit = tool?.inputSchema.properties.limit as { description?: string } | undefined;
+    expect(limit?.description).toContain("2×limit");
+    expect(limit?.description).toContain("slow");
+  });
+
+  it("get_timeline 的 schema 默认值与档位枚举与 @aipanel/core 常量同源", () => {
+    const tool = VUE_DEVTOOLS_TOOLS.find((item) => item.name === "vue-devtools_get_timeline");
+    const props = tool?.inputSchema.properties as Record<string, { enum?: string[]; default?: unknown }>;
+    expect(props.include?.enum).toEqual([...VUE_DEVTOOLS_TIMELINE_INCLUDES]);
+    expect(props.include?.default).toBe(VUE_DEVTOOLS_TIMELINE_DEFAULTS.include);
+    expect(props.limit?.default).toBe(VUE_DEVTOOLS_TIMELINE_DEFAULTS.limit);
+    expect(props.minDurationMs?.default).toBe(VUE_DEVTOOLS_TIMELINE_DEFAULTS.minDurationMs);
+    expect(props.windowMs?.default).toBe(VUE_DEVTOOLS_TIMELINE_DEFAULTS.windowMs);
+    // "明细是否完整"的判定字段必须出现在描述里（否则 agent 会用 truncated 误判）
+    expect(tool?.description).toContain("detailComplete");
+    // 语料里的两个易误读点：summary 档口径、byComponent 有淘汰
+    expect(tool?.description).toContain("按请求口径");
+    expect(tool?.description).toContain("componentEvictions");
+  });
+
+  it("get_routes 描述与真实返回一致：扁平列表（不是嵌套结构）", () => {
+    const tool = VUE_DEVTOOLS_TOOLS.find((item) => item.name === "vue-devtools_get_routes");
+    expect(tool?.description).toContain("扁平");
+    expect(tool?.description).not.toContain("嵌套结构");
   });
 });
 

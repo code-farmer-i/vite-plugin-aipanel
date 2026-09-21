@@ -178,6 +178,21 @@ describe("executeAction", () => {
         args: { pageId: 0 },
         expect: ["router.value", "safeStringify", "currentRoute"],
       },
+      {
+        action: VUE_DEVTOOLS_ACTIONS.GET_TIMELINE,
+        args: { pageId: 0, windowMs: 3000, include: "all" },
+        expect: ["timeline.get", '"windowMs":3000', '"include":"all"'],
+      },
+      {
+        action: VUE_DEVTOOLS_ACTIONS.MARK_TIMELINE,
+        args: { pageId: 0, label: "点击提交" },
+        expect: ["timeline.mark", '"点击提交"'],
+      },
+      {
+        action: VUE_DEVTOOLS_ACTIONS.CLEAR_TIMELINE,
+        args: { pageId: 0 },
+        expect: ["timeline.clear"],
+      },
     ];
 
     for (const testCase of cases) {
@@ -186,7 +201,36 @@ describe("executeAction", () => {
       const evalCall = mcp.callChromeDevTool.mock.calls.find((c) => c[0] === "evaluate_script");
       const expr = evalCall?.[1].function as string;
       for (const fragment of testCase.expect) expect(expr).toContain(fragment);
+      // 页面桥过旧时给出可读错误，而不是让页面抛 TypeError
+      if (testCase.expect.some((fragment) => fragment.startsWith("timeline."))) {
+        expect(expr).toContain("时间线采集器不可用");
+      }
     }
+  });
+
+  it("时间线查询表达式不把 pageId 带进页面（host 侧已校验）", async () => {
+    const mcp = makeMcp("plain");
+    await executeAction(
+      VUE_DEVTOOLS_ACTIONS.GET_TIMELINE,
+      { pageId: 0, windowMs: 3000 },
+      asMcp(mcp),
+      PROJECT_ORIGINS,
+    );
+    const evalCall = mcp.callChromeDevTool.mock.calls.find((c) => c[0] === "evaluate_script");
+    expect(evalCall?.[1].function as string).not.toContain("pageId");
+  });
+
+  it("路由信息表达式对 currentRoute / routes 各自 safeStringify（共享 seen 会把共享记录误判成循环引用）", async () => {
+    const mcp = makeMcp("plain");
+    await executeAction(VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO, { pageId: 0 }, asMcp(mcp), PROJECT_ORIGINS);
+    const evalCall = mcp.callChromeDevTool.mock.calls.find((c) => c[0] === "evaluate_script");
+    const expr = evalCall?.[1].function as string;
+
+    // 两段各自序列化：JSON.parse(s(...)) 出现两次，且不存在"一次序列化整个对象"的写法
+    expect(expr.match(/JSON\.parse\(s\(/g)).toHaveLength(2);
+    expect(expr).not.toContain("safeStringify({");
+    expect(expr).toContain("currentRoute");
+    expect(expr).toContain("routes");
   });
 
   it("未知 action 抛 Unknown action 错误", async () => {

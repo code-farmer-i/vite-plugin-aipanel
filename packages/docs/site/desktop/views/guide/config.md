@@ -134,7 +134,7 @@ aipanelAssistant({
 `mcpOnly: true` 时插件只暴露 MCP 工具服务（Chrome DevTools 控制、Vue DevTools、日志读取等），
 不启动 AI 引擎、不注入对话界面，适合作为独立 MCP server 供外部 Agent 消费。
 可用工具由默认白名单 + `chromeMcp.project.tools` 调整决定（见下方「Chrome DevTools MCP（chromeMcp）」）：
-`chrome-devtools_*`（页面级操作/截图/网络/控制台等安全分类）、`vue-devtools_*`（组件树/状态/路由）、
+`chrome-devtools_*`（页面级操作/截图/网络/控制台等安全分类）、`vue-devtools_*`（组件树/状态/渲染源码/路由/时间线）、
 `logs-devtools_*`（日志）。页面仅注入轻量的静默上下文上报脚本（无 UI 副作用），
 
 因此 `chrome-devtools_current_page` 也能感知当前浏览页面。

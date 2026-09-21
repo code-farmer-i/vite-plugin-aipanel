@@ -3,135 +3,19 @@
  * 注入到用户页面，初始化 @vue/devtools-kit 并暴露到 window.__aipanel_vue
  * AI 通过 Chrome DevTools evaluate_script 调用此 API
  *
- * API Proxy 自动对读操作做 safeStringify，getInspectorState 额外裁剪 Vue 内部数据
+ * - api Proxy：对读操作自动 safeStringify，getInspectorState 额外裁剪 Vue 内部数据；
+ * - timeline：页面侧时间线采集器（常驻采集，见 vue-devtools-timeline.ts）。
  */
 
 import { devtools, devtoolsRouter, type InspectorState } from "@vue/devtools-kit";
-
-// ==================== 裁剪常量 ====================
-
-const MAX_STRING_LENGTH = 150;
-const MAX_DEPTH = 3;
-const MAX_KEYS = 20;
-
-const VUE_INTERNAL_KEYS = new Set([
-  "dep",
-  "subs",
-  "subsHead",
-  "deps",
-  "depsTail",
-  "activeLink",
-  "prevActiveLink",
-  "nextDep",
-  "prevDep",
-  "flags",
-  "globalVersion",
-  "sc",
-  "isSSR",
-  "__v_isRef",
-  "__v_isReadonly",
-  "__v_skip",
-  "computed",
-  "effect",
-  "setter",
-  "fn",
-]);
-
-// 对 agent 无意义的状态分类
-const SKIP_STATE_TYPES: Set<string> = new Set([
-  "provided",
-  "injected",
-  "event listeners",
-  "template refs",
-]);
-
-// ==================== 数据裁剪 ====================
-
-function isVueInternalObject(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  // Vue 组件公共实例代理：枚举其 key 会在 dev 下触发警告，直接视为内部对象
-  if ((value as { __isVue?: unknown }).__isVue === true) return true;
-  const keys = Object.keys(value as object);
-  const internalCount = keys.filter((k) => VUE_INTERNAL_KEYS.has(k)).length;
-  return internalCount > 0 && internalCount >= keys.length * 0.5;
-}
-
-function sanitizeValue(value: unknown, depth = 0): unknown {
-  if (depth > MAX_DEPTH) return "<max depth>";
-
-  // null / undefined 占位符
-  if (value === null || value === "__undefined__") return null;
-
-  // 字符串
-  if (typeof value === "string") {
-    if (value.startsWith("data:") || value.length > MAX_STRING_LENGTH)
-      return `<${value.slice(0, 50)}... (${value.length} chars)>`;
-    if (value === "[Circular Reference]" || value === "[Function]") return null;
-    return value;
-  }
-
-  // 基本类型
-  if (typeof value !== "object") return value;
-
-  // 数组
-  if (Array.isArray(value)) {
-    return value.slice(0, MAX_KEYS).map((v) => sanitizeValue(v, depth + 1));
-  }
-
-  // Vue 内部对象 → 丢弃
-  if (isVueInternalObject(value)) return null;
-
-  // 普通对象
-  const result: Record<string, unknown> = {};
-  const keys = Object.keys(value as object)
-    .filter((k) => !k.startsWith("Symbol("))
-    .slice(0, MAX_KEYS);
-
-  for (const key of keys) {
-    if (VUE_INTERNAL_KEYS.has(key)) continue;
-    const v = sanitizeValue((value as Record<string, unknown>)[key], depth + 1);
-    if (v !== null) result[key] = v;
-  }
-
-  return Object.keys(result).length > 0 ? result : null;
-}
-
-/** 裁剪 InspectorState[]，去掉 Vue 内部数据和噪音类型 */
-function sanitizeState(state: InspectorState[]): Record<string, unknown> {
-  const result: Record<string, Record<string, unknown>> = {};
-  for (const item of state) {
-    if (SKIP_STATE_TYPES.has(item.type)) continue;
-
-    if (!result[item.type]) result[item.type] = {};
-
-    const value = sanitizeValue(item.value);
-    if (value !== null) {
-      result[item.type][item.key] = {
-        value,
-        ...(item.stateType ? { type: item.stateType } : {}),
-      };
-    }
-  }
-  return result;
-}
-
-// ==================== safeStringify ====================
-
-function safeStringify(obj: unknown): string {
-  const seen = new WeakSet();
-
-  return JSON.stringify(obj, (_key, value) => {
-    if (typeof value === "object" && value !== null) {
-      if (seen.has(value)) return "[Circular Reference]";
-      seen.add(value);
-    }
-    if (typeof value === "function") return "[Function]";
-    if (typeof value === "symbol") return value.toString();
-    if (typeof value === "bigint") return `${value}n`;
-    if (value === undefined) return "__undefined__";
-    return value;
-  });
-}
+import { safeStringify, sanitizeState } from "./vue-devtools-sanitize";
+import {
+  createTimelineRecorder,
+  type TimelineAppRecord,
+  type TimelineHook,
+  type TimelineRecorder,
+  type TimelineRouterLike,
+} from "./vue-devtools-timeline";
 
 // ==================== API Proxy ====================
 
@@ -211,6 +95,26 @@ const safeApi = new Proxy(devtools.api, {
   },
 });
 
+// ==================== 时间线采集器 ====================
+
+/** 组件树 → nodeId 对应源码文件（时间线明细的 file 补全，与 MCP 工具同一个 inspector） */
+async function getInspectorTree(): Promise<unknown> {
+  return devtools.api.getInspectorTree({ inspectorId: "components", filter: "" });
+}
+
+type RouterHost = { config?: { globalProperties?: { $router?: unknown } } };
+
+function asRouter(value: unknown): TimelineRouterLike | undefined {
+  const router = value as TimelineRouterLike | null | undefined;
+  return router && typeof router.afterEach === "function" ? router : undefined;
+}
+
+function resolveRouter(app: unknown): TimelineRouterLike | undefined {
+  // 优先取该应用自己的 router（微前端/多应用场景），退化到 devtools-kit 探测到的那个
+  const fromApp = asRouter((app as RouterHost | null)?.config?.globalProperties?.$router);
+  return fromApp ?? asRouter(devtoolsRouter.value);
+}
+
 // ==================== 暴露到 window ====================
 
 declare global {
@@ -220,15 +124,32 @@ declare global {
       router: typeof devtoolsRouter;
       ctx: typeof devtools.ctx;
       safeStringify: typeof safeStringify;
+      timeline: TimelineRecorder;
     };
   }
 }
 
 devtools.init();
 
+// init() 已把 devtools hook 挂到 window 上；直接订阅原始 hook 可绕开
+// highPerfModeEnabled / timelineLayersState 两个门控（实测两者都会拦掉时间线事件）
+const globalHook = (globalThis as { __VUE_DEVTOOLS_GLOBAL_HOOK__?: TimelineHook })
+  .__VUE_DEVTOOLS_GLOBAL_HOOK__;
+
+const timeline = createTimelineRecorder({
+  hook: globalHook,
+  getAppRecords: () => devtools.ctx.state.appRecords as unknown as TimelineAppRecord[],
+  getInspectorTree,
+  resolveRouter,
+});
+// 桥通常先于应用挂载执行（head-prepend），router 由 app:init 订阅；
+// 若注入晚于应用挂载（手动注入等），这里补一次
+timeline.attachRouters();
+
 window.__aipanel_vue = {
   api: safeApi,
   router: devtoolsRouter,
   ctx: devtools.ctx,
   safeStringify,
+  timeline,
 };

@@ -99,10 +99,33 @@ function buildCallExpr(action: string, args?: Record<string, unknown>): string {
     case VUE_DEVTOOLS_ACTIONS.TOGGLE_APP:
       return `async () => { await window.__aipanel_vue.api.toggleApp(${JSON.stringify(args?.appId)}); return "ok" }`;
     case VUE_DEVTOOLS_ACTIONS.GET_ROUTER_INFO:
-      return `async () => { const r = window.__aipanel_vue.router.value; return window.__aipanel_vue.safeStringify({ currentRoute: r?.currentRoute?.value ?? null, routes: r?.getRoutes?.() ?? [] }) }`;
+      // currentRoute / routes 必须各自 safeStringify：safeStringify 的 seen 是调用级共享的，
+      // 放在一起序列化时，currentRoute.matched 与 getRoutes() 共享的同一批路由记录会被误判成循环引用
+      return `async () => { const r = window.__aipanel_vue.router.value; const s = window.__aipanel_vue.safeStringify; return { currentRoute: JSON.parse(s(r?.currentRoute?.value ?? null)), routes: JSON.parse(s(r?.getRoutes?.() ?? [])) } }`;
+    case VUE_DEVTOOLS_ACTIONS.GET_TIMELINE:
+      return timelineExpr(`timeline.get(${JSON.stringify(withoutPageId(args))})`);
+    case VUE_DEVTOOLS_ACTIONS.MARK_TIMELINE:
+      return timelineExpr(`timeline.mark(${JSON.stringify(String(args?.label ?? ""))})`);
+    case VUE_DEVTOOLS_ACTIONS.CLEAR_TIMELINE:
+      return timelineExpr("timeline.clear()");
     default:
       throw new Error(`Unknown action: ${action}`);
   }
+}
+
+/**
+ * 时间线动作统一包装：页面桥可能是旧版本（dev server 的模块缓存），
+ * 直接调用会在页面里抛 TypeError；这里给出模型能读懂的错误，而不是让它猜"工具是不是坏了"。
+ */
+function timelineExpr(call: string): string {
+  return `async () => { const timeline = window.__aipanel_vue && window.__aipanel_vue.timeline; if (!timeline) return { error: "时间线采集器不可用：页面桥版本过旧，请重启 dev server 并整页刷新后再试" }; return await ${call} }`;
+}
+
+/** 时间线查询参数不需要 pageId（它已在 host 侧校验过） */
+function withoutPageId(args?: Record<string, unknown>): Record<string, unknown> {
+  const rest = { ...(args ?? {}) };
+  delete rest.pageId;
+  return rest;
 }
 
 function parseEvalResult(result: unknown): unknown {

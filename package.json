@@ -18,6 +18,8 @@
     "test:coverage": "pnpm -r --if-present test:coverage",
     "typecheck": "pnpm -r --if-present run typecheck && vue-tsc -p tsconfig.json --noEmit",
     "release": "pnpm test && node scripts/release.js",
+    "release:resume": "node scripts/release.js --resume",
+    "release:dry-run": "pnpm test && node scripts/release.js --dry-run",
     "deploy:docs": "node scripts/deploy-docs.js"
   },
   "devDependencies": {

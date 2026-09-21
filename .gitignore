@@ -34,5 +34,8 @@ yarn-error.log*
 coverage/
 .nyc_output/
 
+# Release
+.release-state.json
+
 # TypeScript
 *.tsbuildinfo

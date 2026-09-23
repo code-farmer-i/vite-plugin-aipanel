@@ -94,6 +94,7 @@ aipanelAssistant({
         { builtin: "stylelint" }, // 只在编辑 .css/.scss/.less 时跑
         { builtin: "typecheck" },
         // { name: "自研检查", bin: "my-lint", args: ["--json", "{files}"], format: "aipanel-json" },
+        // { name: "项目全量检查", command: "pnpm", args: ["run", "lint:all"], targets: ["project"] },
       ],
       auto: true, // 编辑后自动诊断
       exposeTool: true, // 是否把 run_diagnostics 暴露给模型
@@ -329,6 +330,13 @@ aipanelAssistant({
           format: "aipanel-json", // 或 adapter: "./tools/my-lint-adapter.mjs"
           extensions: [".ts", ".tsx"],
         },
+        {
+          // 只在全量诊断（run_diagnostics 不传 filePath）时触发：
+          name: "项目全量检查",
+          command: "pnpm",
+          args: ["run", "lint:all"],
+          targets: ["project"],
+        },
       ],
       auto: true, // 编辑后自动诊断
       exposeTool: true, // 是否把 run_diagnostics 暴露给模型
@@ -340,18 +348,19 @@ aipanelAssistant({
 });
 ```
 
-| 检查字段          | 说明                                                                                      |
-| ----------------- | ----------------------------------------------------------------------------------------- |
-| `builtin`         | `eslint` / `oxlint` / `stylelint` / `typecheck` 预设（可局部覆盖其余字段）                |
-| `name`            | 自定义检查的分区标题                                                                      |
-| `bin` / `command` | 项目本地包的 bin / 任意可执行文件（argv 直传，不经 shell）                                |
-| `args`            | 默认 argv；`{file}` 逐文件一次、`{files}` 一次传全部                                      |
-| `projectArgs`     | 全量诊断（无目标文件）时的 argv；含占位符又没写它 → 全量时跳过该检查                      |
-| `extensions`      | 只在这些扩展名的文件上跑；缺省：内置 lint 为源码扩展名、自定义为不限                      |
-| `format`          | `text`（默认）/ `tsc` / `eslint-json` / `oxlint-json` / `stylelint-json` / `aipanel-json` |
-| `adapter`         | 自定义适配器模块（相对项目根，default export 一个函数，可 async）                         |
-| `run`             | `edit`（编辑后）/ `manual`（agent 调工具）/ `both`（默认）                                |
-| `timeoutMs`       | 单次命令超时，默认 60000                                                                  |
+| 检查字段          | 说明                                                                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `builtin`         | `eslint` / `oxlint` / `stylelint` / `typecheck` 预设（可局部覆盖其余字段）                                                          |
+| `name`            | 自定义检查的分区标题                                                                                                                |
+| `bin` / `command` | 项目本地包的 bin / 任意可执行文件（argv 直传，不经 shell）                                                                          |
+| `args`            | 默认 argv；`{file}` 逐文件一次、`{files}` 一次传全部                                                                                |
+| `projectArgs`     | 全量诊断（无目标文件）时的 argv；含占位符又没写它 → 全量时跳过该检查                                                                |
+| `extensions`      | 只在这些扩展名的文件上跑；缺省：内置 lint 为源码扩展名、自定义为不限                                                                |
+| `format`          | `text`（默认）/ `tsc` / `eslint-json` / `oxlint-json` / `stylelint-json` / `aipanel-json`                                           |
+| `adapter`         | 自定义适配器模块（相对项目根，default export 一个函数，可 async）                                                                   |
+| `run`             | `edit`（编辑后）/ `manual`（agent 调工具）/ `both`（默认）                                                                          |
+| `targets`         | 只在这些目标形态下跑：`edited`（编辑后）/ `file`（单文件诊断）/ `project`（全量诊断）；缺省不限。`["project"]` = 只在全量诊断时触发 |
+| `timeoutMs`       | 单次命令超时，默认 60000                                                                                                            |
 
 > 排除规则（哪些文件不该被检查）交给底层工具自己：ESLint 自身 ignore、tsconfig `exclude`、
 > 或命令自己的 glob。AIPanel 不另立一套 glob 语义。

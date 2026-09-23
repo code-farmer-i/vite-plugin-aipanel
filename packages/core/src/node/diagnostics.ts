@@ -27,6 +27,7 @@ import {
   COMMAND_CHECK_TIMEOUT_MS,
   SOURCE_EXTENSIONS,
   checkRunsInPhase,
+  checkRunsOnTarget,
   isCommandCheck,
   isLinterPreset,
   isTypecheckCheck,
@@ -1442,7 +1443,10 @@ export async function runDiagnostics(
   policy: DiagnosticsPolicy,
   phase: DiagnosticsPhase,
 ): Promise<DiagnosticsResult> {
-  const checks = policy.checks.filter((check) => checkRunsInPhase(check, phase));
+  // 阶段（run）与目标形态（targets）两个维度独立过滤：后者让"只在全量诊断时跑"成为一等配置
+  const checks = policy.checks.filter(
+    (check) => checkRunsInPhase(check, phase) && checkRunsOnTarget(check, target.kind),
+  );
   log.debug("runDiagnostics", { phase, target: target.kind, checks: checks.length });
 
   // 各检查彼此独立：并发执行，Promise.all 保序 → 输出仍按声明顺序，墙钟时间取最慢的那个

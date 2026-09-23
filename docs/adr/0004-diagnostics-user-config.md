@@ -84,6 +84,7 @@ export interface CommandCheck {
   args?: string[]; // 可含 {file} / {files}
   projectArgs?: string[]; // 全量诊断时的 argv
   extensions?: string[]; // 只吃这些扩展名；缺省不限
+  targets?: DiagnosticsTargetKind[]; // 只在这些目标形态下跑（["project"] = 仅全量诊断）；缺省不限
   cwd?: string;
   run?: DiagnosticsRun;
   format?: DiagnosticsFormat;

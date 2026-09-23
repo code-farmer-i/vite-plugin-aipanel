@@ -1714,3 +1714,57 @@ describe("调度与噪音过滤", () => {
     expect(result.sections[0].text).toContain("没有可运行的检查");
   });
 });
+
+describe("targets：目标形态维度（与 run 正交）", () => {
+  it("targets:['project'] 只在全量诊断时跑（编辑后/单文件都不 spawn）", async () => {
+    const ws = makeProject();
+    const file = path.join(ws, "a.ts");
+    const calls = trackExeca({ stdout: "full-ok", exitCode: 0 });
+    const check: CommandCheck = { name: "FullOnly", command: "fake-tool", targets: ["project"] };
+
+    const edit = await runOneCheck(check, { kind: "edited", files: [file], cwd: ws }, "edit");
+    const single = await runOneCheck(check, { kind: "file", file, cwd: ws }, "manual");
+    expect(edit.sections).toHaveLength(0); // 编辑后阶段完全静默
+    expect(calls).toHaveLength(0); // 单文件也没 spawn（manual 只给"没有可运行的检查"兜底）
+    expect(single.sections).toHaveLength(1);
+    expect(single.sections[0].text).toContain("没有可运行的检查");
+
+    const full = await runOneCheck(check, { kind: "project", cwd: ws }, "manual");
+    expect(calls).toHaveLength(1);
+    expect(full.sections.map((s) => s.name)).toEqual(["FullOnly"]);
+    expect(full.sections[0].text).toBe("full-ok");
+  });
+
+  it("targets:['edited'] 只在编辑后跑；未声明 targets 三种目标都跑", async () => {
+    const ws = makeProject();
+    const file = path.join(ws, "a.ts");
+    const editOnly: CommandCheck = { name: "EditOnly", command: "fake-tool", targets: ["edited"] };
+    const anyTarget = { name: "AnyTarget", command: "fake-tool" };
+    const calls = trackExeca({ stdout: "ok", exitCode: 0 });
+
+    await runOneCheck(editOnly, { kind: "project", cwd: ws }, "manual");
+    expect(calls).toHaveLength(0);
+
+    const policy = resolvePolicy({ checks: [editOnly, anyTarget] });
+    const mod = await freshModule();
+    const result = await mod.runDiagnostics(
+      { kind: "edited", files: [file], cwd: ws },
+      policy,
+      "edit",
+    );
+    expect(result.sections.map((s) => s.name)).toEqual(["EditOnly", "AnyTarget"]);
+  });
+
+  it("targets 归一化：非法值丢弃、去重、空数组视为未声明；execa 侧也接受该字段", () => {
+    // 故意塞非法值：类型上先放宽，验证运行期归一化
+    const checks = [
+      { name: "A", command: "cmd", targets: ["project", "nope", "project", "file"] },
+      { name: "B", command: "cmd", targets: [] },
+      { name: "C", command: "cmd", targets: "project" },
+    ] as unknown as CommandCheck[];
+    const policy = resolvePolicy({ checks });
+    expect(policy.checks[0]).toMatchObject({ targets: ["project", "file"] });
+    expect(policy.checks[1]).not.toHaveProperty("targets");
+    expect(policy.checks[2]).not.toHaveProperty("targets");
+  });
+});

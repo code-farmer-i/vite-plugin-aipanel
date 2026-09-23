@@ -17,12 +17,22 @@ export type DiagnosticsPhase = "edit" | "manual";
 export type DiagnosticsRun = DiagnosticsPhase | "both";
 
 /**
+ * 诊断目标形态（与 `run` 正交：`run` 管阶段，这里管"跑什么样的目标"）：
+ * - `edited`：编辑后自动诊断（本步编辑过的文件）
+ * - `file`：`run_diagnostics({ filePath })` 单文件
+ * - `project`：`run_diagnostics()` 全量
+ */
+export type DiagnosticsTargetKind = "edited" | "file" | "project";
+
+/**
  * 类型检查检查：唯一的"引擎级"内置（要 tsconfig 感知的批量归并、项目本地 tsc/vue-tsc 探测
  * 与自带 vue-tsc 兜底，不是一条命令能表达的）。其余一切检查都走同一条命令执行路径。
  */
 export interface TypecheckCheck {
   builtin: "typecheck";
   run?: DiagnosticsRun;
+  /** 只在这些目标形态下跑（如 ["project"] = 仅全量诊断）；缺省 = 不限 */
+  targets?: DiagnosticsTargetKind[];
   /** 只吃这些扩展名（如 [".ts", ".vue"]）；缺省 = 可诊断源码扩展名（与历史行为一致） */
   extensions?: string[];
 }
@@ -54,6 +64,8 @@ export interface CommandCheck {
   projectArgs?: string[];
   /** 只吃这些扩展名（如 [".css", ".scss"]）；缺省 = 不限 */
   extensions?: string[];
+  /** 只在这些目标形态下跑（如 ["project"] = 仅全量诊断）——想知道"这次是不是全量"就用它；缺省 = 不限 */
+  targets?: DiagnosticsTargetKind[];
   /** 相对项目根，默认项目根 */
   cwd?: string;
   run?: DiagnosticsRun;
@@ -75,6 +87,7 @@ export type LinterPresetCheck = {
   args?: string[];
   projectArgs?: string[];
   extensions?: string[];
+  targets?: DiagnosticsTargetKind[];
   format?: DiagnosticsFormat;
   cwd?: string;
   run?: DiagnosticsRun;
@@ -260,6 +273,11 @@ export function checkRunsInPhase(check: DiagnosticsCheck, phase: DiagnosticsPhas
   return run === "both" || run === phase;
 }
 
+/** 该检查是否在指定目标形态下执行（未声明 targets = 不限） */
+export function checkRunsOnTarget(check: DiagnosticsCheck, kind: DiagnosticsTargetKind): boolean {
+  return check.targets === undefined || check.targets.includes(kind);
+}
+
 const FORMATS: readonly DiagnosticsFormat[] = [
   "text",
   "tsc",
@@ -269,6 +287,7 @@ const FORMATS: readonly DiagnosticsFormat[] = [
   "aipanel-json",
 ];
 const RUNS: readonly DiagnosticsRun[] = ["edit", "manual", "both"];
+const TARGET_KINDS: readonly DiagnosticsTargetKind[] = ["edited", "file", "project"];
 
 /** 归一化单个检查；非法项返回 undefined（由调用方告警并丢弃） */
 /** 归一化扩展名列表：去空白、补前导点、小写；空列表视为未声明 */
@@ -281,6 +300,15 @@ function normalizeExtensions(raw: unknown): string[] | undefined {
       return trimmed.startsWith(".") ? trimmed : `.${trimmed}`;
     });
   return extensions.length > 0 ? [...new Set(extensions)] : undefined;
+}
+
+/** 归一化目标形态列表（只保留合法值并去重；空列表视为未声明） */
+function normalizeTargets(raw: unknown): DiagnosticsTargetKind[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const targets = raw.filter((item): item is DiagnosticsTargetKind =>
+    TARGET_KINDS.includes(item as DiagnosticsTargetKind),
+  );
+  return targets.length > 0 ? [...new Set(targets)] : undefined;
 }
 
 /** 归一化 argv 列表（只保留字符串项） */
@@ -297,6 +325,7 @@ function normalizeCheck(raw: unknown): DiagnosticsCheck | undefined {
     ? (value.run as DiagnosticsRun)
     : undefined;
   const extensions = normalizeExtensions(value.extensions);
+  const targets = normalizeTargets(value.targets);
   const cwd = typeof value.cwd === "string" && value.cwd ? { cwd: value.cwd } : {};
   const timeout =
     typeof value.timeoutMs === "number" && Number.isFinite(value.timeoutMs) && value.timeoutMs > 0
@@ -312,6 +341,7 @@ function normalizeCheck(raw: unknown): DiagnosticsCheck | undefined {
       return {
         builtin: "typecheck",
         ...(run ? { run } : {}),
+        ...(targets ? { targets } : {}),
         ...(extensions ? { extensions } : {}),
       };
     }
@@ -324,6 +354,7 @@ function normalizeCheck(raw: unknown): DiagnosticsCheck | undefined {
         ...(presetArgs ? { args: presetArgs } : {}),
         ...(presetProjectArgs ? { projectArgs: presetProjectArgs } : {}),
         ...(extensions ? { extensions } : {}),
+        ...(targets ? { targets } : {}),
         ...(run ? { run } : {}),
         ...format,
         ...cwd,
@@ -347,6 +378,7 @@ function normalizeCheck(raw: unknown): DiagnosticsCheck | undefined {
     ...(args ? { args } : {}),
     ...(projectArgs ? { projectArgs } : {}),
     ...(extensions ? { extensions } : {}),
+    ...(targets ? { targets } : {}),
     ...cwd,
     ...(run ? { run } : {}),
     ...format,

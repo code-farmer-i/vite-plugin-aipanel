@@ -365,7 +365,7 @@ function DiagnosticsRow({ block, cwd, toolName, openFile }: ToolCallOwnerProps) 
 
 /** 注册 run_diagnostics 的 keyed 工具视图（命中后替换官方 generic 卡片） */
 export function registerDiagnosticsView(ctx: Context, enabled = true): void {
-  // 诊断功能总开关（provider option enableDiagnostics）：关闭时不注册视图。
+  // 诊断卡片视图开关（provider option diagnostics 的派生值 exposeTool || auto）：关闭时不注册视图。
   if (!enabled) return;
   const slots = (ctx as unknown as { slots?: SlotsRegistryLike }).slots;
   if (!slots) return;

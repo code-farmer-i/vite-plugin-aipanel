@@ -275,14 +275,15 @@ export const WIDGET_THEME_MODES = ["auto", "light", "dark"] as const;
 
 /** ==================== OpenCode 环境变量名 ==================== */
 
-/** OpenCode 相关环境变量名（opencode provider 写、es/plugins 与 dsh-plugin 读，统一引用防止字面量漂移） */
+/** OpenCode 相关环境变量名（opencode provider 写、es/plugins 读，统一引用防止字面量漂移） */
 export const OPENCODE_ENV = {
   CONFIG_DIR: "OPENCODE_CONFIG_DIR",
   CONTEXT_API_URL: "OPENCODE_CONTEXT_API_URL",
   VITE_LOGS_API_URL: "OPENCODE_VITE_LOGS_API_URL",
   LOG_FILES_JSON: "OPENCODE_LOG_FILES_JSON",
   VERBOSE: "OPENCODE_VERBOSE",
-  ENABLE_LINT: "OPENCODE_ENABLE_LINT",
+  /** 诊断策略 JSON（DiagnosticsPolicy）：provider 写，opencode 插件读 */
+  DIAGNOSTICS: "OPENCODE_DIAGNOSTICS",
   VUE_DEVTOOLS_API_URL: "OPENCODE_VUE_DEVTOOLS_API_URL",
   WORKSPACE: "OPENCODE_WORKSPACE",
 } as const;

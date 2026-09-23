@@ -1,12 +1,13 @@
 /**
- * @fileoverview 编辑后诊断插件
- * @description edit/write 工具执行后：
- *   1. ESLint 检查（Node API）
- *   2. TypeScript 类型检查（tsc / vue-tsc 按项目自动选择，过滤当前文件诊断）
- *   3. 诊断结果追加到工具输出，供 Agent 查看（不做回滚）
+ * @fileoverview 编辑后诊断插件（OpenCode 侧）
+ * @description
+ *   - 编辑后诊断：write/edit 工具执行后按配置的检查跑一次，结果追加到工具输出（不做回滚），
+ *     结构化条目写进 metadata 供 UI 渲染；
+ *   - run_diagnostics 工具：agent 主动触发（受策略 exposeTool 管辖）。
  *
- * 诊断引擎（ESLint/类型检查/格式化/全量诊断）统一由 @aipanel/core/node 提供，
- * 与 dsh 侧审查工具共用同一实现，保证行为一致。
+ * 诊断策略由 provider 经 `OPENCODE_ENV.DIAGNOSTICS`（DiagnosticsPolicy JSON）下发——
+ * 与 dsh 侧**同一份契约、同一套 runDiagnostics**，"内置 linter 预设"与"用户自定义检查"
+ * 在这里也走完全相同的执行与适配逻辑。
  */
 
 import fs from "node:fs";
@@ -16,14 +17,17 @@ import { tool } from "@opencode-ai/plugin";
 import {
   setVerbose,
   createLogger,
-  runAllChecks,
-  runProjectDiagnostics,
-  formatDiagnosticsSections,
-  isJsFile,
+  collectDiagnostics,
+  renderDiagnostics,
+  resolveDiagnosticsPolicy,
+  runDiagnostics,
+  DEFAULT_DIAGNOSTICS_POLICY,
   MUTATING_TOOLS,
   OPENCODE_ENV,
   DIAGNOSTICS_TOOL_DESCRIPTION,
   type DiagnosticItem,
+  type DiagnosticsPolicy,
+  type DiagnosticsTarget,
 } from "@aipanel/core/node";
 
 // 子进程通过环境变量接收 verbose 配置
@@ -34,14 +38,36 @@ if (process.env[OPENCODE_ENV.VERBOSE] === "1") {
 const log = createLogger("EditDiagnostics");
 
 const EDIT_TOOLS = MUTATING_TOOLS; // 单一来源 @aipanel/core：与 dsh 插件共用同一写类工具名单
-const isLintEnabled = () => process.env[OPENCODE_ENV.ENABLE_LINT] === "1";
+
+/** 读取 provider 下发的诊断策略（缺失/非法 → 默认策略 + 告警） */
+function readPolicy(): DiagnosticsPolicy {
+  const raw = process.env[OPENCODE_ENV.DIAGNOSTICS];
+  let parsed: Partial<DiagnosticsPolicy> | undefined;
+  if (raw) {
+    try {
+      parsed = JSON.parse(raw) as Partial<DiagnosticsPolicy>;
+    } catch {
+      log.warn("OPENCODE_DIAGNOSTICS is not valid JSON; falling back to defaults");
+    }
+  }
+  return resolveDiagnosticsPolicy([DEFAULT_DIAGNOSTICS_POLICY, parsed], (message) =>
+    log.warn(message),
+  );
+}
+
+/** 自动诊断注入的字符上限截断（完整结果仍可调 run_diagnostics） */
+function truncate(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n\n…（诊断输出过长，已截断；可调用 run_diagnostics 查看完整结果）`;
+}
 
 export default {
   id: "vite-plugin-aipanel/edit-diagnostics",
   async server(): Promise<Hooks> {
     const workspace = process.env[OPENCODE_ENV.WORKSPACE] || process.cwd();
+    const policy = readPolicy();
 
-    // 定义 run_diagnostics 工具，让 agent 可以主动触发诊断
+    // run_diagnostics：agent 主动触发（受策略 exposeTool 管辖）
     const runDiagnosticsTool = tool({
       description: DIAGNOSTICS_TOOL_DESCRIPTION,
       args: {
@@ -51,96 +77,65 @@ export default {
           .describe("要诊断的文件路径（绝对路径或相对路径），不传则全量诊断整个项目"),
       },
       async execute(args, context) {
-        const { filePath } = args;
-        const workspace = context.directory;
+        const cwd = context.directory;
+        let target: DiagnosticsTarget;
+        let title: string;
 
-        if (filePath) {
-          // 单文件诊断
-          const resolved = path.resolve(workspace, filePath);
-
-          log.debug("run_diagnostics called (single file)", {
-            filePath: resolved,
-            workspace,
-            sessionID: context.sessionID,
-          });
-
-          if (!fs.existsSync(resolved)) {
-            return `文件不存在: ${resolved}`;
-          }
-
-          const { eslintOutput, tscOutput } = await runAllChecks(resolved, workspace);
-
-          return formatDiagnosticsSections(
-            `诊断结果: ${path.relative(workspace, resolved)}`,
-            eslintOutput,
-            tscOutput,
-          );
+        if (args.filePath) {
+          const resolved = path.resolve(cwd, args.filePath);
+          if (!fs.existsSync(resolved)) throw new Error(`文件不存在: ${resolved}`);
+          target = { kind: "file", file: resolved, cwd };
+          title = `诊断结果: ${path.relative(cwd, resolved)}`;
+        } else {
+          target = { kind: "project", cwd };
+          title = "全量诊断结果";
         }
 
-        // 全量诊断
-        log.debug("run_diagnostics called (full project)", {
-          workspace,
-          sessionID: context.sessionID,
-        });
-
-        const { eslintOutput, tscOutput } = await runProjectDiagnostics(workspace);
-
-        return formatDiagnosticsSections("全量诊断结果", eslintOutput, tscOutput);
+        const body = renderDiagnostics(await runDiagnostics(target, policy, "manual"));
+        return body ? `${title}\n\n${body}` : title;
       },
     });
 
-    return {
+    const hooks: Hooks = {
       "tool.execute.after": async (input, output) => {
         if (!EDIT_TOOLS.has(input.tool)) return;
-        if (!isLintEnabled()) return;
+        if (!policy.auto) return;
 
         const filePath = (input.args?.filePath as string) || "";
-        if (!filePath || !isJsFile(filePath)) return;
+        if (!filePath) return;
+        // 不再在这里按扩展名预过滤：跑哪些检查由各 check 的 extensions 决定
+        const resolved = path.resolve(workspace, filePath);
 
-        log.debug("Executing after hook", {
-          tool: input.tool,
-          filePath,
-          processCwd: workspace,
-          lintEnabled: isLintEnabled(),
-        });
+        log.debug("Executing after hook", { tool: input.tool, filePath, processCwd: workspace });
 
-        // ESLint 和类型检查并行检查
-        const { eslintOutput, tscOutput } = await runAllChecks(filePath, workspace);
+        const result = await runDiagnostics(
+          { kind: "edited", files: [resolved], cwd: workspace },
+          policy,
+          "edit",
+        );
 
-        // 构建诊断原文：与 run_diagnostics / dsh 侧自动诊断共用同一分区格式，只输出有发现的分区
-        const diagText = formatDiagnosticsSections("", eslintOutput, tscOutput, {
+        const text = renderDiagnostics(result, {
           onlyFindings: true,
+          maxFindingsPerSection: policy.maxFindingsPerSection,
         });
+        if (text) output.output += "\n\n" + truncate(text, policy.maxMessageChars);
 
-        log.debug("Diagnostics result", {
-          filePath,
-          eslintError: !!eslintOutput.text,
-          tscError: tscOutput.exitCode !== 0,
-        });
-
-        // 诊断信息追加到 output（供 Agent 查看，不再回滚）
-        if (diagText) {
-          output.output += "\n\n" + diagText;
-        }
-
-        // 写入 metadata.diagnostics 供 UI 渲染
-        const anyError = !!eslintOutput.text || tscOutput.exitCode !== 0;
-        if (anyError) {
+        // 结构化条目写进 metadata 供 UI 渲染
+        const items = collectDiagnostics(result);
+        if (items.length > 0) {
           const meta = (output.metadata ?? (output.metadata = {})) as Record<string, unknown>;
           const existing = (meta.diagnostics ?? (meta.diagnostics = {})) as Record<
             string,
             DiagnosticItem[]
           >;
-          const diags: DiagnosticItem[] = [
-            ...(eslintOutput.diagnostics ?? []),
-            ...(tscOutput.diagnostics ?? []),
-          ];
-          existing[filePath] = [...(existing[filePath] ?? []), ...diags];
+          for (const item of items) {
+            const key = item.file ?? resolved;
+            existing[key] = [...(existing[key] ?? []), item];
+          }
         }
       },
-      tool: {
-        run_diagnostics: runDiagnosticsTool,
-      },
     };
+
+    return policy.exposeTool ? { ...hooks, tool: { run_diagnostics: runDiagnosticsTool } } : hooks;
   },
 };

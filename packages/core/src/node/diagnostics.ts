@@ -1,8 +1,10 @@
 /**
  * 代码诊断引擎（质量门禁）——opencode 插件与 dsh 插件共用的同一实现。
  *
- * 职责：ESLint（Node API）+ TypeScript 类型检查（CLI）两类检查，支持单文件诊断与
- * 全量项目诊断，输出统一的分区文本格式。
+ * 检查来源由用户经 vite 插件 `providerOptions.diagnostics.checks` 配置：内置引擎（ESLint/oxlint
+ * 与 tsc/vue-tsc）或项目里的任意命令（输出经适配器归一）。对调用方只暴露一个深入口
+ * {@link runDiagnostics}（目标 + 策略 + 阶段 → 有序分区），引擎探测、批量归并、命令执行、
+ * 输出适配与严重度门槛都藏在实现里。
  *
  * 检查器一律优先用被诊断项目自身的版本：eslint / oxlint / tsc / vue-tsc 都先按项目解析，
  * 项目没装才回落到本包自带的 vue-tsc——老项目不会因为自带检查器版本过新而误判。
@@ -16,25 +18,37 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { execa } from "execa";
 import { createRequire } from "node:module";
 import { SEVERITY_ERROR, SEVERITY_WARN } from "../common/constants";
+import {
+  BUILTIN_LINTERS,
+  COMMAND_CHECK_TIMEOUT_MS,
+  SOURCE_EXTENSIONS,
+  checkRunsInPhase,
+  isCommandCheck,
+  isLinterPreset,
+  isTypecheckCheck,
+  matchesExtensions,
+  type CommandCheck,
+  type BuiltinLinterSpec,
+  type DiagnosticsAdapter,
+  type DiagnosticsAdapterInput,
+  type DiagnosticsAdapterOutput,
+  type DiagnosticsFormat,
+  type DiagnosticsPhase,
+  type DiagnosticsPolicy,
+  type LinterPresetCheck,
+  type TypecheckCheck,
+} from "../common/diagnostics";
+import type { AIPanelDiagnosticEntry } from "../common/types";
 import { createLogger } from "./node-logger";
 
 const log = createLogger("Diagnostics");
 
-/** 常见被诊断的源码扩展名 */
-const JS_EXTENSIONS = new Set([
-  ".js",
-  ".jsx",
-  ".ts",
-  ".tsx",
-  ".mjs",
-  ".cjs",
-  ".mts",
-  ".cts",
-  ".vue",
-]);
+/** 常见被诊断的源码扩展名（单一来源：@aipanel/core 的 SOURCE_EXTENSIONS） */
+const JS_EXTENSIONS = new Set(SOURCE_EXTENSIONS);
 
 /** 是否为可诊断的源码文件（供宿主钩子过滤 edit/write 目标） */
 export function isJsFile(filePath: string): boolean {
@@ -43,13 +57,13 @@ export function isJsFile(filePath: string): boolean {
 
 /**
  * run_diagnostics 工具描述（单一来源，供 opencode / dsh 两侧插件引用）：
- * 只声明能力与支持的文件类型，不涉及内部使用的检查工具。
+ * 只声明能力与支持的文件类型，不涉及内部使用的检查工具（检查来源由用户配置，可能是项目命令）。
  */
 export const DIAGNOSTICS_TOOL_DESCRIPTION = [
-  "运行 Lint（ESLint / oxlint）与 TypeScript 类型诊断，返回诊断结果。",
+  "运行项目配置的代码检查（默认 Lint 与 TypeScript 类型诊断），返回诊断结果。",
   "",
   "**支持的文件类型**：",
-  `- Lint：JavaScript / TypeScript / Vue 源码（${[...JS_EXTENSIONS].map((e) => `*${e}`).join(" ")}）；两引擎均安装时并行互补运行（诊断按来源标注）`,
+  `- Lint：JavaScript / TypeScript / Vue 源码（${[...JS_EXTENSIONS].map((e) => `*${e}`).join(" ")}）；项目同时装有 ESLint 与 oxlint 时互补运行（诊断按来源标注）`,
   "- TypeScript 类型检查：*.ts *.tsx *.vue",
   "",
   "**何时使用此工具**：",
@@ -129,94 +143,25 @@ export interface TscResult {
 export interface EslintOutput {
   text?: string;
   diagnostics?: DiagnosticItem[];
-  /** 实际运行的 lint 引擎（"ESLint" / "oxlint"）；缺省视为 ESLint（兼容旧调用方） */
-  engines?: string[];
 }
 
-export interface DiagnosticsResult {
-  eslintOutput: EslintOutput;
-  tscOutput: TscResult;
-}
-
-type ESLintConstructor = new (opts: { cwd: string }) => {
-  lintFiles: (p: string) => Promise<Array<{ filePath: string; messages: LintMessage[] }>>;
-};
-
-/** 各 workspace 的 ESLint 构造器缓存（用户项目装了什么大版本就用什么；解析失败缓存 null） */
-const _eslintClassByBase = new Map<string, ESLintConstructor | null>();
-
-/** 从被诊断的 workspace 解析 eslint（用户项目已安装）；解析失败则跳过 ESLint 检查 */
-function loadESLint(workspace: string): ESLintConstructor | null {
-  const basePkgJson = path.join(workspace, "package.json");
-  return cachedResolve(_eslintClassByBase, basePkgJson, () => {
-    log.debug("Loading eslint", { workspace });
-    try {
-      const req = createRequire(basePkgJson);
-      const eslintModule = req("eslint") as {
-        ESLint?: ESLintConstructor;
-        FlatESLint?: ESLintConstructor;
-      };
-      const eslintClass = eslintModule.ESLint ?? eslintModule.FlatESLint ?? null;
-      log.debug("eslint loaded", { hasClass: !!eslintClass });
-      return eslintClass;
-    } catch (e) {
-      log.warn("eslint not found", { error: (e as Error).message });
-      return null;
-    }
-  });
-}
-
-/**
- * ESLint 检查，接受文件路径或 glob 模式。
- * 结果按 error / warning 分级格式化；warnings 数量超限时截断并注明。
- */
-export async function lintFiles(
-  pattern: string,
-  cwd: string,
-  warnLimit = 5,
-): Promise<EslintOutput> {
-  const eslintClass = loadESLint(cwd);
-
-  // create-vue 官方约定 ESLint + oxlint 互补并用（规则去重由项目的 eslint-plugin-oxlint 承担）：
-  // 两引擎均可用时并行跑；仅可用其一则用其一；均不可用明确报"未运行"，不静默假装干净
-  const [eslintOutput, oxlintOutput] = await Promise.all([
-    eslintClass ? runEslintFiles(eslintClass, pattern, cwd, warnLimit) : Promise.resolve(null),
-    runOxlintFiles(pattern, cwd, warnLimit),
-  ]);
-
-  const engines: string[] = [];
-  const texts: string[] = [];
-  const diagnostics: DiagnosticItem[] = [];
-  for (const output of [eslintOutput, oxlintOutput]) {
-    if (!output) continue;
-    engines.push(...(output.engines ?? []));
-    if (output.text) texts.push(output.text);
-    diagnostics.push(...(output.diagnostics ?? []));
-  }
-
-  if (engines.length === 0) {
-    return {
-      text: `[Lint] 未运行：无法在 workspace "${cwd}" 解析到 eslint 或 oxlint`,
-      diagnostics: [],
-    };
-  }
-
-  return { text: texts.join("\n\n") || undefined, diagnostics, engines };
-}
-
-/** 把 lint 消息按 error/warning 分级格式化为文本行与 LSP 诊断项（ESLint / oxlint 共用） */
+/** 把 lint 消息按 error/warning 分级格式化为文本行与 LSP 诊断项（各 lint 适配器共用） */
 function formatLintMessages(
   messages: (LintMessage & { filePath: string })[],
   engine: { label: string; source: string },
   warnLimit: number,
+  minSeverity: "error" | "warning" = "warning",
 ): EslintOutput {
-  if (messages.length === 0) return { engines: [engine.label] };
-
   const ESLINT_ERROR = 2;
   const ESLINT_WARN = 1;
+  // 门槛过滤放在格式化之前：文本与结构化条目一起收紧，两者不会漂移
+  const kept =
+    minSeverity === "error" ? messages.filter((m) => m.severity === ESLINT_ERROR) : messages;
+  if (kept.length === 0) return {};
+
   const lines: string[] = [];
-  const errors = messages.filter((m) => m.severity === ESLINT_ERROR);
-  const warnings = messages.filter((m) => m.severity === ESLINT_WARN);
+  const errors = kept.filter((m) => m.severity === ESLINT_ERROR);
+  const warnings = kept.filter((m) => m.severity === ESLINT_WARN);
 
   if (errors.length > 0) {
     lines.push(
@@ -257,45 +202,10 @@ function formatLintMessages(
   return {
     text: lines.length > 0 ? lines.join("\n") : undefined,
     diagnostics,
-    engines: [engine.label],
   };
 }
 
-/** ESLint Node API 检查（引擎可用时由 lintFiles 调度） */
-async function runEslintFiles(
-  eslintClass: ESLintConstructor,
-  pattern: string,
-  cwd: string,
-  warnLimit: number,
-): Promise<EslintOutput> {
-  try {
-    const eslint = new eslintClass({ cwd });
-    const results = await eslint.lintFiles(pattern);
-    const messages: (LintMessage & { filePath: string })[] = results.flatMap((r) =>
-      (r.messages ?? []).map((m) => ({ ...m, filePath: r.filePath })),
-    );
-    log.debug("ESLint lint", {
-      pattern,
-      fileCount: results.length,
-      messageCount: messages.length,
-    });
-    return formatLintMessages(messages, { label: "ESLint", source: "eslint" }, warnLimit);
-  } catch (err) {
-    log.warn("ESLint failed", { pattern, error: (err as Error).message });
-    return {
-      text: `[ESLint] 运行失败：${(err as Error).message}（仅显示 TypeScript 诊断）`,
-      diagnostics: [],
-      engines: ["ESLint"],
-    };
-  }
-}
-
-// ---- oxlint（Rust linter，与 ESLint 互补；create-vue 约定 oxlint 先跑） ----
-
-/** oxlint CLI 路径（从被诊断 workspace 解析，用户项目已安装才会启用） */
-function resolveOxlintBin(workspace: string): string | null {
-  return resolvePackageBin(path.join(workspace, "package.json"), "oxlint", "oxlint");
-}
+// ---- oxlint 输出解析（供 oxlint 预设的适配器复用） ----
 
 /** oxlint --format=json 的诊断条目（自有格式，非 ESLint 兼容数组） */
 interface OxlintJsonDiagnostic {
@@ -360,49 +270,6 @@ function parseOxlintOutput(stdout: string, cwd: string): (LintMessage & { filePa
       },
     ];
   });
-}
-
-/** oxlint CLI 检查（--format=json；未安装时静默跳过，由 ESLint 路径兜底报"未运行"） */
-async function runOxlintFiles(
-  pattern: string,
-  cwd: string,
-  warnLimit: number,
-): Promise<EslintOutput> {
-  const bin = resolveOxlintBin(cwd);
-  if (!bin) return {};
-
-  // 与 ESLint 默认行为对齐：忽略 node_modules（oxlint 默认不排除）
-  const result = await execa(
-    "node",
-    [bin, "--format=json", "--ignore-pattern", "node_modules", pattern],
-    { cwd, timeout: 60000, maxBuffer: 50 * 1024 * 1024, reject: false },
-  );
-
-  if (result.timedOut || result.isTerminated || result.isMaxBuffer) {
-    log.warn("oxlint timed out", { pattern });
-    return {
-      text: "[oxlint] 运行失败：检查超时，请尝试缩小检查范围。",
-      diagnostics: [],
-      engines: ["oxlint"],
-    };
-  }
-
-  try {
-    const messages = parseOxlintOutput(result.stdout, cwd);
-    log.debug("oxlint lint", {
-      pattern,
-      messageCount: messages.length,
-      stderr: result.stderr || undefined,
-    });
-    return formatLintMessages(messages, { label: "oxlint", source: "oxlint" }, warnLimit);
-  } catch (e) {
-    log.warn("oxlint failed", { pattern, error: (e as Error).message });
-    return {
-      text: `[oxlint] 运行失败：${(e as Error).message}`,
-      diagnostics: [],
-      engines: ["oxlint"],
-    };
-  }
 }
 
 // ---- TypeScript 类型检查（引擎按项目自动选择，优先项目自身版本） ----
@@ -858,75 +725,43 @@ export async function runTypeChecksForFiles(
   return results;
 }
 
-/** 并行运行 ESLint + 类型检查（单文件或 glob） */
-export async function runAllChecks(pattern: string, cwd: string): Promise<DiagnosticsResult> {
-  log.debug("runAllChecks", { pattern, cwd });
-  const [eslintOutput, tscOutput] = await Promise.all([
-    lintFiles(pattern, cwd),
-    runTypeCheck(pattern, cwd),
-  ]);
-  return { eslintOutput, tscOutput };
+// ---- 分区化结果与深入口 ----
+
+/** 诊断分区：一个检查在一段目标上的产出 */
+export interface DiagnosticsSection {
+  /** 分区标题：check 的 name，或内置引擎标题（ESLint + oxlint / vue-tsc） */
+  name: string;
+  /** 所属目标文件（相对项目根）；仅编辑后自动诊断按文件拆分时存在 */
+  target?: string;
+  /** 模型可见正文；无内容时缺省（自动诊断据此跳过该分区） */
+  text?: string;
+  /** LSP 坐标结构化条目（0-based），供 canonical 输出与诊断卡片使用 */
+  diagnostics: DiagnosticItem[];
 }
 
-/**
- * 批量运行 ESLint + 类型检查：Lint 逐文件（ESLint 进程内、oxlint 单次 CLI），
- * 类型检查按 tsconfig 项目合并为一次（见 runTypeChecksForFiles）。
- * 返回"文件绝对路径 → 诊断结果"，供 step 边界的一次性收尾诊断使用。
- */
-export async function runAllChecksForFiles(
-  files: string[],
-  cwd: string,
-): Promise<Map<string, DiagnosticsResult>> {
-  const targets = [...new Set(files.map((file) => path.resolve(file)))];
-  // 耗时主体是类型检查：按 tsconfig 项目合并为一次。
-  // Lint 逐文件串行执行，避免一次批量编辑同时拉起 N 个 linter 进程。
-  const tscByFile = await runTypeChecksForFiles(targets, cwd);
-  const results = new Map<string, DiagnosticsResult>();
-  for (const file of targets) {
-    results.set(file, {
-      eslintOutput: await lintFiles(file, cwd),
-      tscOutput: tscByFile.get(file) ?? { rawOutput: "", exitCode: 0 },
-    });
-  }
-  return results;
+/** 诊断结果：有序分区列表（历史上是写死的 { eslintOutput, tscOutput }，现已泛化） */
+export interface DiagnosticsResult {
+  sections: DiagnosticsSection[];
 }
 
-/**
- * 全量项目诊断：优先从根 tsconfig 运行一次类型检查 --build，
- * 根无 tsconfig 时回退到逐个子目录 build；ESLint 以 "." 全量扫描。
- */
-export async function runProjectDiagnostics(workspace: string): Promise<DiagnosticsResult> {
-  const tscDirs = fs.existsSync(path.join(workspace, "tsconfig.json"))
-    ? [workspace]
-    : findAllTsconfigDirs(workspace);
-  log.debug("Tsc dirs to check", { count: tscDirs.length, dirs: tscDirs });
+/** 诊断目标：agent 调工具（单文件 / 全量）或编辑后自动诊断（本步编辑过的文件） */
+export type DiagnosticsTarget =
+  | { kind: "file"; file: string; cwd: string }
+  | { kind: "project"; cwd: string }
+  | { kind: "edited"; files: string[]; cwd: string };
 
-  const [eslintOutput, ...tscOutputs] = await Promise.all([
-    lintFiles(".", workspace, 10),
-    ...tscDirs.map((dir) => runTypeCheck(undefined, dir)),
-  ]);
-
-  const mergedTsc: TscResult = {
-    rawOutput: tscOutputs
-      .flatMap((o) => o.rawOutput)
-      .filter(Boolean)
-      .join("\n"),
-    exitCode: tscOutputs.reduce((max, o) => Math.max(max, o.exitCode), 0),
-    diagnostics: tscOutputs.flatMap((o) => o.diagnostics ?? []),
-    source: tscOutputs.find((o) => o.source)?.source,
-  };
-
-  return { eslintOutput, tscOutput: mergedTsc };
+/** 渲染选项 */
+export interface RenderDiagnosticsOptions {
+  /** 只输出有发现的分区（编辑后自动诊断；全空返回空串） */
+  onlyFindings?: boolean;
+  /** 每个分区的发现条数上限（超出折叠成一行提示） */
+  maxFindingsPerSection?: number;
 }
 
 /** 类型检查分区标题（单一来源：跟随实际引擎 tsc / vue-tsc） */
+/** 类型检查分区标题（单一来源：跟随实际引擎 tsc / vue-tsc） */
 export function tscSectionTitle(tscOutput: TscResult): string {
   return tscOutput.source ?? "tsc";
-}
-
-/** Lint 分区标题（单一来源：跟随实际运行的引擎组合，如 "ESLint + oxlint"） */
-export function lintSectionTitle(lintOutput: EslintOutput): string {
-  return lintOutput.engines?.length ? lintOutput.engines.join(" + ") : "ESLint";
 }
 
 /** 分区发现被条数上限折叠时的提示（自动诊断摘要与 run_diagnostics 完整输出的分界） */
@@ -950,32 +785,702 @@ function boundFindings(
   );
 }
 
+/** 目标文件绝对路径清单（项目级为空） */
+function targetFiles(target: DiagnosticsTarget): string[] {
+  if (target.kind === "file") return [path.resolve(target.file)];
+  if (target.kind === "edited") return [...new Set(target.files.map((file) => path.resolve(file)))];
+  return [];
+}
+
+/** 编辑后自动诊断按文件拆分区（单文件 / 全量诊断不拆） */
+function splitsByFile(target: DiagnosticsTarget): boolean {
+  return target.kind === "edited";
+}
+
+/** 严重度门槛过滤（结构化条目） */
+function filterBySeverity(
+  items: readonly DiagnosticItem[],
+  severity: "error" | "warning",
+): DiagnosticItem[] {
+  return severity === "error"
+    ? items.filter((item) => item.severity === SEVERITY_ERROR)
+    : [...items];
+}
+
+/** 把结构化条目渲染成统一文本行（用户适配器提供 diagnostics 时由这里统一渲染） */
+function renderDiagnosticLines(items: readonly DiagnosticItem[]): string {
+  return items
+    .map((item) => {
+      const level = item.severity === SEVERITY_ERROR ? "ERROR" : "WARN";
+      const file = item.file ?? "";
+      const { line, character } = item.range.start;
+      return `${level} [${file}:${line + 1}:${character + 1}] ${item.message}`;
+    })
+    .join("\n");
+}
+
+/** 1-based 展示条目（client 卡片协议）→ 0-based LSP 条目 */
+function entryToDiagnosticItem(entry: AIPanelDiagnosticEntry, source: string): DiagnosticItem {
+  return {
+    file: entry.file,
+    severity: entry.severity === "error" ? SEVERITY_ERROR : SEVERITY_WARN,
+    range: {
+      start: { line: entry.line - 1, character: entry.column - 1 },
+      end: { line: entry.line - 1, character: entry.column - 1 },
+    },
+    message: entry.message,
+    source,
+  };
+}
+
+/** 校验并转换用户适配器 / `aipanel-json` 协议给出的条目（1-based） */
+function normalizeEntries(value: unknown, source: string): DiagnosticItem[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error("diagnostics 必须是数组");
+  return value.map((raw, index) => {
+    const at = `diagnostics[${index}]`;
+    if (!raw || typeof raw !== "object") throw new Error(`${at} 必须是对象`);
+    const entry = raw as Partial<AIPanelDiagnosticEntry>;
+    if (typeof entry.file !== "string" || !entry.file)
+      throw new Error(`${at}.file 必须是非空字符串`);
+    if (typeof entry.line !== "number" || entry.line < 1)
+      throw new Error(`${at}.line 必须是 ≥ 1 的数字`);
+    if (typeof entry.column !== "number" || entry.column < 1)
+      throw new Error(`${at}.column 必须是 ≥ 1 的数字`);
+    if (entry.severity !== "error" && entry.severity !== "warning")
+      throw new Error(`${at}.severity 必须是 "error" 或 "warning"`);
+    if (typeof entry.message !== "string") throw new Error(`${at}.message 必须是字符串`);
+    return entryToDiagnosticItem(entry as AIPanelDiagnosticEntry, source);
+  });
+}
+
+/** 从可能夹带人类可读内容的输出里取出 JSON 值（对象或数组都可） */
+function extractJsonValue(raw: string): unknown {
+  const trimmed = raw.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // 容忍前后夹带：取第一个 { 或 [ 到最后一个 } 或 ]
+    const starts = [raw.indexOf("{"), raw.indexOf("[")].filter((index) => index >= 0);
+    if (starts.length === 0) throw new Error("未找到 JSON 输出");
+    const start = Math.min(...starts);
+    const close = raw[start] === "{" ? "}" : "]";
+    const end = raw.lastIndexOf(close);
+    if (end <= start) throw new Error("未找到 JSON 输出");
+    return JSON.parse(raw.slice(start, end + 1));
+  }
+}
+
+/** 解析 `eslint --format json` 输出（容忍前后夹带的人类可读内容） */
+function parseEslintJson(raw: string, cwd: string): (LintMessage & { filePath: string })[] {
+  const parsed = extractJsonValue(raw) as Array<{
+    filePath?: string;
+    messages?: LintMessage[];
+  }>;
+  if (!Array.isArray(parsed)) throw new Error("顶层必须是数组");
+  return parsed
+    .flatMap((file) =>
+      (file.messages ?? []).map((message) => ({
+        ...message,
+        filePath: file.filePath ? path.resolve(cwd, file.filePath) : "",
+      })),
+    )
+    .filter((message) => message.filePath && !isEslintIgnoreNotice(message));
+}
+
 /**
- * 组装统一的分区诊断文本（Lint / 类型检查）。
- * 默认保留空分区的占位文案（run_diagnostics 要正面回答"有没有问题"）；
+ * ESLint 对"被显式传入、但不在配置范围内"的文件会回一条 ruleId=null 的忽略提示
+ * （`File ignored because no matching configuration was supplied`）。
+ * 那不是发现，按文件诊断时会变成每个 step 都投递的噪音——丢掉。
+ */
+function isEslintIgnoreNotice(message: LintMessage): boolean {
+  return (
+    (message.ruleId ?? null) === null &&
+    typeof message.message === "string" &&
+    message.message.startsWith("File ignored because")
+  );
+}
+
+/** 只保留达门槛的 tsc 输出行（含缩进续行），行格式与 parseTscDiags 保持一致 */
+function filterTscOutputBySeverity(rawOutput: string, minSeverity: "error" | "warning"): string {
+  if (minSeverity === "warning" || !rawOutput) return rawOutput;
+  const errorLinePat = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS\d+:/;
+  const kept: string[] = [];
+  let keep = false;
+  for (const line of rawOutput.split("\n")) {
+    const match = errorLinePat.exec(line);
+    if (match) keep = match[4] === "error";
+    else if (!/^\s/.test(line)) keep = false;
+    if (keep) kept.push(line);
+  }
+  return kept.join("\n");
+}
+
+/** 按门槛收窄类型检查结果（文本与结构化条目一起，避免两者漂移） */
+function applyTscSeverity(result: TscResult, minSeverity: "error" | "warning"): TscResult {
+  if (minSeverity === "warning") return result;
+  return {
+    ...result,
+    rawOutput: filterTscOutputBySeverity(result.rawOutput, minSeverity),
+    diagnostics: (result.diagnostics ?? []).filter((item) => item.severity === SEVERITY_ERROR),
+  };
+}
+
+/** 空分区占位：手动诊断要正面回答"有没有问题"；自动诊断不投递占位噪音 */
+function emptySectionText(
+  kind: "lint" | "typecheck" | "command",
+  phase: DiagnosticsPhase,
+  severity: "error" | "warning",
+): string | undefined {
+  if (phase !== "manual") return undefined;
+  if (kind === "typecheck") return "没有发现类型错误";
+  return severity === "error" ? "没有发现错误" : "没有发现问题";
+}
+
+/** 组装一个分区：门槛过滤 + 文本兜底（有条目时由我们统一渲染） */
+function buildSection(
+  name: string,
+  target: string | undefined,
+  outcome: { text?: string; diagnostics?: readonly DiagnosticItem[] },
+  phase: DiagnosticsPhase,
+  severity: "error" | "warning",
+  kind: "lint" | "typecheck" | "command",
+): DiagnosticsSection {
+  const diagnostics = filterBySeverity(outcome.diagnostics ?? [], severity);
+  const explicit = (outcome.text ?? "").trim();
+  const text =
+    explicit ||
+    (diagnostics.length > 0
+      ? renderDiagnosticLines(diagnostics)
+      : emptySectionText(kind, phase, severity)) ||
+    "";
+  return {
+    name,
+    ...(target ? { target } : {}),
+    ...(text ? { text } : {}),
+    diagnostics,
+  };
+}
+
+// ---- 命令检查：执行 + 输出适配 ----
+
+/** 命令原始产物 */
+interface CommandOutcome {
+  stdout: string;
+  stderr: string;
+  exitCode: number | undefined;
+  failed: boolean;
+  timedOut: boolean;
+  overflowed: boolean;
+  message?: string;
+}
+
+/** 命令来源：`command`（PATH/路径）或 `bin`（项目本地包，按 node <bin> 执行） */
+interface CommandSource {
+  command: string;
+  /** 固定前缀（bin 模式 = 解析出的绝对路径） */
+  prefix: string[];
+  /** 不可用时的原因（如项目里解析不到该包） */
+  error?: string;
+  /** `command` 模式下的展示名（失败文案用） */
+  label: string;
+}
+
+/** 解析命令来源：`bin` 走项目本地包解析（与内置 oxlint/tsc 同一策略） */
+function resolveCommandSource(check: CommandCheck, cwd: string): CommandSource {
+  if (check.command) {
+    return { command: check.command, prefix: [], label: check.command };
+  }
+  const binName = check.bin as string;
+  const bin = resolvePackageBin(path.join(cwd, "package.json"), binName, binName);
+  if (!bin) {
+    return {
+      command: "node",
+      prefix: [],
+      label: binName,
+      error: `项目里解析不到 ${binName}（请先安装该依赖，或改用 command 指定可执行文件）`,
+    };
+  }
+  return { command: "node", prefix: [bin], label: binName };
+}
+
+/** 跑一次用户命令（argv 直传、不经 shell；reject:false 让失败走诊断文案而不是异常） */
+async function runCommand(
+  check: CommandCheck,
+  source: CommandSource,
+  argv: string[],
+  cwd: string,
+): Promise<CommandOutcome> {
+  const result = await execa(source.command, [...source.prefix, ...argv], {
+    cwd,
+    timeout: check.timeoutMs ?? COMMAND_CHECK_TIMEOUT_MS,
+    maxBuffer: 10 * 1024 * 1024,
+    reject: false,
+    stdin: "ignore",
+  });
+  return {
+    stdout: String(result.stdout ?? ""),
+    stderr: String(result.stderr ?? ""),
+    exitCode: typeof result.exitCode === "number" ? result.exitCode : undefined,
+    failed: result.failed,
+    timedOut: Boolean(result.timedOut || result.isTerminated),
+    overflowed: Boolean(result.isMaxBuffer),
+    message: (result as { originalMessage?: string }).originalMessage,
+  };
+}
+
+/** 命令失败时的明确文案（不静默假装干净） */
+function commandFailureText(
+  check: CommandCheck,
+  source: CommandSource,
+  outcome: CommandOutcome,
+): string | undefined {
+  if (outcome.timedOut) {
+    return `[${check.name}] 运行失败：检查超时（${check.timeoutMs ?? COMMAND_CHECK_TIMEOUT_MS}ms），可提高 diagnostics.timeoutMs 或缩小检查范围。`;
+  }
+  if (outcome.overflowed) return `[${check.name}] 运行失败：输出超过上限，请缩小检查范围。`;
+  if (outcome.failed && outcome.exitCode === undefined) {
+    return `[${check.name}] 运行失败：无法执行 ${source.label}（${outcome.message ?? "spawn failed"}）。`;
+  }
+  return undefined;
+}
+
+/** 命令的可见原文（stdout 优先，stderr 追加） */
+function rawCommandOutput(outcome: CommandOutcome): string {
+  return [outcome.stdout, outcome.stderr]
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** 展开 `{file}` / `{files}` 占位符（作为独立 argv 项时按项展开） */
+function expandArgs(args: readonly string[], files: readonly string[]): string[] {
+  return args.map((arg) => {
+    if (arg === "{file}") return files[0] ?? "";
+    if (arg === "{files}") return files.join(" ");
+    return arg.replace(/\{file\}|\{files\}/g, (match) =>
+      match === "{file}" ? (files[0] ?? "") : files.join(" "),
+    );
+  });
+}
+
+/** 用户适配器模块（default export 一个函数）；加载/执行/返回值异常都转成分区文案 */
+async function runAdapterModule(
+  check: CommandCheck,
+  outcome: CommandOutcome,
+  cwd: string,
+  files: readonly string[],
+): Promise<{ text?: string; diagnostics: DiagnosticItem[] }> {
+  const adapterPath = path.resolve(cwd, check.adapter as string);
+  const fail = (reason: string) => ({
+    text: `[${check.name}] 适配器不可用：${check.adapter}（${reason}）`,
+    diagnostics: [],
+  });
+
+  let moduleExports: { default?: unknown };
+  try {
+    moduleExports = (await import(pathToFileURL(adapterPath).href)) as { default?: unknown };
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+  if (typeof moduleExports.default !== "function") {
+    return fail("模块必须 default export 一个适配器函数");
+  }
+
+  const input: DiagnosticsAdapterInput = {
+    name: check.name,
+    stdout: outcome.stdout,
+    stderr: outcome.stderr,
+    exitCode: outcome.exitCode,
+    files: [...files],
+    cwd,
+  };
+  let output: DiagnosticsAdapterOutput;
+  try {
+    output = (await (moduleExports.default as DiagnosticsAdapter)(
+      input,
+    )) as DiagnosticsAdapterOutput;
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+  if (!output || typeof output !== "object") return fail("适配器必须返回对象");
+
+  try {
+    const diagnostics = normalizeEntries(output.diagnostics, check.name);
+    // 有条目时文本由我们统一渲染，保证 severity 门槛与诊断卡片一致
+    return { text: diagnostics.length > 0 ? undefined : output.text, diagnostics };
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/** stylelint --formatter json 的条目 */
+interface StylelintJsonWarning {
+  line?: number;
+  column?: number;
+  endLine?: number;
+  endColumn?: number;
+  severity?: string;
+  text?: string;
+  rule?: string;
+}
+
+/** 解析 `stylelint --formatter json` 输出（容忍前后夹带的人类可读内容） */
+function parseStylelintJson(raw: string, cwd: string): (LintMessage & { filePath: string })[] {
+  const parsed = extractJsonValue(raw) as Array<{
+    source?: string;
+    warnings?: StylelintJsonWarning[];
+  }>;
+  if (!Array.isArray(parsed)) throw new Error("顶层必须是数组");
+  return parsed.flatMap((file) => {
+    const filePath = file.source ? path.resolve(cwd, file.source) : "";
+    if (!filePath) return [];
+    return (file.warnings ?? []).map((warning) => ({
+      severity: warning.severity === "error" ? 2 : 1,
+      line: warning.line ?? 1,
+      column: warning.column ?? 1,
+      endLine: warning.endLine,
+      endColumn: warning.endColumn,
+      message: warning.text ?? "未知诊断",
+      ruleId: warning.rule ?? null,
+      filePath,
+    }));
+  });
+}
+
+/** 内置适配器：命令输出 → 分区产出（新增一种工具只需在这里加一个 case） */
+function adaptBuiltinFormat(
+  format: DiagnosticsFormat,
+  check: CommandCheck,
+  raw: string,
+  cwd: string,
+  severity: "error" | "warning",
+): { text?: string; diagnostics: DiagnosticItem[] } {
+  const lintFromMessages = (messages: (LintMessage & { filePath: string })[]) => {
+    const output = formatLintMessages(
+      messages,
+      { label: check.name, source: check.name },
+      10,
+      severity,
+    );
+    return { text: output.text, diagnostics: output.diagnostics ?? [] };
+  };
+
+  switch (format) {
+    case "tsc":
+      return {
+        text: filterTscOutputBySeverity(raw, severity),
+        diagnostics: parseTscDiags(raw, undefined, cwd, check.name),
+      };
+    case "eslint-json":
+      return lintFromMessages(parseEslintJson(raw, cwd));
+    case "oxlint-json":
+      return lintFromMessages(parseOxlintOutput(raw, cwd));
+    case "stylelint-json":
+      return lintFromMessages(parseStylelintJson(raw, cwd));
+    case "aipanel-json": {
+      const value = extractJsonValue(raw);
+      // 协议既接受 { diagnostics, text }，也接受裸数组
+      const payload = (
+        Array.isArray(value) ? { diagnostics: value } : value
+      ) as DiagnosticsAdapterOutput;
+      const diagnostics = normalizeEntries(payload?.diagnostics, check.name);
+      return { text: diagnostics.length > 0 ? undefined : payload?.text, diagnostics };
+    }
+    case "text":
+    default:
+      return { text: raw, diagnostics: [] };
+  }
+}
+
+/** 展开内置 linter 预设：目录项 + 用户局部覆盖 → 与自定义检查同形的 CommandCheck */
+function expandLinterPreset(check: LinterPresetCheck): CommandCheck {
+  const spec: BuiltinLinterSpec = BUILTIN_LINTERS[check.builtin];
+  return {
+    name: spec.label,
+    bin: spec.bin ?? spec.package,
+    args: check.args ?? [...spec.args],
+    ...((check.projectArgs ?? spec.projectArgs)
+      ? { projectArgs: [...(check.projectArgs ?? spec.projectArgs ?? [])] }
+      : {}),
+    extensions: check.extensions ?? [...spec.extensions],
+    format: check.format ?? spec.format,
+    ...(check.run ? { run: check.run } : {}),
+    ...(check.cwd ? { cwd: check.cwd } : {}),
+    ...(check.timeoutMs ? { timeoutMs: check.timeoutMs } : {}),
+  };
+}
+
+/** 执行一次命令检查（可能展开成多个分区） */
+async function runCommandCheck(
+  check: CommandCheck,
+  target: DiagnosticsTarget,
+  phase: DiagnosticsPhase,
+  severity: "error" | "warning",
+  /** 内置预设：项目没装该包属正常情况（编辑后阶段静默跳过）；用户自定义则视为配置问题，明确报出 */
+  optional = false,
+): Promise<DiagnosticsSection[]> {
+  const cwd = check.cwd ? path.resolve(target.cwd, check.cwd) : target.cwd;
+  const args = check.args ?? [];
+  const hasPlaceholder = args.some((arg) => arg.includes("{file}") || arg.includes("{files}"));
+  const perFile = args.some((arg) => arg.includes("{file}"));
+  const split = splitsByFile(target);
+
+  // 先判断"这一轮要不要吃文件"，再解析命令：不适用于这些文件的检查直接跳过，
+  // 不会出现"检查压根不跑、却报项目里没装该工具"的误报（也省掉一次 bin 解析）。
+  const targeted = target.kind !== "project";
+  const files = targeted
+    ? targetFiles(target).filter((file) => matchesExtensions(file, check.extensions))
+    : [];
+  if (targeted && hasPlaceholder && files.length === 0) {
+    log.debug("skip command check: no matching file target", { name: check.name, phase });
+    return [];
+  }
+
+  const source = resolveCommandSource(check, cwd);
+  if (source.error) {
+    if (optional && phase === "edit") {
+      log.debug("skip uninstalled builtin linter", { name: check.name });
+      return [];
+    }
+    const text = optional
+      ? `[${check.name}] 未运行：${source.error}`
+      : `[${check.name}] ${source.error}`;
+    return [buildSection(check.name, undefined, { text }, phase, severity, "command")];
+  }
+
+  const execute = async (
+    argvTemplate: readonly string[],
+    fileSet: string[],
+  ): Promise<{ text?: string; diagnostics: DiagnosticItem[] }> => {
+    const outcome = await runCommand(check, source, expandArgs(argvTemplate, fileSet), cwd);
+    const failure = commandFailureText(check, source, outcome);
+    if (failure) return { text: failure, diagnostics: [] };
+    const raw = rawCommandOutput(outcome);
+    // 适配器解析/校验失败也转成分区文案，不让异常冲出 runDiagnostics（手动诊断要能回答"为什么没有结果"）
+    try {
+      if (check.adapter) return await runAdapterModule(check, outcome, cwd, fileSet);
+      return adaptBuiltinFormat(check.format ?? "text", check, raw, cwd, severity);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return { text: `[${check.name}] 运行失败：输出解析失败（${reason}）`, diagnostics: [] };
+    }
+  };
+
+  const targetLabel = (file: string): string | undefined =>
+    split ? path.relative(target.cwd, file) : undefined;
+
+  // 不含文件占位符：三种目标都跑同一个 argv（项目级命令）
+  if (!hasPlaceholder) {
+    return [
+      buildSection(check.name, undefined, await execute(args, []), phase, severity, "command"),
+    ];
+  }
+
+  // 目标为全量：用 projectArgs（未声明则跳过——不把空占位符塞进 argv）
+  if (target.kind === "project") {
+    if (!check.projectArgs) {
+      log.debug("skip command check: no project args", { name: check.name });
+      return [];
+    }
+    return [
+      buildSection(
+        check.name,
+        undefined,
+        await execute(check.projectArgs, []),
+        phase,
+        severity,
+        "command",
+      ),
+    ];
+  }
+
+  // 目标为文件（files 已按扩展名筛过）
+  if (perFile) {
+    const sections: DiagnosticsSection[] = [];
+    for (const file of files) {
+      const produced = await execute(args, [file]);
+      sections.push(
+        buildSection(check.name, targetLabel(file), produced, phase, severity, "command"),
+      );
+    }
+    return sections;
+  }
+
+  const produced = await execute(args, files);
+  const label = files.length === 1 ? targetLabel(files[0]) : undefined;
+  return [buildSection(check.name, label, produced, phase, severity, "command")];
+}
+
+// ---- 内置检查：复用既有引擎探测 ----
+
+/** 全量类型检查：根有 tsconfig 就跑根，否则逐子目录跑并合并（历史行为） */
+async function runProjectTypeCheck(
+  workspace: string,
+  severity: "error" | "warning",
+): Promise<TscResult> {
+  const dirs = fs.existsSync(path.join(workspace, "tsconfig.json"))
+    ? [workspace]
+    : findAllTsconfigDirs(workspace);
+  log.debug("Tsc dirs to check", { count: dirs.length, dirs });
+  const results = await Promise.all(dirs.map((dir) => runTypeCheck(undefined, dir)));
+  return applyTscSeverity(
+    {
+      rawOutput: results
+        .flatMap((output) => output.rawOutput)
+        .filter(Boolean)
+        .join("\n"),
+      exitCode: results.reduce((max, output) => Math.max(max, output.exitCode), 0),
+      diagnostics: results.flatMap((output) => output.diagnostics ?? []),
+      source: results.find((output) => output.source)?.source,
+    },
+    severity,
+  );
+}
+
+/** 执行类型检查检查（唯一的内置引擎检查：tsconfig 归并 + 项目本地/自带引擎探测） */
+async function runTypecheckCheck(
+  check: TypecheckCheck,
+  target: DiagnosticsTarget,
+  phase: DiagnosticsPhase,
+  severity: "error" | "warning",
+): Promise<DiagnosticsSection[]> {
+  const cwd = target.cwd;
+  const split = splitsByFile(target);
+  // 目标为全量时整项目跑（不看扩展名）；按文件诊断时先按扩展名筛（缺省 = 可诊断源码扩展名）
+  const files =
+    target.kind === "project"
+      ? []
+      : targetFiles(target).filter((file) =>
+          matchesExtensions(file, check.extensions ?? SOURCE_EXTENSIONS),
+        );
+  if (target.kind !== "project" && files.length === 0) {
+    log.debug("skip builtin check: no matching file target", { builtin: check.builtin, phase });
+    return [];
+  }
+
+  if (split) {
+    const results = await runTypeChecksForFiles(files, cwd);
+    return files.map((file) => {
+      const result = applyTscSeverity(
+        results.get(path.resolve(file)) ?? { rawOutput: "", exitCode: 0 },
+        severity,
+      );
+      return buildSection(
+        tscSectionTitle(result),
+        path.relative(cwd, file),
+        { text: result.rawOutput.trim(), diagnostics: result.diagnostics },
+        phase,
+        severity,
+        "typecheck",
+      );
+    });
+  }
+
+  const result =
+    target.kind === "file"
+      ? applyTscSeverity(await runTypeCheck(files[0], cwd), severity)
+      : await runProjectTypeCheck(cwd, severity);
+  return [
+    buildSection(
+      tscSectionTitle(result),
+      undefined,
+      { text: result.rawOutput.trim(), diagnostics: result.diagnostics },
+      phase,
+      severity,
+      "typecheck",
+    ),
+  ];
+}
+
+/**
+ * 诊断深入口：按策略与阶段执行配置的检查，返回有序分区。
+ *
+ * 三类检查：`typecheck`（引擎级内置）、内置 linter 预设（展开成 CommandCheck）、
+ * 用户自定义检查——后两类走**完全同一条**执行与适配逻辑。
+ * 检查按声明顺序串行执行，输出顺序确定、进程数可控；
+ * `severity` 门槛在分区归一化处生效，文本与结构化条目一起收紧。
+ */
+export async function runDiagnostics(
+  target: DiagnosticsTarget,
+  policy: DiagnosticsPolicy,
+  phase: DiagnosticsPhase,
+): Promise<DiagnosticsResult> {
+  const checks = policy.checks.filter((check) => checkRunsInPhase(check, phase));
+  log.debug("runDiagnostics", { phase, target: target.kind, checks: checks.length });
+
+  // 各检查彼此独立：并发执行，Promise.all 保序 → 输出仍按声明顺序，墙钟时间取最慢的那个
+  // （一次编辑后收尾通常是 eslint + oxlint + stylelint + tsc 四个进程，串行会白等前三个）。
+  const results = await Promise.all(
+    checks.map((check) => {
+      if (isTypecheckCheck(check)) {
+        return runTypecheckCheck(check, target, phase, policy.severity);
+      }
+      if (isLinterPreset(check)) {
+        // 内置预设 → 与用户自定义检查同形的 CommandCheck（项目没装则视为未安装，编辑后阶段跳过）
+        return runCommandCheck(expandLinterPreset(check), target, phase, policy.severity, true);
+      }
+      if (isCommandCheck(check)) {
+        return runCommandCheck(check, target, phase, policy.severity);
+      }
+      return Promise.resolve<DiagnosticsSection[]>([]);
+    }),
+  );
+  const sections = results.flat();
+
+  // 手动诊断要正面回答"有没有跑"：目标文件没有任何检查匹配时给一条明确说明，而不是空结果
+  if (sections.length === 0 && phase === "manual") {
+    return {
+      sections: [
+        {
+          name: "检查",
+          text: "没有可运行的检查：已配置的检查都不匹配本轮目标（检查的 extensions / run 阶段 / 目标类型）。",
+          diagnostics: [],
+        },
+      ],
+    };
+  }
+  return { sections };
+}
+
+/** 汇总结构化条目（canonical 输出 / 诊断卡片用） */
+export function collectDiagnostics(result: DiagnosticsResult): DiagnosticItem[] {
+  return result.sections.flatMap((section) => section.diagnostics);
+}
+
+/**
+ * 把分区结果渲染成模型可见文本。
  * `onlyFindings: true` 只输出有发现的分区、全空返回空串（编辑后自动诊断不刷占位噪音）；
  * `maxFindingsPerSection` 把每个分区的发现折叠成有界摘要——编辑后自动诊断每个 step 都会投递，
  * 因此用条数上限控制重复成本，完整结果仍由不带上限的 run_diagnostics 给出。
- * `title` 允许为空串，此时直接返回分区正文（追加式投递场景无需标题）。
+ * 编辑后自动诊断（分区带 target）保留 `### 文件` 结构。
  */
-export function formatDiagnosticsSections(
-  title: string,
-  eslintOutput: EslintOutput,
-  tscOutput: TscResult,
-  options: { onlyFindings?: boolean; maxFindingsPerSection?: number } = {},
+export function renderDiagnostics(
+  result: DiagnosticsResult,
+  options: RenderDiagnosticsOptions = {},
 ): string {
-  const lintLines = boundFindings(eslintOutput.text, options.maxFindingsPerSection);
-  const tscLines = boundFindings(tscOutput.rawOutput.trim(), options.maxFindingsPerSection);
-  const parts: string[] = [];
+  const sections = options.onlyFindings
+    ? result.sections.filter((section) => (section.text ?? "").trim())
+    : result.sections;
+  if (sections.length === 0) return "";
 
-  if (!options.onlyFindings || lintLines) {
-    parts.push(`## ${lintSectionTitle(eslintOutput)}\n\n` + (lintLines || "没有发现问题"));
-  }
-  if (!options.onlyFindings || tscLines) {
-    parts.push(`## ${tscSectionTitle(tscOutput)}\n\n` + (tscLines || "没有发现类型错误"));
+  const groups = new Map<string, DiagnosticsSection[]>();
+  for (const section of sections) {
+    const key = section.target ?? "";
+    const group = groups.get(key);
+    if (group) group.push(section);
+    else groups.set(key, [section]);
   }
 
-  if (parts.length === 0) return "";
-  const body = parts.join("\n\n");
-  return title ? `${title}\n\n${body}` : body;
+  const blocks: string[] = [];
+  for (const [key, group] of groups) {
+    const body = group
+      .map((section) => {
+        const text = boundFindings(section.text, options.maxFindingsPerSection);
+        return `## ${section.name}\n\n${text || "没有发现问题"}`;
+      })
+      .join("\n\n");
+    blocks.push(key ? `### ${key}\n\n${body}` : body);
+  }
+  return blocks.join("\n\n");
 }

@@ -25,9 +25,9 @@ export const DSH_DEFAULT_PORT = 3080;
 
 /** ==================== Provider 专属配置默认值 ==================== */
 
-export const DEFAULT_DEEPSEEK_PROVIDER_OPTIONS: DeepSeekProviderOptions = {
-  // 对齐 opencode 的 enableLsp（默认 true）：诊断功能默认开启
-  enableDiagnostics: true,
-  // 对齐 opencode：自动诊断默认开启
-  autoDiagnose: true,
-};
+/**
+ * Provider 选项兜底值。
+ * 诊断的默认值不在本包复刻：单一来源是 @aipanel/core 的 DEFAULT_DIAGNOSTICS_POLICY，
+ * 由 resolveDeepSeekOptions 归一化时注入。
+ */
+export const DEFAULT_DEEPSEEK_PROVIDER_OPTIONS: DeepSeekProviderOptions = {};

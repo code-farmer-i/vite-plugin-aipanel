@@ -2,7 +2,7 @@
  * OpenCode Provider 专属类型
  * 所有与 OpenCode Web 绑定的类型自包含于此，核心层不感知。
  */
-import type { LogFileConfig } from "@aipanel/core";
+import type { DiagnosticsPolicy, LogFileConfig } from "@aipanel/core";
 
 /**
  * OpenCode 界面语言选项
@@ -110,14 +110,22 @@ export type OpenCodeProviderOptions = {
   /** 自定义日志文件配置 */
   logFiles?: LogFileConfig[];
 
-  // === LSP 诊断配置 ===
-  /** 启用 LSP 诊断（TypeScript + ESLint），agent 编辑文件后自动返回错误信息，默认 false */
-  enableLsp?: boolean;
+  // === 诊断配置 ===
+  /**
+   * 诊断配置（检查来源 + 触发 + 投递；契约见 @aipanel/core 的 DiagnosticsPolicy）。
+   * 用户只写要覆盖的字段，provider 归一化成完整策略后随 env 下发。
+   */
+  diagnostics?: Partial<DiagnosticsPolicy>;
   /** 启用代码格式化功能（prettier），默认 true */
   enablePrettier?: boolean;
 
   /** 允许 Provider 自定义扩展字段（schema 由具体 Provider 定义） */
   [key: string]: unknown;
+};
+
+/** 归一化后的 Provider 选项：诊断策略一定是完整的 */
+export type OpenCodeResolvedOptions = OpenCodeProviderOptions & {
+  diagnostics: DiagnosticsPolicy;
 };
 
 /**
@@ -144,8 +152,8 @@ export interface WebOptions {
   logFilesJson?: string;
   /** 启用 verbose 模式（环境变量透传，调试日志输出） */
   verbose?: boolean;
-  /** 启用 LSP / 质量门禁（环境变量透传，控制 block-on-error 插件运行） */
-  enableLsp?: boolean;
+  /** 诊断策略 JSON（DiagnosticsPolicy）：随 env 下发给 opencode 插件 */
+  diagnosticsJson?: string;
   /** 启用代码格式化功能（prettier） */
   enablePrettier?: boolean;
   /** Vue DevTools API 地址（环境变量透传给 OpenCode 插件） */

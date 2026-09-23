@@ -5,6 +5,7 @@
  * - resolveOpenCodeOptions（经 provider 构造）：providerOptions > 顶层 > 默认 优先级
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_DIAGNOSTICS_POLICY } from "@aipanel/core";
 import { DefaultWebProvider } from "../src/provider";
 import { mapEvent } from "../src/provider";
 import type { SessionInfo } from "../src/types";
@@ -147,11 +148,11 @@ describe("opencode provider: listSessions 过滤与归一化", () => {
 });
 
 describe("opencode provider: 选项解析优先级", () => {
-  it("无配置时回到默认值（enableLsp/enablePrettier 交由 opencode 自身默认，resolve 不兜底）", () => {
+  it("无配置时诊断策略回落到默认值（enablePrettier 交由 opencode 自身默认，resolve 不兜底）", () => {
     const provider = createProvider({});
     const opts = provider["opts"];
-    // resolveOpenCodeOptions 仅合并显式字段，不覆盖默认常量里的 enableLsp/enablePrettier
-    expect(opts.enableLsp).toBeUndefined();
+    // 诊断策略由 provider 归一化成完整值（默认值单一来源 = core 的 DEFAULT_DIAGNOSTICS_POLICY）
+    expect(opts.diagnostics).toEqual(DEFAULT_DIAGNOSTICS_POLICY);
     expect(opts.enablePrettier).toBeUndefined();
   });
 
@@ -160,20 +161,21 @@ describe("opencode provider: 选项解析优先级", () => {
       { hostname: "127.0.0.1", chromeDevtoolsPort: 9222 },
       { getWebPort: () => 1, getProxyPort: () => 2 },
       {
-        providerOptions: { enableLsp: false },
-        enableLsp: true,
+        providerOptions: { diagnostics: { auto: false } },
       },
     );
-    expect(provider["opts"].enableLsp).toBe(false);
+    expect(provider["opts"].diagnostics.auto).toBe(false);
+    // 未覆盖的字段回默认
+    expect(provider["opts"].diagnostics.severity).toBe(DEFAULT_DIAGNOSTICS_POLICY.severity);
   });
 
   it("缺失 providerOptions 时退到顶层字段（不做 providerOptions 向下兼容）", () => {
     const provider = new DefaultWebProvider(
       { hostname: "127.0.0.1", chromeDevtoolsPort: 9222 },
       { getWebPort: () => 1, getProxyPort: () => 2 },
-      { enableLsp: true, enablePrettier: false },
+      { enablePrettier: false },
     );
-    expect(provider["opts"].enableLsp).toBe(true);
+    expect(provider["opts"].diagnostics).toEqual(DEFAULT_DIAGNOSTICS_POLICY);
     expect(provider["opts"].enablePrettier).toBe(false);
   });
 });

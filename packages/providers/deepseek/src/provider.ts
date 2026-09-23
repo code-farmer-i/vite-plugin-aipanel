@@ -3,6 +3,7 @@ import { sleep } from "@aipanel/core";
 import type {
   AIPanelWidgetTheme,
   ChatSession,
+  DiagnosticsPolicy,
   ProviderConfig,
   ProviderEnvironmentInfo,
   ProviderEvent,
@@ -10,8 +11,9 @@ import type {
   ProviderStartResult,
   WebProvider,
 } from "@aipanel/core";
+import { DEFAULT_DIAGNOSTICS_POLICY, resolveDiagnosticsPolicy } from "@aipanel/core";
 import { createLogger } from "@aipanel/core/node";
-import type { DeepSeekBusyEnter, DeepSeekPermissionPreset, DeepSeekProviderOptions } from "./types";
+import type { DeepSeekBusyEnter, DeepSeekPermissionPreset, DeepSeekResolvedOptions } from "./types";
 import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/types";
 import { DEFAULT_DEEPSEEK_PROVIDER_OPTIONS } from "./constants";
 import { DSH_LOOPBACK_HOST } from "./constants";
@@ -70,7 +72,7 @@ export class DeepSeekWebProvider implements WebProvider {
   private launchToken: LaunchToken | null = null;
   /** AIPanel 侧下发的主题偏好（AIPanelWidgetTheme，default auto）：随 client 插件 config 注入，作为启动初值 */
   private uiTheme: AIPanelWidgetTheme = "auto";
-  private readonly opts: DeepSeekProviderOptions;
+  private readonly opts: DeepSeekResolvedOptions;
 
   constructor(
     config: DeepSeekWebProviderConfig,
@@ -194,8 +196,7 @@ Please upgrade:
       cwd: options.cwd,
       pluginAvailable,
       clientAvailable,
-      autoDiagnose: this.opts.autoDiagnose,
-      enableDiagnostics: this.opts.enableDiagnostics,
+      diagnostics: this.opts.diagnostics,
       // 宿主事件推送令牌（core 每轮启动随机）：随 plugin config 注入 dsh-plugin 用于回推鉴权
       eventsToken: options.eventsToken,
       agentPreset: this.opts.agentPreset,
@@ -331,27 +332,23 @@ function toChatSession(s: SessionSummary, url?: string): ChatSession {
 /**
  * 从用户完整插件配置中解析 DeepSeek 专属配置
  * 优先级：providerOptions（新写法）> 顶层字段（旧写法）> provider 默认值。
- * 注：agentPreset 已无内置默认（交由 dsh 自身默认预设），仅当用户显式配置时才写 settings。
+ * 注：agentPreset 已无内置默认（交由 dsh 自身默认预设），仅当用户显式配置时才写 settings；
+ * 诊断策略在这里归一化成完整值（默认值单一来源 = @aipanel/core 的 DEFAULT_DIAGNOSTICS_POLICY）。
  */
-function resolveDeepSeekOptions(options?: Record<string, unknown>): DeepSeekProviderOptions {
-  if (!options) return { ...DEFAULT_DEEPSEEK_PROVIDER_OPTIONS };
-  const po = (options.providerOptions ?? {}) as Record<string, unknown>;
+function resolveDeepSeekOptions(options?: Record<string, unknown>): DeepSeekResolvedOptions {
+  const po = (options?.providerOptions ?? {}) as Record<string, unknown>;
   return {
     ...DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
-    home: (po.home as string) ?? (options.home as string | undefined),
-    agentPreset: (po.agentPreset as string) ?? (options.agentPreset as string | undefined),
+    home: (po.home as string) ?? (options?.home as string | undefined),
+    agentPreset: (po.agentPreset as string) ?? (options?.agentPreset as string | undefined),
     permissionPreset:
       (po.permissionPreset as DeepSeekPermissionPreset) ??
-      (options.permissionPreset as DeepSeekPermissionPreset | undefined),
+      (options?.permissionPreset as DeepSeekPermissionPreset | undefined),
     busyEnter:
-      (po.busyEnter as DeepSeekBusyEnter) ?? (options.busyEnter as DeepSeekBusyEnter | undefined),
-    autoDiagnose:
-      (po.autoDiagnose as boolean) ??
-      (options.autoDiagnose as boolean | undefined) ??
-      DEFAULT_DEEPSEEK_PROVIDER_OPTIONS.autoDiagnose,
-    enableDiagnostics:
-      (po.enableDiagnostics as boolean) ??
-      (options.enableDiagnostics as boolean | undefined) ??
-      DEFAULT_DEEPSEEK_PROVIDER_OPTIONS.enableDiagnostics,
+      (po.busyEnter as DeepSeekBusyEnter) ?? (options?.busyEnter as DeepSeekBusyEnter | undefined),
+    diagnostics: resolveDiagnosticsPolicy(
+      [DEFAULT_DIAGNOSTICS_POLICY, po.diagnostics as Partial<DiagnosticsPolicy> | undefined],
+      (message) => log.warn(message),
+    ),
   };
 }

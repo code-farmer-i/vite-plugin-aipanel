@@ -2,6 +2,7 @@ import http from "http";
 import type { ResultPromise } from "execa";
 import type {
   ChatSession,
+  DiagnosticsPolicy,
   LogFileConfig,
   ProviderConfig,
   ProviderEnvironmentInfo,
@@ -11,12 +12,12 @@ import type {
   SessionStatus,
   WebProvider,
 } from "@aipanel/core";
-import { RETRY_DELAY } from "@aipanel/core";
+import { DEFAULT_DIAGNOSTICS_POLICY, RETRY_DELAY, resolveDiagnosticsPolicy } from "@aipanel/core";
 import { createLogger } from "@aipanel/core/node";
 import type {
   SessionInfo,
   OpenCodeLanguage,
-  OpenCodeProviderOptions,
+  OpenCodeResolvedOptions,
   OpenCodeSettings,
 } from "./types";
 import { DEFAULT_OPENCODE_PROVIDER_OPTIONS } from "./constants";
@@ -60,7 +61,7 @@ export class DefaultWebProvider implements WebProvider {
   private deps: DefaultWebProviderDeps;
   private process: ResultPromise | null = null;
   private bridgeOptions: BridgeScriptOptions = {};
-  private readonly opts: OpenCodeProviderOptions;
+  private readonly opts: OpenCodeResolvedOptions;
 
   constructor(
     private config: DefaultWebProviderConfig,
@@ -126,7 +127,6 @@ Please install OpenCode first:
       options.cwd,
       options.vitePort,
       options.viteHost,
-      this.opts.enableLsp,
       this.opts.enablePrettier,
     );
 
@@ -146,7 +146,8 @@ Please install OpenCode first:
       logsApiUrl: options.logsApiUrl,
       logFilesJson: this.opts.logFiles ? JSON.stringify(this.opts.logFiles) : undefined,
       verbose: options.verbose,
-      enableLsp: this.opts.enableLsp,
+      // 诊断策略随 env 下发给 opencode 插件（单一来源；插件侧解析成 DiagnosticsPolicy）
+      diagnosticsJson: JSON.stringify(this.opts.diagnostics),
       enablePrettier: this.opts.enablePrettier,
       vueDevtoolsApiUrl: options.vueDevtoolsApiUrl,
     });
@@ -340,16 +341,17 @@ function toChatSession(s: SessionInfo): ChatSession {
  * 优先级：providerOptions（新写法）> 顶层 deprecated 字段（旧写法）> provider 默认值。
  * logFiles 为通用配置（仅顶层字段，见 core PluginOptions），直接读取。
  */
-function resolveOpenCodeOptions(options?: Record<string, unknown>): OpenCodeProviderOptions {
-  if (!options) return { ...DEFAULT_OPENCODE_PROVIDER_OPTIONS };
-
-  const po = (options.providerOptions ?? {}) as Record<string, unknown>;
+function resolveOpenCodeOptions(options?: Record<string, unknown>): OpenCodeResolvedOptions {
+  const po = (options?.providerOptions ?? {}) as Record<string, unknown>;
   return {
     ...DEFAULT_OPENCODE_PROVIDER_OPTIONS,
-    language: (po.language as OpenCodeLanguage) ?? (options.language as OpenCodeLanguage),
-    settings: (po.settings as OpenCodeSettings) ?? (options.settings as OpenCodeSettings),
-    logFiles: options.logFiles as LogFileConfig[],
-    enableLsp: (po.enableLsp as boolean) ?? (options.enableLsp as boolean),
-    enablePrettier: (po.enablePrettier as boolean) ?? (options.enablePrettier as boolean),
+    language: (po.language as OpenCodeLanguage) ?? (options?.language as OpenCodeLanguage),
+    settings: (po.settings as OpenCodeSettings) ?? (options?.settings as OpenCodeSettings),
+    logFiles: options?.logFiles as LogFileConfig[],
+    enablePrettier: (po.enablePrettier as boolean) ?? (options?.enablePrettier as boolean),
+    diagnostics: resolveDiagnosticsPolicy(
+      [DEFAULT_DIAGNOSTICS_POLICY, po.diagnostics as Partial<DiagnosticsPolicy> | undefined],
+      (message) => log.warn(message),
+    ),
   };
 }

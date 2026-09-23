@@ -27,10 +27,8 @@ describe("dsh 协议常量", () => {
 });
 
 describe("DEFAULT_DEEPSEEK_PROVIDER_OPTIONS", () => {
-  it("诊断总开关与自动诊断默认开启", () => {
-    expect(DEFAULT_DEEPSEEK_PROVIDER_OPTIONS).toEqual({
-      enableDiagnostics: true,
-      autoDiagnose: true,
-    });
+  it("不含诊断默认值：诊断默认值的单一来源是 @aipanel/core 的 DEFAULT_DIAGNOSTICS_POLICY", () => {
+    expect(DEFAULT_DEEPSEEK_PROVIDER_OPTIONS).toEqual({});
+    expect(DEFAULT_DEEPSEEK_PROVIDER_OPTIONS).not.toHaveProperty("diagnostics");
   });
 });

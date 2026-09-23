@@ -43,8 +43,8 @@ const MSG = WIDGET_MSG;
 /** overlay 传入的插件配置（config 段，best-effort；缺失时走默认值） */
 export interface AipanelClientPluginConfig {
   /**
-   * 诊断功能总开关（provider option enableDiagnostics，对齐 opencode enableLsp）。
-   * 缺失时默认开启（与 provider 默认一致）；显式 false 时不注册诊断卡片视图。
+   * 是否需要诊断卡片视图（provider option diagnostics 的派生值：exposeTool || auto）。
+   * 缺失时默认开启；显式 false 时不注册诊断卡片视图。
    */
   enableDiagnostics?: boolean;
   /**

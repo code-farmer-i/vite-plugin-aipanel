@@ -17,7 +17,7 @@ import {
   HOST_EVENTS_API_PATH,
   createLogger,
 } from "@aipanel/core/node";
-import type { AIPanelWidgetTheme } from "@aipanel/core";
+import type { AIPanelWidgetTheme, DiagnosticsPolicy } from "@aipanel/core";
 import { DSH_CLIENT_PACKAGE, DSH_PLUGIN_PACKAGE } from "./dsh-install";
 import type { DeepSeekBusyEnter, DeepSeekPermissionPreset } from "./types";
 
@@ -34,21 +34,15 @@ export function buildDshOverlay(options: {
   /** client 插件（@aipanel/dsh-client）是否可被 dsh 解析；false 时停用该行，避免 fail-loud */
   clientAvailable?: boolean;
   /**
-   * 编辑后自动诊断开关（provider option autoDiagnose）。
-   * undefined 时不写入 overlay，由 dsh-plugin 回退到 OPENCODE_ENABLE_LINT=1（与 opencode 一致）。
+   * 诊断策略（provider option diagnostics，已在 provider 侧归一化）。
+   * 随 host 插件 config 下发；client 插件只取"是否需要诊断卡片视图"。
    */
-  autoDiagnose?: boolean;
+  diagnostics: DiagnosticsPolicy;
   /**
    * 宿主事件推送令牌（core 每轮启动随机）：随 plugin config 注入 dsh-plugin，
    * 使其把归一化 ProviderEvent POST 到 core 的 HOST_EVENTS_API_PATH。
    */
   eventsToken?: string;
-  /**
-   * 诊断功能总开关（provider option enableDiagnostics）。
-   * true（默认，对齐 opencode enableLsp）时 host 插件注册 run_diagnostics 工具与自动诊断逻辑，
-   * client 插件注册诊断卡片视图。
-   */
-  enableDiagnostics?: boolean;
   /** provider option agentPreset：dsh settings agent-presets.default（随 host 插件 config 下发） */
   agentPreset?: string;
   /** provider option permissionPreset：dsh settings permission.defaultPreset（单一来源 ./types） */
@@ -64,8 +58,7 @@ export function buildDshOverlay(options: {
     cwd,
     pluginAvailable = true,
     clientAvailable = true,
-    autoDiagnose,
-    enableDiagnostics = true,
+    diagnostics,
     eventsToken,
     agentPreset,
     permissionPreset,
@@ -104,10 +97,8 @@ export function buildDshOverlay(options: {
       `        vitePort: ${vitePort}`,
       `        viteHost: ${JSON.stringify(viteHost)}`,
       `        contextApiPath: ${JSON.stringify(CONTEXT_API_PATH)}`,
-      `        enableDiagnostics: ${enableDiagnostics ? "true" : "false"}`,
-      ...(autoDiagnose !== undefined
-        ? [`        autoDiagnose: ${autoDiagnose ? "true" : "false"}`]
-        : []),
+      // 诊断策略（检查来源 + 触发 + 投递）整体下发；JSON 是合法 YAML，插件侧按 DiagnosticsPolicy 读取
+      `        diagnostics: ${JSON.stringify(diagnostics)}`,
       ...(eventsToken
         ? [
             `        eventsToken: ${JSON.stringify(eventsToken)}`,
@@ -133,7 +124,8 @@ export function buildDshOverlay(options: {
       `      name: ${JSON.stringify(DSH_CLIENT_PACKAGE)}`,
       ...(clientAvailable ? [] : ["      disabled: true"]),
       "      config:",
-      `        enableDiagnostics: ${enableDiagnostics ? "true" : "false"}`,
+      // 诊断卡片视图：有诊断活动（工具或自动诊断）时才需要注册
+      `        enableDiagnostics: ${diagnostics.exposeTool || diagnostics.auto ? "true" : "false"}`,
       ...(theme !== "auto" ? [`        theme: ${JSON.stringify(theme)}`] : []),
     ].join("\n"),
   );

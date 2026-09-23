@@ -1,4 +1,5 @@
 export * from "./common/constants";
+export * from "./common/diagnostics";
 export * from "./common/logger-core";
 export * from "./node/node-logger";
 export * from "./node/process-logger";

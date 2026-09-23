@@ -124,12 +124,8 @@ describe("prepareOpenCodeRuntime", () => {
         }
       ).formatter;
 
-    expect(readFormatter(prepareOpenCodeRuntime(cwd, VITE_PORT, VITE_HOST, false, false))).toBe(
-      false,
-    );
-    expect(readFormatter(prepareOpenCodeRuntime(cwd, VITE_PORT, VITE_HOST, false, true))).toBe(
-      true,
-    );
+    expect(readFormatter(prepareOpenCodeRuntime(cwd, VITE_PORT, VITE_HOST, false))).toBe(false);
+    expect(readFormatter(prepareOpenCodeRuntime(cwd, VITE_PORT, VITE_HOST, true))).toBe(true);
     expect(readFormatter(prepareOpenCodeRuntime(cwd, VITE_PORT, VITE_HOST))).toBe(true);
   });
 
@@ -201,7 +197,7 @@ describe("startOpenCodeWeb 参数与环境变量", () => {
       logsApiUrl: "http://127.0.0.1:5097/logs",
       logFilesJson: '[{"path":"/tmp/a.log"}]',
       verbose: true,
-      enableLsp: true,
+      diagnosticsJson: '{"checks":[]}',
       vueDevtoolsApiUrl: "http://127.0.0.1:5097/vue",
     });
 
@@ -215,12 +211,12 @@ describe("startOpenCodeWeb 参数与环境变量", () => {
     expect(env[OPENCODE_ENV.VITE_LOGS_API_URL]).toBe("http://127.0.0.1:5097/logs");
     expect(env[OPENCODE_ENV.LOG_FILES_JSON]).toBe('[{"path":"/tmp/a.log"}]');
     expect(env[OPENCODE_ENV.VERBOSE]).toBe("1");
-    expect(env[OPENCODE_ENV.ENABLE_LINT]).toBe("1");
+    expect(env[OPENCODE_ENV.DIAGNOSTICS]).toBe('{"checks":[]}');
     expect(env[OPENCODE_ENV.VUE_DEVTOOLS_API_URL]).toBe("http://127.0.0.1:5097/vue");
     expect(env[OPENCODE_ENV.WORKSPACE]).toBe(cwd);
   });
 
-  it("显式 configDir 覆盖 CONFIG_DIR；verbose/enableLsp 缺省不设置", () => {
+  it("显式 configDir 覆盖 CONFIG_DIR；verbose/diagnostics 缺省不设置", () => {
     const cwd = makeTmpDir();
     const configDir = makeTmpDir();
     startOpenCodeWeb({
@@ -234,7 +230,7 @@ describe("startOpenCodeWeb 参数与环境变量", () => {
     const { env } = lastExecaCall()[2];
     expect(env[OPENCODE_ENV.CONFIG_DIR]).toBe(configDir);
     expect(env[OPENCODE_ENV.VERBOSE]).toBeUndefined();
-    expect(env[OPENCODE_ENV.ENABLE_LINT]).toBeUndefined();
+    expect(env[OPENCODE_ENV.DIAGNOSTICS]).toBeUndefined();
   });
 });
 

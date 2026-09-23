@@ -45,7 +45,6 @@ export interface ChromeProjectOptions {
   };
 }
 
-
 /**
  * 插件配置选项
  * @typeParam P - 当前 Provider 的专属配置段（schema 由具体 Provider 声明）
@@ -93,8 +92,6 @@ export interface PluginOptions<P extends Record<string, unknown> = Record<string
   language?: string;
   /** @deprecated 使用 providerOptions.settings */
   settings?: unknown;
-  /** @deprecated 使用 providerOptions.enableLsp */
-  enableLsp?: boolean;
   /** @deprecated 使用 providerOptions.enablePrettier */
   enablePrettier?: boolean;
 }

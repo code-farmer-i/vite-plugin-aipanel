@@ -85,7 +85,22 @@ aipanelAssistant({
         errors: true,
       },
     },
-    enableLsp: true, // 启用 LSP 诊断（TypeScript + ESLint），默认 true
+    diagnostics: {
+      // 不写 checks = 内置 ESLint + oxlint + 类型检查（项目装了什么跑什么）
+      // 自定义：内置预设（eslint / oxlint / stylelint / typecheck）与自研工具混搭
+      checks: [
+        { builtin: "eslint" },
+        { builtin: "oxlint" },
+        { builtin: "stylelint" }, // 只在编辑 .css/.scss/.less 时跑
+        { builtin: "typecheck" },
+        // { name: "自研检查", bin: "my-lint", args: ["--json", "{files}"], format: "aipanel-json" },
+      ],
+      auto: true, // 编辑后自动诊断
+      exposeTool: true, // 是否把 run_diagnostics 暴露给模型
+      severity: "error", // "error" 只报错误；"warning" 错误 + 警告
+      maxFindingsPerSection: 3, // 自动诊断每分区条数上限
+      maxMessageChars: 4000, // 自动诊断注入字符上限
+    },
     enablePrettier: true, // 启用代码格式化，默认 true
   },
 
@@ -100,34 +115,34 @@ aipanelAssistant({
 });
 ```
 
-> 旧写法（顶层 `language` / `settings` / `enableLsp` / `enablePrettier`）仍兼容，但已废弃，推荐统一迁移到 `providerOptions` 段。
+> 旧写法（顶层 `language` / `settings` / `enablePrettier`）仍兼容，但已废弃，推荐统一迁移到 `providerOptions` 段。
 
 ## 配置项速查表
 
-| 配置项                                    | 类型      | 默认值        | 说明                                                 |
-| ----------------------------------------- | --------- | ------------- | ---------------------------------------------------- |
-| `enabled`                                 | `boolean` | `true`        | 是否启用                                             |
-| `provider`                                | `string`  | `"default"`   | AI 引擎（`"default"`→opencode，另可选 `"deepseek"`） |
-| `webPort`                                 | `number`  | `5097`        | AIPanel Web 端口                                     |
-| `proxyPort`                               | `number`  | `6097`        | 代理端口                                             |
-| `hostname`                                | `string`  | `"127.0.0.1"` | 服务地址                                             |
-| `theme`                                   | `string`  | `"dark"`      | 主题：`light` / `dark` / `auto`                      |
-| `open`                                    | `boolean` | `false`       | 服务就绪后是否自动打开面板                           |
-| `hotkey`                                  | `string`  | `"ctrl+k"`    | 打开/关闭面板快捷键（如 `"ctrl+k"` / `"cmd+k"`）     |
-| `verbose`                                 | `boolean` | `false`       | 详细日志                                             |
-| `mcpOnly`                                 | `boolean` | `false`       | 纯净 MCP 模式                                        |
-| `warmupChromeMcp`                         | `boolean` | `true`        | 预热 Chrome MCP                                      |
-| `chromeDevtoolsPort`                      | `number`  | `9222`        | Chrome 调试端口                                      |
-| `chromeMcp`                               | `object`  | -             | Chrome DevTools MCP 透传与项目边界（见下）           |
-| `chromeMcp.project.allowOrigins`          | `array`   | -             | 额外可操作页面（精确 origin / glob / 正则）          |
-| `chromeMcp.project.includeExtensionPages` | `boolean` | `false`       | 允许扩展页进入可操作范围                             |
-| `chromeMcp.project.tools.extra`           | `array`   | -             | 追加官方工具（flag 自动推导注入）                    |
-| `chromeMcp.project.tools.deny`            | `array`   | -             | 隐藏默认白名单工具                                   |
-| `providerOptions.language`                | `string`  | -             | 界面语言                                             |
-| `providerOptions.settings`                | `object`  | -             | Provider 内部设置                                    |
-| `providerOptions.enableLsp`               | `boolean` | `true`        | LSP 诊断                                             |
-| `providerOptions.enablePrettier`          | `boolean` | `true`        | 代码格式化                                           |
-| `logFiles`                                | `array`   | -             | 自定义日志文件                                       |
+| 配置项                                    | 类型      | 默认值        | 说明                                                         |
+| ----------------------------------------- | --------- | ------------- | ------------------------------------------------------------ |
+| `enabled`                                 | `boolean` | `true`        | 是否启用                                                     |
+| `provider`                                | `string`  | `"default"`   | AI 引擎（`"default"`→opencode，另可选 `"deepseek"`）         |
+| `webPort`                                 | `number`  | `5097`        | AIPanel Web 端口                                             |
+| `proxyPort`                               | `number`  | `6097`        | 代理端口                                                     |
+| `hostname`                                | `string`  | `"127.0.0.1"` | 服务地址                                                     |
+| `theme`                                   | `string`  | `"dark"`      | 主题：`light` / `dark` / `auto`                              |
+| `open`                                    | `boolean` | `false`       | 服务就绪后是否自动打开面板                                   |
+| `hotkey`                                  | `string`  | `"ctrl+k"`    | 打开/关闭面板快捷键（如 `"ctrl+k"` / `"cmd+k"`）             |
+| `verbose`                                 | `boolean` | `false`       | 详细日志                                                     |
+| `mcpOnly`                                 | `boolean` | `false`       | 纯净 MCP 模式                                                |
+| `warmupChromeMcp`                         | `boolean` | `true`        | 预热 Chrome MCP                                              |
+| `chromeDevtoolsPort`                      | `number`  | `9222`        | Chrome 调试端口                                              |
+| `chromeMcp`                               | `object`  | -             | Chrome DevTools MCP 透传与项目边界（见下）                   |
+| `chromeMcp.project.allowOrigins`          | `array`   | -             | 额外可操作页面（精确 origin / glob / 正则）                  |
+| `chromeMcp.project.includeExtensionPages` | `boolean` | `false`       | 允许扩展页进入可操作范围                                     |
+| `chromeMcp.project.tools.extra`           | `array`   | -             | 追加官方工具（flag 自动推导注入）                            |
+| `chromeMcp.project.tools.deny`            | `array`   | -             | 隐藏默认白名单工具                                           |
+| `providerOptions.language`                | `string`  | -             | 界面语言                                                     |
+| `providerOptions.settings`                | `object`  | -             | Provider 内部设置                                            |
+| `providerOptions.diagnostics`             | `object`  | -             | 诊断配置（检查来源 / 触发 / 投递，两个 provider 通用，见下） |
+| `providerOptions.enablePrettier`          | `boolean` | `true`        | 代码格式化                                                   |
+| `logFiles`                                | `array`   | -             | 自定义日志文件                                               |
 
 ### 纯净 MCP 模式（mcpOnly）
 
@@ -277,16 +292,66 @@ aipanelAssistant({
 | -------------------------------- | --------- | ------ | ------------------------------------- |
 | `providerOptions.language`       | `string`  | -      | 界面语言（如 `"zh"`）                 |
 | `providerOptions.settings`       | `object`  | -      | OpenCode 内部设置（外观/权限/通知等） |
-| `providerOptions.enableLsp`      | `boolean` | `true` | LSP 诊断（TypeScript + ESLint）       |
+| `providerOptions.diagnostics`    | `object`  | -      | 诊断配置（见下）                      |
 | `providerOptions.enablePrettier` | `boolean` | `true` | 代码格式化                            |
 
 ### DeepSeek (dsh) 配置项速查
 
-| 配置项                              | 类型      | 默认值   | 说明                                   |
-| ----------------------------------- | --------- | -------- | -------------------------------------- |
-| `providerOptions.home`              | `string`  | `~/.dsh` | dsh 数据目录（`$DSH_HOME`）            |
-| `providerOptions.agentPreset`       | `string`  | -        | 新建会话的默认 Agent 预设              |
-| `providerOptions.permissionPreset`  | `string`  | -        | 默认权限预设                           |
-| `providerOptions.busyEnter`         | `string`  | -        | 繁忙时 Enter 行为（`queue` / `steer`） |
-| `providerOptions.enableDiagnostics` | `boolean` | `true`   | 诊断功能总开关（`run_diagnostics` 等） |
-| `providerOptions.autoDiagnose`      | `boolean` | `true`   | 编辑文件后自动诊断，以上下文消息插入   |
+| 配置项                             | 类型     | 默认值   | 说明                                   |
+| ---------------------------------- | -------- | -------- | -------------------------------------- |
+| `providerOptions.home`             | `string` | `~/.dsh` | dsh 数据目录（`$DSH_HOME`）            |
+| `providerOptions.agentPreset`      | `string` | -        | 新建会话的默认 Agent 预设              |
+| `providerOptions.permissionPreset` | `string` | -        | 默认权限预设                           |
+| `providerOptions.busyEnter`        | `string` | -        | 繁忙时 Enter 行为（`queue` / `steer`） |
+| `providerOptions.diagnostics`      | `object` | -        | 诊断配置（见下）                       |
+
+### 诊断配置（`providerOptions.diagnostics`，两个引擎通用）
+
+`checks` 是有序的检查列表；不写 = 内置 ESLint + oxlint + 类型检查（项目装了什么跑什么）。
+内置 linter 是**预设**，展开后与自定义检查走完全相同的执行与适配逻辑：
+
+```ts
+aipanelAssistant({
+  provider: "deepseek",
+  providerOptions: {
+    diagnostics: {
+      checks: [
+        { builtin: "eslint" }, // 内置预设：默认参数 / 输出格式 / 匹配扩展名都来自内置目录
+        { builtin: "oxlint" },
+        { builtin: "stylelint" }, // 默认只在 .css/.scss/.less 上跑
+        { builtin: "typecheck" }, // 类型检查（tsconfig 归并，项目本地 tsc/vue-tsc 优先）
+        {
+          // 自研工具：与内置同形
+          name: "自研检查",
+          bin: "my-lint", // 项目本地包的 bin（解析不到会明确报出）
+          args: ["--json", "{files}"], // {file} 逐文件 / {files} 一次传全部
+          projectArgs: ["--json", "src"], // 全量诊断时的 argv
+          format: "aipanel-json", // 或 adapter: "./tools/my-lint-adapter.mjs"
+          extensions: [".ts", ".tsx"],
+        },
+      ],
+      auto: true, // 编辑后自动诊断
+      exposeTool: true, // 是否把 run_diagnostics 暴露给模型
+      severity: "warning", // "error" 只报错误
+      maxFindingsPerSection: 3, // 自动诊断每分区条数上限
+      maxMessageChars: 4000, // 自动诊断注入字符上限
+    },
+  },
+});
+```
+
+| 检查字段          | 说明                                                                                      |
+| ----------------- | ----------------------------------------------------------------------------------------- |
+| `builtin`         | `eslint` / `oxlint` / `stylelint` / `typecheck` 预设（可局部覆盖其余字段）                |
+| `name`            | 自定义检查的分区标题                                                                      |
+| `bin` / `command` | 项目本地包的 bin / 任意可执行文件（argv 直传，不经 shell）                                |
+| `args`            | 默认 argv；`{file}` 逐文件一次、`{files}` 一次传全部                                      |
+| `projectArgs`     | 全量诊断（无目标文件）时的 argv；含占位符又没写它 → 全量时跳过该检查                      |
+| `extensions`      | 只在这些扩展名的文件上跑；缺省：内置 lint 为源码扩展名、自定义为不限                      |
+| `format`          | `text`（默认）/ `tsc` / `eslint-json` / `oxlint-json` / `stylelint-json` / `aipanel-json` |
+| `adapter`         | 自定义适配器模块（相对项目根，default export 一个函数，可 async）                         |
+| `run`             | `edit`（编辑后）/ `manual`（agent 调工具）/ `both`（默认）                                |
+| `timeoutMs`       | 单次命令超时，默认 60000                                                                  |
+
+> 排除规则（哪些文件不该被检查）交给底层工具自己：ESLint 自身 ignore、tsconfig `exclude`、
+> 或命令自己的 glob。AIPanel 不另立一套 glob 语义。

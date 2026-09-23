@@ -33,6 +33,5 @@ export const DEFAULT_OPENCODE_SETTINGS = {
 
 /** OpenCode Provider 专属配置默认值（插件组装 config 时使用） */
 export const DEFAULT_OPENCODE_PROVIDER_OPTIONS: OpenCodeProviderOptions = {
-  enableLsp: true,
   enablePrettier: true,
 };

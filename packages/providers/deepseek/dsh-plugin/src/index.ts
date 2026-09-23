@@ -34,24 +34,22 @@ import type { ContextFormed, MessageId, MessageSourceMap, UserMessage } from "@d
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { JsonValue } from "@deepseek-ai/dsh-util-values";
 import {
-  runAllChecks,
-  runAllChecksForFiles,
-  runProjectDiagnostics,
-  isJsFile,
+  DEFAULT_DIAGNOSTICS_POLICY,
+  collectDiagnostics,
   SEVERITY_ERROR,
   CONTEXT_API_PATH,
   createLogger,
   DIAGNOSTICS_TOOL_DESCRIPTION,
-  formatDiagnosticsSections,
-  lintSectionTitle,
-  tscSectionTitle,
+  renderDiagnostics,
+  resolveDiagnosticsPolicy,
+  runDiagnostics,
   type DiagnosticItem,
+  type DiagnosticsPolicy,
   type DiagnosticsResult,
-  type EslintOutput,
-  type TscResult,
+  type DiagnosticsTarget,
 } from "@aipanel/core/node";
 import type { AIPanelDiagnosticEntry, SelectedElement } from "@aipanel/core";
-import { MUTATING_TOOLS, OPENCODE_ENV, parseNodeMentions } from "@aipanel/core";
+import { MUTATING_TOOLS, parseNodeMentions } from "@aipanel/core";
 import type { SettingsForms } from "@deepseek-ai/dsh-settings";
 import { setupEventRelay } from "./events-relay";
 
@@ -91,17 +89,10 @@ export interface AipanelPluginConfig {
   /** 宿主事件推送路径（由 overlay 从 @aipanel/core 的 HOST_EVENTS_API_PATH 常量注入） */
   eventsPath?: string;
   /**
-   * 编辑后是否自动补跑诊断。
-   * 与 opencode 对齐：默认关闭，仅当显式配置为 true 或环境变量
-   * OPENCODE_ENABLE_LINT=1 时开启。
+   * 诊断配置（检查来源 + 触发 + 投递；契约见 @aipanel/core 的 DiagnosticsPolicy）。
+   * provider 侧已归一化成完整策略；这里再兜一层（直接加载插件、无 overlay 时也安全）。
    */
-  autoDiagnose?: boolean;
-  /**
-   * 诊断功能总开关（provider option enableDiagnostics，默认开启，对齐 opencode enableLsp）。
-   * false 时不注册 run_diagnostics 工具与编辑后自动诊断逻辑。
-   * overlay 始终显式注入；缺失配置时按 fail-closed 处理（不注入）。
-   */
-  enableDiagnostics?: boolean;
+  diagnostics?: Partial<DiagnosticsPolicy>;
   /**
    * 默认 Agent 预设（provider option agentPreset；对应 dsh settings agent-presets.default）。
    * 显式配置时本插件在启动期经 ctx.settings.update 写入，替代 provider 启动后的 RPC settings/mutate。
@@ -151,12 +142,6 @@ function buildPluginMessage(text: string, notice?: NoticeContext): UserMessage {
 /** 每个 agent 本步编辑过的源文件：post-execute 登记，pre-step 收尾诊断后清空 */
 type PendingEdits = WeakMap<Agent, Set<string>>;
 
-/** 自动诊断上下文消息的字符上限：超出即截断，避免整段 tsc 原始输出灌进下一步 */
-const DIAGNOSTICS_MESSAGE_MAX_CHARS = 4000;
-
-/** 每个文件分区最多列出的发现条数：每步都投递，故以摘要控制重复成本（完整结果走手动 run_diagnostics） */
-const MAX_FINDINGS_PER_SECTION = 3;
-
 /** 取写类工具的目标文件（dsh 官方写工具是 snake_case `file_path`，兼容 camelCase） */
 function editTarget(exec: ToolExecution): string | undefined {
   const rawArgs = exec.arguments as { file_path?: unknown; filePath?: unknown } | undefined;
@@ -166,7 +151,9 @@ function editTarget(exec: ToolExecution): string | undefined {
 
 /**
  * 登记一次成功的写类编辑（原生调用与 PTC 子调度共用）：
- * 只记录 agent 本步编辑过的可诊断文件，失败结果与非 accept 决策跳过。
+ * 只记录 agent 本步编辑过的文件——**不在这里按扩展名过滤**，跑哪些检查由各 check 的
+ * extensions 决定（这样 .css → stylelint、.ts → ESLint 之类可以按文件类型分流）。
+ * 失败结果与非 accept 决策跳过。
  */
 function registerPendingEdit(
   pending: PendingEdits,
@@ -179,7 +166,7 @@ function registerPendingEdit(
   if (result.isError) return;
   if (decision.kind !== "accept") return;
   const filePath = editTarget(exec);
-  if (!filePath || !isJsFile(filePath)) return;
+  if (!filePath) return;
   const { agent } = exec;
   if (!agent) return;
   let files = pending.get(agent);
@@ -191,43 +178,34 @@ function registerPendingEdit(
 }
 
 /** 超出上限即截断并说明（完整结果仍可用 run_diagnostics 获取） */
-function truncateDiagnostics(text: string): string {
-  if (text.length <= DIAGNOSTICS_MESSAGE_MAX_CHARS) return text;
-  return `${text.slice(0, DIAGNOSTICS_MESSAGE_MAX_CHARS)}\n\n…（诊断输出过长，已截断；可调用 run_diagnostics 查看完整结果）`;
+function truncateDiagnostics(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n\n…（诊断输出过长，已截断；可调用 run_diagnostics 查看完整结果）`;
 }
 
 /**
- * 收尾诊断：对本次登记的文件各跑一次检查，聚合成一条文本
- * （复用 run_diagnostics 的 formatDiagnosticsSections 分区格式）。
+ * 收尾诊断：对本步登记的文件跑一次配置的检查，渲染成一条有界摘要文本
+ * （分区与 `### 文件` 结构由 renderDiagnostics 统一给出）。
  * 不做内容去重：只要文件仍有发现就每个 step 都投递，避免"仍未修复"与"已修好"都表现为静默；
- * 重复成本由每分区发现条数上限折叠成有界摘要，完整结果交给手动 run_diagnostics。
+ * 重复成本由 maxFindingsPerSection 折叠成有界摘要，完整结果交给手动 run_diagnostics。
  * 返回空串表示本步没有需要投递的发现。
  */
-async function collectPendingDiagnostics(pending: Set<string>, cwd: string): Promise<string> {
+async function collectPendingDiagnostics(
+  pending: Set<string>,
+  cwd: string,
+  policy: DiagnosticsPolicy,
+): Promise<string> {
   const files = [...pending];
   // 一次批量检查：类型检查按 tsconfig 项目合并为一次 --build，避免 N 个文件各跑一遍项目构建
-  const checks = await runAllChecksForFiles(files, cwd).catch(
-    (): Map<string, DiagnosticsResult> => new Map(),
+  const result = await runDiagnostics({ kind: "edited", files, cwd }, policy, "edit").catch(
+    (): DiagnosticsResult => ({ sections: [] }),
   );
-  const empty: DiagnosticsResult = {
-    eslintOutput: {},
-    tscOutput: { rawOutput: "", exitCode: 0 },
-  };
-  const blocks: string[] = [];
-  for (const file of files) {
-    const { eslintOutput, tscOutput } = checks.get(file) ?? empty;
-    // 只输出有发现的分区；空串表示该文件已干净（不刷占位噪音），下一个 step 若仍编辑它也不投递
-    const section = formatDiagnosticsSections(
-      `### ${path.relative(cwd, file)}`,
-      eslintOutput,
-      tscOutput,
-      { onlyFindings: true, maxFindingsPerSection: MAX_FINDINGS_PER_SECTION },
-    );
-    if (!section) continue;
-    blocks.push(section);
-  }
-  return blocks.length > 0
-    ? truncateDiagnostics(`自动诊断（编辑后）：\n\n${blocks.join("\n\n")}`)
+  const text = renderDiagnostics(result, {
+    onlyFindings: true,
+    maxFindingsPerSection: policy.maxFindingsPerSection,
+  });
+  return text
+    ? truncateDiagnostics(`自动诊断（编辑后）：\n\n${text}`, policy.maxMessageChars)
     : "";
 }
 
@@ -255,26 +233,19 @@ function toDiagnosticEntries(items: DiagnosticItem[]): AIPanelDiagnosticEntry[] 
   }));
 }
 
-/** 由诊断引擎结果组装 run_diagnostics 的 canonical 值（文本分区 + 结构化诊断） */
-function buildDiagnosticsCanonical(
-  title: string,
-  eslintOutput: EslintOutput,
-  tscOutput: TscResult,
-): DiagnosticsCanonical {
+/** 由诊断结果组装 run_diagnostics 的 canonical 值（文本分区 + 结构化诊断） */
+function buildDiagnosticsCanonical(title: string, result: DiagnosticsResult): DiagnosticsCanonical {
   return {
     title,
-    sections: [
-      { title: lintSectionTitle(eslintOutput), text: eslintOutput.text || "没有发现问题" },
-      { title: tscSectionTitle(tscOutput), text: tscOutput.rawOutput.trim() || "没有发现类型错误" },
-    ],
-    diagnostics: [
-      ...toDiagnosticEntries(eslintOutput.diagnostics ?? []),
-      ...toDiagnosticEntries(tscOutput.diagnostics ?? []),
-    ],
+    sections: result.sections.map((section) => ({
+      title: section.target ? `${section.target} · ${section.name}` : section.name,
+      text: section.text ?? "没有发现问题",
+    })),
+    diagnostics: toDiagnosticEntries(collectDiagnostics(result)),
   };
 }
 
-/** 从 canonical 值重组模型可见文本（与 formatDiagnosticsSections 分区格式一致） */
+/** 从 canonical 值重组模型可见文本（分区格式与 renderDiagnostics 一致） */
 function renderDiagnosticsText(value: DiagnosticsCanonical): string {
   const body = value.sections.map((s) => `## ${s.title}\n\n${s.text}`).join("\n\n");
   return body ? `${value.title}\n\n${body}` : value.title;
@@ -365,10 +336,10 @@ export function applyProviderSettings(ctx: Context, config: AipanelPluginConfig)
 
 export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
   const cwd = config.cwd ?? process.cwd();
-  // 诊断功能总开关：关闭时不注入 run_diagnostics 工具与自动诊断逻辑
-  const enableDiagnostics = config.enableDiagnostics ?? false;
-  // 与 opencode 对齐：默认关闭自动诊断，OPENCODE_ENABLE_LINT=1（或显式配置）开启
-  const autoDiagnose = config.autoDiagnose ?? process.env[OPENCODE_ENV.ENABLE_LINT] === "1";
+  // 诊断策略：provider 已归一化，这里再兜一层（直接加载插件、无 overlay 时也安全）
+  const policy = resolveDiagnosticsPolicy([DEFAULT_DIAGNOSTICS_POLICY, config.diagnostics], (message) =>
+    log.warn(message),
+  );
   const vitePort = config.vitePort ?? 0;
   // viteHost 单一来源（overlay 注入的 config.viteHost），不做 127.0.0.1 向下兼容；
   // 缺失时由事件中继明确报错停用，避免静默把事件推到错误地址。
@@ -377,8 +348,8 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
 
   const tools: ToolRuntime = ctx.tools;
 
-  // === 1) 审查工具：手动触发诊断（仅在 enableDiagnostics 开启时注册） ===
-  if (enableDiagnostics) {
+  // === 1) 审查工具：手动触发诊断（仅在策略开启工具时注册） ===
+  if (policy.exposeTool) {
     // 手写 ToolDefinition（等价于 defineTool 产物），避免运行时依赖 @deepseek-ai/dsh-tools
     const diagnosticsTool: ToolDefinition = {
       name: "run_diagnostics",
@@ -430,7 +401,7 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
           },
           required: ["title", "sections", "diagnostics"],
         },
-        // canonical → 模型可见文本（## ESLint / ## vue-tsc 分区，与 formatDiagnosticsSections 一致）
+        // canonical → 模型可见文本（分区标题由配置的检查给出，与 renderDiagnostics 一致）
         render: (_args: unknown, value) => [
           { type: "text", text: renderDiagnosticsText(value as unknown as DiagnosticsCanonical) },
         ],
@@ -442,25 +413,28 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
       },
       async execute(args: unknown) {
         const filePath = (args as { filePath?: unknown } | undefined)?.filePath;
+        let target: DiagnosticsTarget;
+        let title: string;
         if (typeof filePath === "string" && filePath) {
           // 单文件诊断（与 opencode 一致：先校验文件存在）
           const resolved = path.resolve(cwd, filePath);
           if (!fs.existsSync(resolved)) throw new Error(`文件不存在: ${resolved}`);
-          const { eslintOutput, tscOutput } = await runAllChecks(resolved, cwd);
-          return buildDiagnosticsCanonical(
-            `诊断结果: ${path.relative(cwd, resolved)}`,
-            eslintOutput,
-            tscOutput,
-          );
+          target = { kind: "file", file: resolved, cwd };
+          title = `诊断结果: ${path.relative(cwd, resolved)}`;
+        } else {
+          // 全量诊断（与 opencode 一致：根 tsconfig 优先，否则逐子目录）
+          target = { kind: "project", cwd };
+          title = "全量诊断结果";
         }
-        // 全量诊断（与 opencode 一致：根 tsconfig 优先，否则逐子目录）
-        const { eslintOutput, tscOutput } = await runProjectDiagnostics(cwd);
-        return buildDiagnosticsCanonical("全量诊断结果", eslintOutput, tscOutput);
+        return buildDiagnosticsCanonical(title, await runDiagnostics(target, policy, "manual"));
       },
     };
     tools.register(diagnosticsTool);
+  } // 审查工具注册结束
 
-    // === 2) 编辑后自动诊断（只登记，不改工具结果；step 边界统一收尾） ===
+  // === 2) 编辑后自动诊断（只登记，不改工具结果；step 边界统一收尾） ===
+  // 与工具暴露与否相互独立：只装自动诊断、不给模型工具，或反之，都由策略决定。
+  if (policy.auto) {
     // 每个 agent 本步编辑过的源文件：post-execute 登记，pre-step 送模型前诊断后清空
     const pendingEdits: PendingEdits = new WeakMap();
 
@@ -472,7 +446,6 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
         next: () => Promise<PostToolDecision>,
       ) => {
         const decision = await next();
-        if (!autoDiagnose) return decision;
         // 原生调用与 PTC 子调度同一条路径：只登记目标文件，检查推迟到 step 边界。
         // 一次程序/一步里的多次编辑因此不再各自触发昂贵的 tsc --build，也不再各发一条消息。
         registerPendingEdit(pendingEdits, exec, result, decision, cwd);
@@ -487,13 +460,12 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
       "agent/pre-step",
       async ({ agent }, next) => {
         const decision = await next();
-        if (!autoDiagnose) return decision;
         const files = pendingEdits.get(agent);
         if (!files || files.size === 0) return decision;
         pendingEdits.delete(agent);
         // step 被否决：本次登记随 turn 终止丢弃，避免遗留到下一个 turn
         if (decision.kind === "reject") return decision;
-        const text = await collectPendingDiagnostics(files, cwd);
+        const text = await collectPendingDiagnostics(files, cwd, policy);
         if (!text) return decision;
         return {
           ...decision,
@@ -508,7 +480,7 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
       },
       { prepend: true },
     );
-  } // 诊断功能（run_diagnostics + 自动诊断）注册结束
+  } // 编辑后自动诊断注册结束
 
   // === 3) 选中元素上下文注入（按用户消息中的 @节点[id] 标记精确反查） ===
   // 用户在 AIPanel 页面选中元素后，client 侧把元素（带节点 id）写入核心层 context 端点，

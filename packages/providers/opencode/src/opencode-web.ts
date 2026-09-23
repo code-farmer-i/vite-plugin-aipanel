@@ -20,12 +20,11 @@ export function prepareOpenCodeRuntime(
   cwd: string,
   vitePort: number,
   viteHost: string,
-  enableLsp?: boolean,
   enablePrettier?: boolean,
 ): string {
   const cacheDir = path.join(cwd, AIPANEL_CACHE_DIR, "opencode");
 
-  log.debug("Setting up OpenCode runtime", { cacheDir, enableLsp });
+  log.debug("Setting up OpenCode runtime", { cacheDir, enablePrettier });
 
   if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir, { recursive: true });
@@ -72,7 +71,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     logsApiUrl,
     logFilesJson,
     verbose,
-    enableLsp,
+    diagnosticsJson,
     vueDevtoolsApiUrl,
   } = options;
   const stateDir = createStateDirectory(cwd);
@@ -84,7 +83,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     logsApiUrl,
     logFilesJson,
     verbose,
-    enableLsp,
+    hasDiagnostics: diagnosticsJson !== undefined,
   });
 
   const env = buildProcessEnv(
@@ -94,7 +93,7 @@ export function startOpenCodeWeb(options: WebOptions): ResultPromise {
     logsApiUrl,
     logFilesJson,
     verbose,
-    enableLsp,
+    diagnosticsJson,
     vueDevtoolsApiUrl,
     cwd,
   );
@@ -194,7 +193,7 @@ function buildProcessEnv(
   logsApiUrl?: string,
   logFilesJson?: string,
   verbose?: boolean,
-  enableLsp?: boolean,
+  diagnosticsJson?: string,
   vueDevtoolsApiUrl?: string,
   workspace?: string,
 ): Record<string, string> {
@@ -232,9 +231,9 @@ function buildProcessEnv(
     log.debug("Set OPENCODE_VERBOSE=1");
   }
 
-  if (enableLsp) {
-    env[OPENCODE_ENV.ENABLE_LINT] = "1";
-    log.debug("Set OPENCODE_ENABLE_LINT=1");
+  if (diagnosticsJson) {
+    env[OPENCODE_ENV.DIAGNOSTICS] = diagnosticsJson;
+    log.debug("Set OPENCODE_DIAGNOSTICS");
   }
 
   if (vueDevtoolsApiUrl) {

@@ -32,7 +32,7 @@ describe("DEFAULT_OPENCODE_SETTINGS", () => {
 });
 
 describe("DEFAULT_OPENCODE_PROVIDER_OPTIONS", () => {
-  it("默认开启 LSP 与 prettier", () => {
-    expect(DEFAULT_OPENCODE_PROVIDER_OPTIONS).toEqual({ enableLsp: true, enablePrettier: true });
+  it("默认开启 prettier（诊断策略默认值单一来源在 @aipanel/core）", () => {
+    expect(DEFAULT_OPENCODE_PROVIDER_OPTIONS).toEqual({ enablePrettier: true });
   });
 });

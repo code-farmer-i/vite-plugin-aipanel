@@ -73,7 +73,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
  * 同步执行子进程。
  * capture 时输出走管道（供读取），否则继承父进程 stdio——**发布必须继承**，
- * 否则 pnpm 判定为非交互终端，2FA 场景会直接 ERR_PNPM_OTP_NON_INTERACTIVE。
+ * 否则 pnpm 判定为非交互终端，需要交互确认的环节会直接失败。
  */
 function sh(
   command,
@@ -252,7 +252,6 @@ function parseArgs(argv) {
     skipRehearsal: false,
     skipDocs: false,
     allowDirty: false,
-    otp: process.env.NPM_OTP ?? process.env.NPM_CONFIG_OTP ?? "",
     target: "",
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -285,9 +284,6 @@ function parseArgs(argv) {
       case "--allow-dirty":
         options.allowDirty = true;
         break;
-      case "--otp":
-        options.otp = value();
-        break;
       case "--target":
         options.target = value();
         break;
@@ -307,14 +303,12 @@ function printUsage() {
   pnpm run release:dry-run                彩排：改版本号 + 构建 + publish --dry-run，不上传
 
   node scripts/release.js --target 1.4.0 --yes
-  node scripts/release.js --otp 123456
 
 选项：
   --resume          读取 ${STATE_NAME} 续跑，不重新选择版本号
   --target <ver>    直接指定目标版本号（跳出版本选择）
   -y, --yes         跳过确认（配合 --target 可无人值守）
   --dry-run         只彩排不发布，结束后回滚本地版本号
-  --otp <code>      npm 2FA 验证码（也可用 NPM_OTP 环境变量）
   --skip-build      续跑时跳过构建
   --skip-rehearsal  跳过 dry-run 彩排（不推荐）
   --skip-docs       跳过文档部署
@@ -421,9 +415,8 @@ function build() {
   console.log("   ✅ 构建完成");
 }
 
-function publishArgs({ otp, dryRun }) {
+function publishArgs({ dryRun }) {
   const args = ["-r", "publish", "--access", "public", "--no-git-checks", `--registry=${REGISTRY}`];
-  if (otp) args.push(`--otp=${otp}`);
   if (dryRun) args.push("--dry-run");
   return args;
 }
@@ -446,24 +439,11 @@ function rehearse(options) {
  */
 async function publish(options, targetVersion) {
   console.log("\n📤 发布（pnpm publish 会自动跳过已存在的版本）…");
-  let args = publishArgs(options);
+  const args = publishArgs(options);
   for (let attempt = 1; attempt <= MAX_PUBLISH_ATTEMPTS; attempt += 1) {
     const result = sh("pnpm", args, { allowFailure: true });
     if (result.status === 0) return;
     if (result.signal) throw new ReleaseError(`发布进程被 ${result.signal} 中断`);
-    // 这个 registry 要求 2FA：交互环境下给一次补验证码的机会，避免白白重试三次
-    if (attempt === 1 && !options.otp && !options.yes && process.stdin.isTTY) {
-      const { otp } = await prompt({
-        type: "password",
-        name: "otp",
-        message: "若 npm 要求 2FA 验证码，在此输入（直接回车跳过）",
-      });
-      if (otp && otp.trim()) {
-        options.otp = otp.trim();
-        args = publishArgs(options);
-        console.log("   已带上验证码重试…");
-      }
-    }
     const progress = await verifyPublished(targetVersion, FAILURE_PROBE);
     console.log(
       `\n⚠️  第 ${attempt} 次发布中断：registry 上已有 ${progress.published.length}/${progress.packages.length} 个包`,

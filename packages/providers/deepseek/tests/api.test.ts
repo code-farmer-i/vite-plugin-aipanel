@@ -41,6 +41,8 @@ const OTHER = "/work/other";
 function session(id: string, overrides: Partial<SessionSummary> = {}): SessionSummary {
   return {
     sessionId: brandString<SessionId>(id),
+    /** 官方字段：本会话当前是否持有活跃 Agent。列表可见性不看它，夹具取 false */
+    agentAvailable: false,
     updatedAt: 0,
     running: false,
     blank: false,
@@ -60,11 +62,12 @@ function workspaceView(path: string, sessionIds: string[]): WorkspaceView {
   };
 }
 
-/** workspace/follow baseline 夹具（archivedSessionIds 同属官方 Branded SessionId） */
+/** workspace/follow baseline 夹具（archivedSessionIds 同属官方 Branded SessionId；pin 集与可见性无关） */
 function baseline(items: WorkspaceView[], archived: string[] = []): WorkspaceBaseline {
   return {
     items,
     archivedSessionIds: archived.map((id) => brandString<SessionId>(id)),
+    pinnedSessionIds: [],
   };
 }
 

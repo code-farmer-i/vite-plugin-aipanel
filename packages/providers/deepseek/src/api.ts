@@ -228,7 +228,8 @@ export class DeepSeekAPI {
         log.debug(`Attempt ${attempt + 1}/${retries}`, { method: "listSessions" });
 
         // 1) workspace/follow baseline：按 path 精确匹配目录，取该工作区 sessionIds 与全局归档集
-        //（value 是 { items:[...], archivedSessionIds:[...] } 容器，不是数组）。
+        //（value 是 { items:[...], archivedSessionIds:[...], pinnedSessionIds:[...] } 容器，不是数组；
+        // pin 集不参与可见性，仅随官方类型一并取出）。
         const workspaces = await this.fetchWorkspaceBaseline();
         const matchedWorkspace = workspaces.items.find((w) => w.path === projectDir);
         const ownedByWorkspace = new Set(matchedWorkspace?.sessionIds ?? []);
@@ -315,7 +316,8 @@ export class DeepSeekAPI {
   }
 
   /**
-   * 取 workspace/follow 流的 baseline（等价旧 workspace.list 的快照：{ items, archivedSessionIds }）。
+   * 取 workspace/follow 流的 baseline（等价旧 workspace.list 的快照：
+   * { items, archivedSessionIds, pinnedSessionIds }）。
    * dsh 0.1.2+ 无 workspace.list RPC，工作区发现走 /api/remote.mux 上的 workspace/follow 流。
    * 直连 dsh web（webPort）并携带 browser-session Cookie（原生 WebSocket 支持自定义请求头），
    * 打开流读到首个 baseline 帧即关闭；启动早期 webPort 已就绪，不存在代理时序竞态。
@@ -382,6 +384,7 @@ export class DeepSeekAPI {
             finish(undefined, {
               items: baseline.items ?? [],
               archivedSessionIds: baseline.archivedSessionIds ?? [],
+              pinnedSessionIds: baseline.pinnedSessionIds ?? [],
             });
           } else if (msg.type === "error") {
             finish(new Error(`dsh workspace/follow failed: ${msg.error?.message ?? "unknown"}`));

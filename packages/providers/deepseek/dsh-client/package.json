@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@aipanel/core": "workspace:*",
-    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/cordis": "~4.0.4",
     "@deepseek-ai/dsh-api-session-controller": "^0.1.7-alpha.2",
     "@deepseek-ai/dsh-client-store": "^0.1.7-alpha.2",
     "@deepseek-ai/dsh-client-ui-conversation": "^0.1.7-alpha.2",

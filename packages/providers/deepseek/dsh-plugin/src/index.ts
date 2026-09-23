@@ -5,7 +5,7 @@
  *  1. run_diagnostics 审查工具（对标 opencode 质量门禁，手动触发 ESLint + 类型检查）
  *  2. 编辑后自动诊断（不做回滚）：tools/post-execute 只按 agent 登记本步编辑过的源文件，
  *     不在这里检查、也不改工具结果；agent/pre-step 在本步送模型前统一诊断一次，插入一条
- *     plugin 上下文消息（form: notice）。不做"与上次相同就不发"的去重——那会让"仍未修复"
+ *     本插件的上下文消息（kind: aipanel，form: notice）。不做"与上次相同就不发"的去重——那会让"仍未修复"
  *     与"已修好"同样表现为静默；改为每个 step 都投递有界摘要（每分区发现条数上限），
  *     完整结果仍由手动 run_diagnostics 给出。原生编辑与 PTC（run_code）子调度共用同一路径，
  *     无需按 rootCallId 分叉
@@ -30,7 +30,7 @@ import type {
   ToolExecutionResult,
   ToolRuntime,
 } from "@deepseek-ai/dsh-tools";
-import type { UserMessage } from "@deepseek-ai/dsh-llm";
+import type { ContextFormed, MessageId, MessageSourceMap, UserMessage } from "@deepseek-ai/dsh-llm";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { JsonValue } from "@deepseek-ai/dsh-util-values";
 import {
@@ -52,10 +52,26 @@ import {
 } from "@aipanel/core/node";
 import type { AIPanelDiagnosticEntry, SelectedElement } from "@aipanel/core";
 import { MUTATING_TOOLS, OPENCODE_ENV, parseNodeMentions } from "@aipanel/core";
-import type { SettingsProvider } from "@deepseek-ai/dsh-settings";
+import type { SettingsForms } from "@deepseek-ai/dsh-settings";
 import { setupEventRelay } from "./events-relay";
 
-export const name = "aipanel";
+/**
+ * 本插件在 dsh 会话格式 v4 中的消息归属声明。
+ *
+ * v4 起废弃了共用的 `plugin` 包装：`MessageSource.kind` 必须由生产者自己声明
+ * （见 dsh-llm `MessageSourceMap` 文档），落到日志里的 `kind: "plugin"` 会在
+ * 写入/读取时被 v4 准入拒绝（format v4 message requires a producer-owned source kind）。
+ */
+declare module "@deepseek-ai/dsh-llm" {
+  interface MessageSourceMap {
+    aipanel: { kind: "aipanel" } & ContextFormed;
+  }
+}
+
+/** 生产者自有的消息来源 kind（与 cordis 插件名同源，二者共同标识本插件） */
+const SOURCE_KIND = "aipanel";
+
+export const name = SOURCE_KIND;
 export const inject = ["tools"];
 
 const log = createLogger("DshPlugin");
@@ -114,20 +130,22 @@ function buildNodeContext(e: SelectedElement): string {
   return lines.join("\n");
 }
 
-/** dsh-llm 的 `notice` 形式要求携带一行 summary（字段形状由官方类型约束） */
-interface PluginNoticeMeta {
-  form: "notice";
-  summary: string;
-}
+/** 本插件可用的官方 `notice` 上下文形式：要求携带一行 summary */
+type NoticeContext = Extract<ContextFormed, { form: "notice" }>;
 
-/** 构造 plugin 来源的用户上下文消息（节点上下文与编辑后诊断共用；notice 元数据可选） */
-function buildPluginMessage(text: string, notice?: PluginNoticeMeta): UserMessage {
+/** 构造归属本插件的用户上下文消息（节点上下文与编辑后诊断共用；notice 元数据可选） */
+function buildPluginMessage(text: string, notice?: NoticeContext): UserMessage {
+  // kind 取自上面声明的 MessageSourceMap，形状随官方 ContextFormed 变化；
+  // MessageId 是编译期品牌，本插件零运行时 @deepseek-ai 依赖，故按同形断言而非调官方构造函数。
+  const source: MessageSourceMap[typeof SOURCE_KIND] = notice
+    ? { kind: SOURCE_KIND, form: "notice", summary: notice.summary }
+    : { kind: SOURCE_KIND };
   return {
     role: "user",
-    id: randomUUID(),
+    id: randomUUID() as MessageId,
     content: [{ type: "text", text }],
-    source: { kind: "plugin", plugin: name, ...notice },
-  } as UserMessage;
+    source,
+  };
 }
 
 /** 每个 agent 本步编辑过的源文件：post-execute 登记，pre-step 收尾诊断后清空 */
@@ -283,9 +301,10 @@ export function applyProviderSettings(ctx: Context, config: AipanelPluginConfig)
   }
   if (pending.length === 0) return;
 
-  // 官方 dsh settings 服务（@deepseek-ai/dsh-settings）：describe() 判定命名空间是否已注册，
-  // update() 按命名空间写用户设置；命名空间注册顺序可能晚于本插件 apply，见下方轮询。
-  const settings = ctx.get("settings") as SettingsProvider | undefined;
+  // 官方 dsh settings 服务（@deepseek-ai/dsh-settings）：service 类型经官方 Context 增强注入，
+  // describe() 判定命名空间是否已注册，update() 按命名空间写用户设置；命名空间注册顺序可能晚于
+  // 本插件 apply，见下方轮询。
+  const settings: SettingsForms | undefined = ctx.get("settings");
   if (!settings) {
     log.warn("settings service unavailable; provider settings not applied via plugin");
     return;
@@ -461,7 +480,7 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
       },
     );
 
-    // step 边界收尾：对本步编辑过的文件统一诊断一次，插入一条 plugin 上下文消息（form: notice）。
+    // step 边界收尾：对本步编辑过的文件统一诊断一次，插入一条本插件上下文消息（kind: aipanel，form: notice）。
     // 发现未变也照样投递（摘要形态），因此"有通知 = 仍有问题、无通知 = 已干净"；消息随本 step
     // 的决策持久化给模型，原生编辑与 PTC 子调度走同一路径，不再需要按 rootCallId 分叉的聚合逻辑。
     ctx.on(
@@ -495,7 +514,7 @@ export function apply(ctx: Context, config: AipanelPluginConfig = {}) {
   // 用户在 AIPanel 页面选中元素后，client 侧把元素（带节点 id）写入核心层 context 端点，
   // dsh-client 把引用序列化为 `@节点[n<id>]` 标记铺进会话文本。这里在 agent/pre-step
   // 解析本次 step 用户消息中的标记，从核心层 context 端点按 id 反查对应元素，
-  // 只注入用户实际引用的节点上下文（plugin source），并移除已注入 id 防止后续 step 重复。
+  // 只注入用户实际引用的节点上下文（kind: aipanel），并移除已注入 id 防止后续 step 重复。
   // 注入姿势与官方 session-reference 一致：改写 decision.messages，在引用后追加上下文消息。
   if (vitePort > 0) {
     const contextBase = `http://${viteHost}:${vitePort}${contextApiPath}`;

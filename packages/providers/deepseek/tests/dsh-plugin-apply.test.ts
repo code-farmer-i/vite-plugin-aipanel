@@ -8,9 +8,9 @@
  *   - tools/post-execute 自动诊断登记：默认关闭、非写工具/失败结果/非 accept 决策/非 JS 文件
  *     不登记，登记阶段不跑检查（检查推迟到 step 边界）；
  *   - agent/pre-step 收尾诊断：对本步编辑过的文件统一诊断一次，发现未变也每步插入一条
- *     notice 形式的 plugin 上下文消息（不再按指纹去重，改以有界摘要控制成本）；
+ *     notice 形式、kind 为 aipanel 的上下文消息（不再按指纹去重，改以有界摘要控制成本）；
  *     原生编辑与 PTC 子调度共用同一路径；
- *   - agent/pre-step 节点上下文注入：按 @节点[id] 反查、追加 plugin 消息、注入后清空端点。
+ *   - agent/pre-step 节点上下文注入：按 @节点[id] 反查、追加本插件上下文消息、注入后清空端点。
  *
  * Stub 策略：跑在最小 ctx 桩上（tools/on/get），@aipanel/core/node 的诊断引擎面
  * （runAllChecks/runAllChecksForFiles/runProjectDiagnostics/isJsFile）与日志面 vi.mock 隔离，端点用
@@ -347,8 +347,7 @@ describe("apply: agent/pre-step 收尾诊断（每步投递摘要 + 聚合）", 
     expect(decision.messages).toHaveLength(1);
     const message = decision.messages[0];
     expect(message?.source).toEqual({
-      kind: "plugin",
-      plugin: "aipanel",
+      kind: "aipanel",
       form: "notice",
       summary: "编辑后自动诊断：2 个文件",
     });
@@ -550,7 +549,7 @@ describe("apply: agent/pre-step 节点上下文注入", () => {
     messages: [{ role: "user", source: { kind: "user" }, content: [{ type: "text", text }] }],
   });
 
-  it("按 @节点[id] 反查元素并追加 plugin 上下文消息，随后清空端点", async () => {
+  it("按 @节点[id] 反查元素并追加本插件上下文消息，随后清空端点", async () => {
     const fetchMock = vi.fn(async (_url: string, init?: { method?: string }) => {
       if (init?.method === "DELETE") return { ok: true };
       return {
@@ -570,7 +569,7 @@ describe("apply: agent/pre-step 节点上下文注入", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(decision.messages).toHaveLength(2);
     const injected = decision.messages[1];
-    expect(injected.source).toEqual({ kind: "plugin", plugin: "aipanel" });
+    expect(injected.source).toEqual({ kind: "aipanel" });
     expect(injected.content?.[0]?.text).toContain("节点 ID：n1");
     expect(injected.content?.[0]?.text).toContain("/work/proj/a.ts:2");
   });

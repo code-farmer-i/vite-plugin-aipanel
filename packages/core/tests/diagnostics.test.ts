@@ -593,7 +593,7 @@ describe("占位符与目标", () => {
     expect(result.sections.map((section) => section.text)).toEqual(["ok", "ok"]);
   });
 
-  it("{files} 一次传入全部目标文件", async () => {
+  it("{files} 展开成多个 argv 项（不是拼成一串）", async () => {
     const ws = makeProject();
     const a = path.join(ws, "a.ts");
     const b = path.join(ws, "b.ts");
@@ -606,7 +606,7 @@ describe("占位符与目标", () => {
     );
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].args).toEqual(["--check", `${a} ${b}`]);
+    expect(calls[0].args).toEqual(["--check", a, b]);
     expect(result.sections).toHaveLength(1);
     expect(result.sections[0].target).toBeUndefined();
     expect(result.sections[0].text).toBe("ok");
@@ -1629,7 +1629,7 @@ describe("调度与噪音过滤", () => {
     expect(result.sections.map((section) => section.name)).toEqual(["A", "B"]);
   });
 
-  it("ESLint「不在配置范围内」的忽略提示不当作发现", async () => {
+  it("ESLint「不在配置范围内」的忽略提示：不当作发现，手动诊断给一行说明、编辑后阶段不提", async () => {
     const ws = makeProject();
     const file = path.join(ws, "a.ts");
     trackExeca({
@@ -1652,17 +1652,48 @@ describe("调度与噪音过滤", () => {
     });
 
     const mod = await freshModule();
-    const result = await mod.runDiagnostics(
+    const policy = resolvePolicy({
+      checks: [{ name: "ESLint", command: "fake-eslint", format: "eslint-json" }],
+    });
+
+    const manual = await mod.runDiagnostics({ kind: "file", file, cwd: ws }, policy, "manual");
+    expect(manual.sections[0].diagnostics).toHaveLength(1); // 忽略提示不是发现
+    expect(manual.sections[0].text).toContain("boom");
+    expect(manual.sections[0].text).not.toContain("File ignored");
+    expect(manual.sections[0].text).toContain("不在 ESLint 配置范围内");
+
+    // 只有忽略提示的目标：编辑后阶段完全静默（不投递），手动阶段给说明而不是"没有发现问题"
+    trackExeca({
+      stdout: JSON.stringify([
+        {
+          filePath: file,
+          messages: [
+            {
+              severity: 1,
+              line: 1,
+              column: 1,
+              message: "File ignored because no matching configuration was supplied",
+              ruleId: null,
+            },
+          ],
+        },
+      ]),
+      exitCode: 0,
+    });
+    const ignoredOnly = await mod.runDiagnostics(
+      { kind: "edited", files: [file], cwd: ws },
+      policy,
+      "edit",
+    );
+    expect(ignoredOnly.sections).toHaveLength(0);
+
+    const ignoredManual = await mod.runDiagnostics(
       { kind: "file", file, cwd: ws },
-      resolvePolicy({
-        checks: [{ name: "ESLint", command: "fake-eslint", format: "eslint-json" }],
-      }),
+      policy,
       "manual",
     );
-
-    expect(result.sections[0].diagnostics).toHaveLength(1);
-    expect(result.sections[0].text).toContain("boom");
-    expect(result.sections[0].text).not.toContain("File ignored");
+    expect(ignoredManual.sections[0].text).toContain("不在 ESLint 配置范围内");
+    expect(ignoredManual.sections[0].diagnostics).toHaveLength(0);
   });
 
   it("不适用于目标文件的检查直接跳过，不报「项目里没装该工具」", async () => {

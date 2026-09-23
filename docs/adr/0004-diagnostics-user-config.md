@@ -181,8 +181,8 @@ export type DiagnosticsTarget =
 | 规则          | 行为                                                                                                                |
 | ------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `extensions`  | 目标文件先按该 check 的扩展名筛（内置 lint 缺省 = 源码扩展名，命令检查缺省 = 不限）；筛空则跳过该 check（不 spawn） |
-| `{file}`      | 每个目标文件一次调用（编辑后多文件时逐文件跑，同名分区按文件拆分合并）                                              |
-| `{files}`     | 一次调用，目标文件全部作为独立 argv 项                                                                              |
+| `{file}`      | 每个目标文件一次调用（编辑后多文件时逐文件跑，分区带各自 `target`）                                                 |
+| `{files}`     | 一次调用，展开成**多个独立 argv 项**（嵌入写法如 `--files={files}` 退化为空格连接）                                 |
 | 无占位符      | 三种目标都跑同一个 argv（项目级命令，如 `pnpm run check`）                                                          |
 | `projectArgs` | 全量诊断（无目标文件）时用它；含占位符又没写它 → 全量时跳过该 check                                                 |
 | 宿主登记      | diff 后的编辑登记**不再按扩展名预过滤**，由各 check 的 `extensions` 决定跑不跑（否则 `.css` 永远到不了 stylelint）  |
@@ -217,8 +217,10 @@ export type DiagnosticsTarget =
 - 有发现判定：`exitCode !== 0`；失败（命令不存在 / 超时 / 输出超限 / 输出解析失败）给明确文案，不静默假装干净。
 - 先把检查按目标类型与 `extensions` 筛一遍再解析命令：不适用于本轮目标的检查直接跳过，
   不会出现「检查压根不跑、却报项目里没装该工具」的误报。
-- ESLint 对「被显式传入但不在配置范围内」的文件会回一条 `ruleId=null` 的忽略提示，
-  那不是发现，适配器直接丢弃（否则每个 step 都会把它当 WARN 投递）。
+- ESLint 对「被显式传入但不在配置范围内」的文件会回一条 `ruleId=null` 的忽略提示：
+  它不是发现，按阶段取舍 —— 编辑后阶段完全不提（否则每步都投递噪音），手动诊断给一行
+  「<file> 不在 ESLint 配置范围内，未检查」（全丢会「假装干净」）。
+- 适配器解析失败时文案带上命令原始输出摘要；项目外的文件展示用绝对路径；空分区在入口统一丢弃。
 - 信任边界：命令与适配器模块来自用户 `vite.config` / 项目目录，与项目自己的 npm scripts 同级。
 
 ## 9. 端到端流向
@@ -280,3 +282,6 @@ vite.config providerOptions.diagnostics
 5. 端到端：`checks` 配 `{builtin:"stylelint"}` + 自研 `bin` 工具，编辑 `.css` 只跑 stylelint、
    编辑 `.ts` 跑 eslint/oxlint/typecheck、全量诊断全部触发。
 6. `pnpm typecheck` / `pnpm test` / `pnpm lint` 全绿；`docs/config.md` 两处速查表同步。
+7. 真实进程 e2e（无 mock）：`pnpm e2e:diagnostics`（`scripts/e2e-diagnostics.mjs`，13 个场景：
+   真实 ESLint 预设 / extensions 分流 / 三种用户适配器 / 占位符展开 / projectArgs / 并发计时 /
+   失败语义 / severity 门槛 / 渲染折叠 / 未安装预设语义 / 真实 tsc）。

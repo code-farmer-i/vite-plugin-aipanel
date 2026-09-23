@@ -785,6 +785,12 @@ function boundFindings(
   );
 }
 
+/** 展示用路径：项目内用相对路径，项目外（会走出项目根）直接用绝对路径 */
+function displayPath(cwd: string, file: string): string {
+  const rel = path.relative(cwd, file);
+  return rel.startsWith("..") || path.isAbsolute(rel) ? file : rel;
+}
+
 /** 目标文件绝对路径清单（项目级为空） */
 function targetFiles(target: DiagnosticsTarget): string[] {
   if (target.kind === "file") return [path.resolve(target.file)];
@@ -871,27 +877,35 @@ function extractJsonValue(raw: string): unknown {
   }
 }
 
-/** 解析 `eslint --format json` 输出（容忍前后夹带的人类可读内容） */
-function parseEslintJson(raw: string, cwd: string): (LintMessage & { filePath: string })[] {
+/** 解析 `eslint --format json` 输出（容忍前后夹带的人类可读内容），忽略提示单独返回 */
+function parseEslintJson(
+  raw: string,
+  cwd: string,
+): { messages: (LintMessage & { filePath: string })[]; ignored: string[] } {
   const parsed = extractJsonValue(raw) as Array<{
     filePath?: string;
     messages?: LintMessage[];
   }>;
   if (!Array.isArray(parsed)) throw new Error("顶层必须是数组");
-  return parsed
-    .flatMap((file) =>
-      (file.messages ?? []).map((message) => ({
-        ...message,
-        filePath: file.filePath ? path.resolve(cwd, file.filePath) : "",
-      })),
-    )
-    .filter((message) => message.filePath && !isEslintIgnoreNotice(message));
+  const all = parsed.flatMap((file) =>
+    (file.messages ?? []).map((message) => ({
+      ...message,
+      filePath: file.filePath ? path.resolve(cwd, file.filePath) : "",
+    })),
+  );
+  return {
+    messages: all.filter((message) => message.filePath && !isEslintIgnoreNotice(message)),
+    ignored: all
+      .filter((message) => message.filePath && isEslintIgnoreNotice(message))
+      .map((m) => m.filePath),
+  };
 }
 
 /**
  * ESLint 对"被显式传入、但不在配置范围内"的文件会回一条 ruleId=null 的忽略提示
  * （`File ignored because no matching configuration was supplied`）。
- * 那不是发现，按文件诊断时会变成每个 step 都投递的噪音——丢掉。
+ * 它不是发现：编辑后阶段每步都投递会变成噪音，因此从发现里剔除；手动诊断时另给一行说明
+ * （否则会"假装干净"——用户以为查过了，其实这个文件根本没被 lint）。
  */
 function isEslintIgnoreNotice(message: LintMessage): boolean {
   return (
@@ -937,23 +951,33 @@ function emptySectionText(
   return severity === "error" ? "没有发现错误" : "没有发现问题";
 }
 
+/** 一个检查在一段目标上的原始产出（notes 是"没跑/没检查"之类的说明，只在手动诊断里展示） */
+interface CheckOutcome {
+  text?: string;
+  diagnostics: DiagnosticItem[];
+  notes?: string[];
+}
+
 /** 组装一个分区：门槛过滤 + 文本兜底（有条目时由我们统一渲染） */
 function buildSection(
   name: string,
   target: string | undefined,
-  outcome: { text?: string; diagnostics?: readonly DiagnosticItem[] },
+  outcome: { text?: string; diagnostics?: readonly DiagnosticItem[]; notes?: readonly string[] },
   phase: DiagnosticsPhase,
   severity: "error" | "warning",
   kind: "lint" | "typecheck" | "command",
 ): DiagnosticsSection {
   const diagnostics = filterBySeverity(outcome.diagnostics ?? [], severity);
   const explicit = (outcome.text ?? "").trim();
-  const text =
+  const body =
     explicit ||
     (diagnostics.length > 0
       ? renderDiagnosticLines(diagnostics)
-      : emptySectionText(kind, phase, severity)) ||
-    "";
+      : (emptySectionText(kind, phase, severity) ?? ""));
+  // 说明性备注（如"该文件不在 Lint 配置范围内"）只在手动诊断里给：编辑后阶段每步都投递，
+  // 全丢会"假装干净"、全留是噪音，因此按阶段取舍。
+  const notes = phase === "manual" ? (outcome.notes ?? []).filter(Boolean) : [];
+  const text = [body, ...notes].filter(Boolean).join("\n\n");
   return {
     name,
     ...(target ? { target } : {}),
@@ -1055,12 +1079,15 @@ function rawCommandOutput(outcome: CommandOutcome): string {
 
 /** 展开 `{file}` / `{files}` 占位符（作为独立 argv 项时按项展开） */
 function expandArgs(args: readonly string[], files: readonly string[]): string[] {
-  return args.map((arg) => {
-    if (arg === "{file}") return files[0] ?? "";
-    if (arg === "{files}") return files.join(" ");
-    return arg.replace(/\{file\}|\{files\}/g, (match) =>
-      match === "{file}" ? (files[0] ?? "") : files.join(" "),
-    );
+  return args.flatMap((arg) => {
+    // 独立占位符：{files} 展开成多个 argv 项（{file} 一项）；只有嵌入写法才退化为单个字符串
+    if (arg === "{file}") return files[0] ? [files[0]] : [];
+    if (arg === "{files}") return [...files];
+    return [
+      arg.replace(/\{file\}|\{files\}/g, (match) =>
+        match === "{file}" ? (files[0] ?? "") : files.join(" "),
+      ),
+    ];
   });
 }
 
@@ -1070,7 +1097,7 @@ async function runAdapterModule(
   outcome: CommandOutcome,
   cwd: string,
   files: readonly string[],
-): Promise<{ text?: string; diagnostics: DiagnosticItem[] }> {
+): Promise<CheckOutcome> {
   const adapterPath = path.resolve(cwd, check.adapter as string);
   const fail = (reason: string) => ({
     text: `[${check.name}] 适配器不可用：${check.adapter}（${reason}）`,
@@ -1155,8 +1182,8 @@ function adaptBuiltinFormat(
   raw: string,
   cwd: string,
   severity: "error" | "warning",
-): { text?: string; diagnostics: DiagnosticItem[] } {
-  const lintFromMessages = (messages: (LintMessage & { filePath: string })[]) => {
+): CheckOutcome {
+  const lintFromMessages = (messages: (LintMessage & { filePath: string })[]): CheckOutcome => {
     const output = formatLintMessages(
       messages,
       { label: check.name, source: check.name },
@@ -1172,8 +1199,13 @@ function adaptBuiltinFormat(
         text: filterTscOutputBySeverity(raw, severity),
         diagnostics: parseTscDiags(raw, undefined, cwd, check.name),
       };
-    case "eslint-json":
-      return lintFromMessages(parseEslintJson(raw, cwd));
+    case "eslint-json": {
+      const { messages, ignored } = parseEslintJson(raw, cwd);
+      return {
+        ...lintFromMessages(messages),
+        notes: ignored.map((file) => `${file} 不在 ESLint 配置范围内，未检查`),
+      };
+    }
     case "oxlint-json":
       return lintFromMessages(parseOxlintOutput(raw, cwd));
     case "stylelint-json":
@@ -1252,7 +1284,7 @@ async function runCommandCheck(
   const execute = async (
     argvTemplate: readonly string[],
     fileSet: string[],
-  ): Promise<{ text?: string; diagnostics: DiagnosticItem[] }> => {
+  ): Promise<CheckOutcome> => {
     const outcome = await runCommand(check, source, expandArgs(argvTemplate, fileSet), cwd);
     const failure = commandFailureText(check, source, outcome);
     if (failure) return { text: failure, diagnostics: [] };
@@ -1263,12 +1295,16 @@ async function runCommandCheck(
       return adaptBuiltinFormat(check.format ?? "text", check, raw, cwd, severity);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      return { text: `[${check.name}] 运行失败：输出解析失败（${reason}）`, diagnostics: [] };
+      const excerpt = raw.replace(/\s+/g, " ").trim().slice(0, 200);
+      return {
+        text: `[${check.name}] 运行失败：输出解析失败（${reason}）${excerpt ? `：${excerpt}` : ""}`,
+        diagnostics: [],
+      };
     }
   };
 
   const targetLabel = (file: string): string | undefined =>
-    split ? path.relative(target.cwd, file) : undefined;
+    split ? displayPath(target.cwd, file) : undefined;
 
   // 不含文件占位符：三种目标都跑同一个 argv（项目级命令）
   if (!hasPlaceholder) {
@@ -1368,7 +1404,7 @@ async function runTypecheckCheck(
       );
       return buildSection(
         tscSectionTitle(result),
-        path.relative(cwd, file),
+        displayPath(cwd, file),
         { text: result.rawOutput.trim(), diagnostics: result.diagnostics },
         phase,
         severity,
@@ -1426,7 +1462,10 @@ export async function runDiagnostics(
       return Promise.resolve<DiagnosticsSection[]>([]);
     }),
   );
-  const sections = results.flat();
+  // 空分区（无正文、无条目）不携带任何信息：编辑后阶段它们本就该静默，手动阶段各有占位文案
+  const sections = results
+    .flat()
+    .filter((section) => section.text !== undefined || section.diagnostics.length > 0);
 
   // 手动诊断要正面回答"有没有跑"：目标文件没有任何检查匹配时给一条明确说明，而不是空结果
   if (sections.length === 0 && phase === "manual") {

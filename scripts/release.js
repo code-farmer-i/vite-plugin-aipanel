@@ -40,8 +40,6 @@ const MAX_REGISTRY_ATTEMPTS = 3;
 /** registry 写入有同步延迟：判定失败前先复查几次，别把「已上传但还没查到」当成没发 */
 const FAILURE_PROBE = { attempts: 2, delayMs: 2000 };
 const FINAL_PROBE = { attempts: 4, delayMs: 3000 };
-/** 发布命令返回成功后的复核：只用于提示，不参与成败判定 */
-const SUCCESS_PROBE = { attempts: 3, delayMs: 3000 };
 
 /** 发布流程阶段：失败时据此判断「有没有可能已经上传过」 */
 const Stage = {
@@ -484,28 +482,8 @@ function commitAndPush(targetVersion) {
   console.log(`   ✅ 已提交、推送并打 tag ${tag}`);
 }
 
-/** 发布成功后的收尾：复核 registry → 部署文档 → git 入库 */
+/** 发布成功后的收尾：部署文档 → git 入库 */
 async function finish(options, targetVersion) {
-  // 发布命令返回 0 即成功；registry 有同步延迟，这里的查询只用来提示，不参与成败判定
-  console.log("\n🔎 复核 registry（仅供参考，不影响发布结果）…");
-  try {
-    const progress = await verifyPublished(targetVersion, SUCCESS_PROBE);
-    if (progress.pending.length) {
-      console.error(`⚠️  暂时还查不到 v${targetVersion}：${progress.pending.join("、")}`);
-      console.error(
-        "   registry 同步有延迟，pnpm 已返回成功，稍后可用 pnpm view <包名>@<版本> version 复核。",
-      );
-    } else {
-      console.log(
-        `   ✅ ${progress.packages.length}/${progress.packages.length} 个包都已在 registry 上`,
-      );
-    }
-  } catch (error) {
-    console.error(
-      `⚠️  registry 复核失败（${error instanceof Error ? error.message : String(error)}），不影响发布结果`,
-    );
-  }
-
   let docsError = "";
   if (!options.skipDocs) {
     releaseRun.stage = Stage.DOCS;

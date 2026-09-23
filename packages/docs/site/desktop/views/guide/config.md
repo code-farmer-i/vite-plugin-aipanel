@@ -364,3 +364,7 @@ aipanelAssistant({
 
 > 排除规则（哪些文件不该被检查）交给底层工具自己：ESLint 自身 ignore、tsconfig `exclude`、
 > 或命令自己的 glob。AIPanel 不另立一套 glob 语义。
+
+> **自动诊断只在"有发现"时注入**：命令成功退出（exit 0）且没有结构化条目就算干净——即使它打印了
+> `✓ 0 problems found` 之类的成功信息，也不会每个 step 注入上下文。命令非零退出、跑不起来或输出
+> 解析失败仍会明确告知。手动 `run_diagnostics` 不受此规则影响，始终给完整输出。

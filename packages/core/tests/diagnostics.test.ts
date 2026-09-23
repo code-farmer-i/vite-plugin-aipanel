@@ -576,7 +576,8 @@ describe("占位符与目标", () => {
     const ws = makeProject();
     const a = path.join(ws, "a.ts");
     const b = path.join(ws, "b.ts");
-    const calls = trackExeca({ stdout: "ok", exitCode: 0 });
+    // 非零退出 = 有发现，编辑后阶段才会产分区（退出码 0 的干净输出不注入）
+    const calls = trackExeca({ stdout: "ok", exitCode: 1 });
 
     const result = await runOneCheck(
       { name: "PerFile", command: "fake-tool", args: ["--check", "{file}"], extensions: [".ts"] },
@@ -597,7 +598,7 @@ describe("占位符与目标", () => {
     const ws = makeProject();
     const a = path.join(ws, "a.ts");
     const b = path.join(ws, "b.ts");
-    const calls = trackExeca({ stdout: "ok", exitCode: 0 });
+    const calls = trackExeca({ stdout: "ok", exitCode: 1 });
 
     const result = await runOneCheck(
       { name: "AllFiles", command: "fake-tool", args: ["--check", "{files}"], extensions: [".ts"] },
@@ -615,7 +616,7 @@ describe("占位符与目标", () => {
   it("无占位符的检查在 file / project / edited 三种目标都各跑一次", async () => {
     const ws = makeProject();
     const a = path.join(ws, "a.ts");
-    const calls = trackExeca({ stdout: "all-clean", exitCode: 0 });
+    const calls = trackExeca({ stdout: "all-clean", exitCode: 1 });
 
     const mod = await freshModule();
     const policy = resolvePolicy({
@@ -1740,7 +1741,7 @@ describe("targets：目标形态维度（与 run 正交）", () => {
     const file = path.join(ws, "a.ts");
     const editOnly: CommandCheck = { name: "EditOnly", command: "fake-tool", targets: ["edited"] };
     const anyTarget = { name: "AnyTarget", command: "fake-tool" };
-    const calls = trackExeca({ stdout: "ok", exitCode: 0 });
+    const calls = trackExeca({ stdout: "ok", exitCode: 1 }); // 非零退出 = 有发现，编辑后才会产分区
 
     await runOneCheck(editOnly, { kind: "project", cwd: ws }, "manual");
     expect(calls).toHaveLength(0);
@@ -1766,5 +1767,52 @@ describe("targets：目标形态维度（与 run 正交）", () => {
     expect(policy.checks[0]).toMatchObject({ targets: ["project", "file"] });
     expect(policy.checks[1]).not.toHaveProperty("targets");
     expect(policy.checks[2]).not.toHaveProperty("targets");
+  });
+});
+
+describe("自动诊断：没有发现就不产文本（不白注入上下文）", () => {
+  it("命令成功退出（exitCode 0）且没有结构化条目 → 编辑后不产分区；手动保留原文", async () => {
+    const ws = makeProject();
+    const file = path.join(ws, "a.ts");
+    trackExeca({ stdout: "✓ 0 problems found", exitCode: 0 });
+    const check: CommandCheck = { name: "MyLint", command: "fake-lint" }; // format 默认 text
+
+    const edit = await runOneCheck(check, { kind: "edited", files: [file], cwd: ws }, "edit");
+    expect(edit.sections).toHaveLength(0);
+
+    const manual = await runOneCheck(check, { kind: "file", file, cwd: ws }, "manual");
+    expect(manual.sections[0].text).toContain("0 problems found");
+  });
+
+  it("非零退出仍算发现：编辑后照常投递", async () => {
+    const ws = makeProject();
+    const file = path.join(ws, "a.ts");
+    trackExeca({ stdout: "boom.ts(1,1): error", exitCode: 2 });
+    const check: CommandCheck = { name: "MyLint", command: "fake-lint" };
+
+    const edit = await runOneCheck(check, { kind: "edited", files: [file], cwd: ws }, "edit");
+    expect(edit.sections).toHaveLength(1);
+    expect(edit.sections[0].text).toContain("boom.ts");
+  });
+
+  it("模块适配器只给 text 且命令成功 → 编辑后同样不产文本，手动保留", async () => {
+    const ws = makeProject();
+    const file = path.join(ws, "a.ts");
+    fs.writeFileSync(
+      path.join(ws, "adapter.mjs"),
+      `export default () => ({ text: "adapter narrative" });\n`,
+    );
+    trackExeca({ stdout: "raw", exitCode: 0 });
+    const check: CommandCheck = {
+      name: "Adapter",
+      command: "fake-tool",
+      adapter: "./adapter.mjs",
+    };
+
+    const edit = await runOneCheck(check, { kind: "edited", files: [file], cwd: ws }, "edit");
+    expect(edit.sections).toHaveLength(0);
+
+    const manual = await runOneCheck(check, { kind: "file", file, cwd: ws }, "manual");
+    expect(manual.sections[0].text).toBe("adapter narrative");
   });
 });

@@ -1292,8 +1292,16 @@ async function runCommandCheck(
     const raw = rawCommandOutput(outcome);
     // 适配器解析/校验失败也转成分区文案，不让异常冲出 runDiagnostics（手动诊断要能回答"为什么没有结果"）
     try {
-      if (check.adapter) return await runAdapterModule(check, outcome, cwd, fileSet);
-      return adaptBuiltinFormat(check.format ?? "text", check, raw, cwd, severity);
+      const produced = check.adapter
+        ? await runAdapterModule(check, outcome, cwd, fileSet)
+        : adaptBuiltinFormat(check.format ?? "text", check, raw, cwd, severity);
+      // 编辑后阶段判定"有没有发现"只看结构化条目与退出码：命令成功退出（exitCode === 0）且没有条目
+      // 就是没问题——不能把 `✓ 0 problems found` 这类成功输出当成发现，否则每个 step 都白注入一段上下文。
+      // 手动诊断保留原文（要正面回答"有没有问题"），失败/非零退出同样保留。
+      if (phase === "edit" && outcome.exitCode === 0 && produced.diagnostics.length === 0) {
+        return { ...produced, text: undefined, notes: undefined };
+      }
+      return produced;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       const excerpt = raw.replace(/\s+/g, " ").trim().slice(0, 200);

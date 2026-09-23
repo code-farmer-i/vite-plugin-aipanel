@@ -82,6 +82,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 afterEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("startDeepSeekWeb 启动参数", () => {
@@ -131,6 +132,10 @@ describe("startDeepSeekWeb 启动参数", () => {
   });
 
   it("home 写入 DSH_HOME、verbose 写入 VERBOSE=1；缺省不追加", () => {
+    // 宿主环境可能已导出 VERBOSE（DSH 会话 shell 即导出 VERBOSE=1）：本用例断言的是
+    // 「插件是否追加」，故先删除宿主变量，避免把宿主环境当成被测行为（afterEach 统一还原）。
+    vi.stubEnv("VERBOSE", undefined);
+
     startDeepSeekWeb({
       port: PORT,
       hostname: HOST,

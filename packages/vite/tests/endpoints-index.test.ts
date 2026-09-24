@@ -39,6 +39,8 @@ interface UseCall {
 function makeServer() {
   const calls: UseCall[] = [];
   const server = {
+    // context 端点按 server.config.root 归一化源码路径，stub 与真实 ViteDevServer 对齐
+    config: { root: process.cwd() },
     resolvedUrls: { local: ["http://localhost:5173/"], network: [] },
     middlewares: {
       use: (pathOrHandler: unknown, maybeHandler?: unknown) => {

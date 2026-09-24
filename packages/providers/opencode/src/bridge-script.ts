@@ -7,7 +7,7 @@
 import { DEFAULT_OPENCODE_SETTINGS, OPENCODE_STORAGE_KEYS } from "./constants";
 import type { OpenCodeLanguage, OpenCodeSettings } from "./types";
 import type { AIPanelWidgetTheme } from "@aipanel/core";
-import { WIDGET_MSG } from "@aipanel/core";
+import { DEPENDENCY_DIR_NAME, DEPENDENCY_SOURCE_NOTE, WIDGET_MSG } from "@aipanel/core";
 
 export interface BridgeScriptOptions {
   /** 主题模式（单一来源：@aipanel/core AIPanelWidgetTheme） */
@@ -64,6 +64,11 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
   if (language) {
     mergedSettings.general = { ...(mergedSettings.general ?? {}), language };
   }
+
+  // 依赖归属文案与判定依据取自 @aipanel/core（单一来源），在生成期注入脚本，
+  // 与 dsh 侧注入文本共用同一措辞与同一目录名。
+  const dependencyDir = JSON.stringify(DEPENDENCY_DIR_NAME);
+  const dependencyNote = JSON.stringify(DEPENDENCY_SOURCE_NOTE);
 
   return `
 (function() {
@@ -578,6 +583,10 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
     }
     const displayText = '@' + selector + (textPreview ? '(' + textPreview + ')' : '');
 
+    // 依赖内部文件显式声明归属（判定依据与措辞来自 @aipanel/core，生成期注入）
+    const pathSegments = String(filePath || '').replace(/\\\\/g, '/').split('/');
+    const isDependency = pathSegments.indexOf(${dependencyDir}) !== -1;
+
     const jsonStr = JSON.stringify({
       nodeContext: {
         "filePath": {
@@ -603,7 +612,13 @@ export function generateBridgeScript(options: BridgeScriptOptions = {}): string 
         "selectAt": {
           "value": previewPageUrl || '未知',
           "desc": "用户选中节点时的页面 URL"
-        }
+        },
+        ...(isDependency ? {
+          "sourceKind": {
+            "value": ${dependencyNote},
+            "desc": "源码归属"
+          }
+        } : {})
       }
     });
 

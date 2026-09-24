@@ -8,6 +8,9 @@ import {
   base64Encode,
   ensureNodeId,
   extractTextFromResponse,
+  fileNameOf,
+  isDependencyPath,
+  normalizePathSeparators,
   parseNodeMentions,
   toNodeMention,
   truncate,
@@ -236,5 +239,32 @@ describe("withRetries", () => {
     });
     await expect(withRetries(fn, { attempts: 3, delayMs: 0, onRetry })).rejects.toThrow("x");
     expect(onRetry).toHaveBeenCalledTimes(2); // 最后一次失败不触发重试回调
+  });
+});
+
+describe("路径工具", () => {
+  it("normalizePathSeparators 把反斜杠统一为正斜杠", () => {
+    expect(normalizePathSeparators("C:\\proj\\src\\App.vue")).toBe("C:/proj/src/App.vue");
+    expect(normalizePathSeparators("/proj/src/App.vue")).toBe("/proj/src/App.vue");
+  });
+
+  it("fileNameOf 兼容两种分隔符，空路径与结尾分隔符返回空串", () => {
+    expect(fileNameOf("/proj/src/App.vue")).toBe("App.vue");
+    expect(fileNameOf("C:\\proj\\src\\App.vue")).toBe("App.vue");
+    expect(fileNameOf("App.vue")).toBe("App.vue");
+    expect(fileNameOf("")).toBe("");
+    expect(fileNameOf("/proj/src/")).toBe("");
+  });
+
+  it("isDependencyPath 按路径分段判定依赖内部文件", () => {
+    expect(isDependencyPath("/proj/node_modules/@scope/pkg/Comp.vue")).toBe(true);
+    expect(isDependencyPath("C:\\proj\\node_modules\\pkg\\Comp.vue")).toBe(true);
+    // pnpm 真身：`.pnpm/<pkg>@<ver>/node_modules/<pkg>` 仍含 node_modules 段
+    expect(
+      isDependencyPath("/proj/node_modules/.pnpm/pkg@1.0.0_hash/node_modules/pkg/Comp.vue"),
+    ).toBe(true);
+    expect(isDependencyPath("/proj/src/Comp.vue")).toBe(false);
+    // 名字里含 node_modules 的项目目录不应误判
+    expect(isDependencyPath("/proj/my-node_modules-backup/Comp.vue")).toBe(false);
   });
 });

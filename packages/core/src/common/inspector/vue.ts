@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { INSPECTOR_ADAPTER_IDS } from "../constants";
+import { isDependencyPath } from "../utils";
 import {
   parseSourceLocation,
   type InspectorAdapter,
@@ -150,9 +151,8 @@ function mergeSourceLocations(
   if (!markerLocation?.file && !instanceLocation?.file) return null;
 
   if (markerLocation?.file && instanceLocation?.file) {
-    const isNodeModules = (path: string) => path.includes("node_modules");
-    if (!isNodeModules(markerLocation.file)) return markerLocation;
-    if (!isNodeModules(instanceLocation.file)) return instanceLocation;
+    if (!isDependencyPath(markerLocation.file)) return markerLocation;
+    if (!isDependencyPath(instanceLocation.file)) return instanceLocation;
     return markerLocation;
   }
 

@@ -3,11 +3,19 @@ import { CONTEXT_API_PATH, SSE_EVENT_TYPES } from "@aipanel/core";
 import type { PageContext } from "@aipanel/core";
 import { RequestContext, createLogger } from "@aipanel/core/node";
 import { ensureNodeId } from "@aipanel/core";
+import { findGitRoot, resolveSourceFilePath } from "../utils/source-path";
 import type { EndpointContext } from "./types";
 
 const log = createLogger("Endpoints:Context");
 
 export function setupContextEndpoint(server: ViteDevServer, ctx: EndpointContext) {
+  // 源码路径归一化的宿主基准（浏览器侧只知道相对路径，基准因来源而异，见 utils/source-path.ts）
+  const sourcePathBases = {
+    cwd: process.cwd(),
+    root: server.config.root,
+    gitRoot: findGitRoot(server.config.root),
+  };
+
   server.middlewares.use(CONTEXT_API_PATH, async (req, res) => {
     const reqCtx = new RequestContext(req.method || "GET", CONTEXT_API_PATH);
 
@@ -69,9 +77,12 @@ export function setupContextEndpoint(server: ViteDevServer, ctx: EndpointContext
 
           const existing = ctx.getPageContext();
           const selectedElements = (data.selectedElements as PageContext["selectedElements"]) || [];
-          // 为缺少 id 的元素兜底分配节点 id（保证 @节点[id] 标记与上下文注入一致）
+          // 浏览器只上报相对路径且基准随来源而异：先按宿主基准归一化为绝对路径，
+          // 再为缺少 id 的元素兜底分配节点 id（保证 @节点[id] 标记与上下文注入一致）
           selectedElements.forEach((el) => {
-            if (el && typeof el === "object") ensureNodeId(el);
+            if (!el || typeof el !== "object") return;
+            if (el.filePath) el.filePath = resolveSourceFilePath(el.filePath, sourcePathBases);
+            ensureNodeId(el);
           });
           const newCtx: PageContext = {
             url: data.url || "",

@@ -9,6 +9,7 @@
  * `exclude`、命令自己的 glob），我们不复制一套 glob 语义。
  */
 import type { AIPanelDiagnosticEntry } from "./types";
+import { fileNameOf } from "./utils";
 
 /** 诊断阶段：编辑后自动诊断 / agent 手动调用工具 */
 export type DiagnosticsPhase = "edit" | "manual";
@@ -168,7 +169,7 @@ export function matchesExtensions(
   extensions: readonly string[] | undefined,
 ): boolean {
   if (!extensions?.length) return true;
-  const base = filePath.replace(/\\/g, "/").split("/").pop() ?? "";
+  const base = fileNameOf(filePath);
   const dot = base.lastIndexOf(".");
   if (dot <= 0) return false;
   return extensions.includes(base.slice(dot).toLowerCase());

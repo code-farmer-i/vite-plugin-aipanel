@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && tsx scripts/build-bg-cs.ts && cd dist && zip -r ../aipanel-assistant.zip . && cd ..",
+    "build": "vite build && tsx scripts/build-bg-cs.ts && rm -f aipanel-assistant.zip && cd dist && zip -r ../aipanel-assistant.zip . && cd ..",
     "dev": "vite build --watch",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"

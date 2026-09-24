@@ -1,7 +1,38 @@
 /**
  * @fileoverview 通用工具函数
  */
-import { DEFAULT_RETRIES, RETRY_DELAY } from "./constants";
+import { DEFAULT_RETRIES, DEPENDENCY_DIR_NAME, RETRY_DELAY } from "./constants";
+
+/**
+ * 路径分隔符归一化（反斜杠 → 正斜杠）。
+ * 浏览器侧没有 node:path，路径处理统一按字符串做；宿主的绝对路径在 Windows 上会带 `\`。
+ * @param filePath - 原始路径
+ * @returns 分隔符统一为正斜杠的路径
+ */
+export function normalizePathSeparators(filePath: string): string {
+  return filePath.replace(/\\/g, "/");
+}
+
+/**
+ * 取路径的文件名（最后一段），兼容 `/` 与 `\` 分隔。
+ * 挂件气泡/节点卡片（浏览器）与进程日志（node）共用，避免各处自写 split("/").pop()。
+ * @param filePath - 原始路径
+ * @returns 文件名；路径为空或以分隔符结尾时返回空串
+ */
+export function fileNameOf(filePath: string): string {
+  const normalized = normalizePathSeparators(filePath);
+  return normalized.slice(normalized.lastIndexOf("/") + 1);
+}
+
+/**
+ * 路径是否位于依赖安装目录内（含 pnpm 的 `.pnpm/<pkg>@<ver>/node_modules/<pkg>` 真身）。
+ * 按路径分段判定，避免误伤名字里含 node_modules 的项目目录。
+ * @param filePath - 原始路径
+ * @returns 为依赖内部文件时 true
+ */
+export function isDependencyPath(filePath: string): boolean {
+  return normalizePathSeparators(filePath).split("/").includes(DEPENDENCY_DIR_NAME);
+}
 
 /**
  * 取（或生成）元素的节点唯一 id：优先复用已赋值的 id，否则生成随机 id 并写回元素。

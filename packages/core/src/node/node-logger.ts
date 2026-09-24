@@ -1,4 +1,5 @@
 import { LOG_PREFIX } from "../common/constants";
+import { fileNameOf } from "../common/utils";
 import {
   LEVEL_NAMES,
   LogLevel,
@@ -45,7 +46,7 @@ function getCallerInfo(depth: number = 3): string {
   if (!match) return "";
 
   const [, funcName, filePath, line] = match;
-  const fileName = filePath.split("/").pop() || filePath;
+  const fileName = fileNameOf(filePath) || filePath;
   const func = funcName || "<anonymous>";
   return `${fileName}:${line} ${func}`;
 }

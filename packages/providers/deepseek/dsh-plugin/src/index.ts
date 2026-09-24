@@ -49,7 +49,12 @@ import {
   type DiagnosticsTarget,
 } from "@aipanel/core/node";
 import type { AIPanelDiagnosticEntry, SelectedElement } from "@aipanel/core";
-import { MUTATING_TOOLS, parseNodeMentions } from "@aipanel/core";
+import {
+  DEPENDENCY_SOURCE_NOTE,
+  MUTATING_TOOLS,
+  isDependencyPath,
+  parseNodeMentions,
+} from "@aipanel/core";
 import type { SettingsForms } from "@deepseek-ai/dsh-settings";
 import { setupEventRelay } from "./events-relay";
 
@@ -109,7 +114,11 @@ function buildNodeContext(e: SelectedElement): string {
   const lines: string[] = [`节点 ID：${e.id ?? ""}`];
   // 行列直接跟在文件路径后（形如 index.vue:53:11），不单独成行
   const loc = e.line ? (e.column ? `:${e.line}:${e.column}` : `:${e.line}`) : "";
-  if (e.filePath) lines.push(`源码文件路径：${e.filePath}${loc}`);
+  if (e.filePath) {
+    lines.push(`源码文件路径：${e.filePath}${loc}`);
+    // 依赖内部文件显式声明归属：否则「源码文件路径」会暗示它是项目源码，诱导 agent 去改 node_modules
+    if (isDependencyPath(e.filePath)) lines.push(`源码归属：${DEPENDENCY_SOURCE_NOTE}`);
+  }
   if (e.description) lines.push(`DOM 元素选择器：${e.description}`);
   if (e.innerText) {
     // 先截断再转义换行：真实 \n 转义成字面量 "\\n"，让模型把它当作单个逻辑文本值，

@@ -503,6 +503,41 @@ describe("桥接脚本执行：消息分发", () => {
     expect(short.created.find((el) => el.tagName === "span")?.textContent).toBe("@span(hi)");
   });
 
+  it("INSERT_FILE_PART：依赖内部文件附带源码归属，项目源码不带", () => {
+    const dependency = createSandbox({ promptInput: createElement("div") });
+    runScript(generateBridgeScript(), dependency);
+    emitMessage(dependency, {
+      type: WIDGET_MSG.INSERT_FILE_PART,
+      element: {
+        filePath:
+          "C:\\repo\\node_modules\\.pnpm\\pkg@1_hash\\node_modules\\pkg\\site\\Header.vue",
+        line: 65,
+        column: 7,
+        description: ".pd-header",
+      },
+    });
+    const depSpan = dependency.created.find((el) => el.tagName === "span");
+    const depPayload = JSON.parse(depSpan?.attributes["data-path"] ?? "{}") as {
+      nodeContext: Record<string, { value: unknown; desc?: string }>;
+    };
+    expect(depPayload.nodeContext.sourceKind?.value).toContain("依赖包内文件（node_modules）");
+    expect(depPayload.nodeContext.sourceKind?.desc).toBe("源码归属");
+    // 反斜杠路径按分段判定，不因分隔符不同漏判
+    expect(depPayload.nodeContext.filePath.value).toContain("Header.vue");
+
+    const project = createSandbox({ promptInput: createElement("div") });
+    runScript(generateBridgeScript(), project);
+    emitMessage(project, {
+      type: WIDGET_MSG.INSERT_FILE_PART,
+      element: { filePath: "/repo/packages/docs/site/desktop/views/index.vue", line: 139 },
+    });
+    const projSpan = project.created.find((el) => el.tagName === "span");
+    const projPayload = JSON.parse(projSpan?.attributes["data-path"] ?? "{}") as {
+      nodeContext: Record<string, { value: unknown }>;
+    };
+    expect(projPayload.nodeContext.sourceKind).toBeUndefined();
+  });
+
   it("找不到输入框时 INSERT_FILE_PART 仅告警不抛错", () => {
     const env = createSandbox({ promptInput: null });
     runScript(generateBridgeScript(), env);

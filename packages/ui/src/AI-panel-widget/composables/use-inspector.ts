@@ -3,6 +3,7 @@
 import { ref, watch, onMounted, onUnmounted, nextTick, type Ref } from "vue";
 import {
   INSPECTOR_CHECK_INTERVAL,
+  fileNameOf,
   listInspectorAdapters,
   resolveInspectorAdapter,
   truncate,
@@ -208,7 +209,7 @@ export function useInspector(options: UseInspectorOptions) {
       }
 
       const description = getElementDescription(elementToHighlight);
-      const fileName = fileInfo?.file ? fileInfo.file.split("/").pop() : "";
+      const fileName = fileInfo?.file ? fileNameOf(fileInfo.file) : "";
       let lineInfo = "";
       if (fileInfo?.line) {
         lineInfo = `:${fileInfo.line}`;

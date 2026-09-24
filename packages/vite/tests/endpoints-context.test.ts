@@ -1,8 +1,8 @@
 /**
  * endpoints/context.ts（setupContextEndpoint）vitest 单元测试。
  *
- * 覆盖目标：GET 读取上下文、POST 写入上下文（含 ensureNodeId 兜底 / active tab 同步）、
- * DELETE 清空选中元素并广播 CLEAR_ELEMENTS、OPTIONS 与非法方法的响应。
+ * 覆盖目标：GET 读取上下文、POST 写入上下文（含 ensureNodeId 兜底 / active tab 同步 /
+ * 源码路径归一化）、DELETE 清空选中元素并广播 CLEAR_ELEMENTS、OPTIONS 与非法方法的响应。
  *
  * stub 策略：fake server 捕获 server.middlewares.use 注册的中间件后直接调用
  * handler(req,res)；req 用 EventEmitter 模拟（body 通过 setImmediate 投递 data/end），
@@ -10,7 +10,9 @@
  * 协议字符串一律引用 @aipanel/core 常量。
  */
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONTEXT_API_PATH, SSE_EVENT_TYPES } from "@aipanel/core";
 import { setupContextEndpoint } from "../src/endpoints/context";
 import type { EndpointContext } from "../src/endpoints/types";
@@ -95,9 +97,10 @@ function makeCtx() {
   return { ctx: ctx as unknown as EndpointContext, mock: ctx, sseClients };
 }
 
-function captureHandler(ctx: EndpointContext): Handler {
+function captureHandler(ctx: EndpointContext, root = "/virtual/root"): Handler {
   let handler: Handler | null = null;
   const server = {
+    config: { root },
     middlewares: {
       use: (_path: unknown, maybeHandler?: unknown) => {
         handler = (typeof _path === "function" ? _path : maybeHandler) as Handler;
@@ -108,6 +111,10 @@ function captureHandler(ctx: EndpointContext): Handler {
   if (!handler) throw new Error("context handler 未注册");
   return handler;
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("setupContextEndpoint", () => {
   it("GET 返回当前页面上下文 JSON，并设置 CORS 与 JSON 头", async () => {
@@ -235,6 +242,81 @@ describe("setupContextEndpoint", () => {
       { selectedElements: Array<{ id?: string }> },
     ];
     expect(saved.selectedElements[0].id).toBe("nkept1234");
+  });
+
+  it("POST 相对 filePath 按 cwd 基准归一化为绝对路径（Inspector 标记来源）", async () => {
+    const { ctx, mock } = makeCtx();
+    const raw = "site/desktop/views/index.vue";
+    const hit = path.resolve(process.cwd(), raw);
+    vi.spyOn(fs, "existsSync").mockImplementation((candidate) => String(candidate) === hit);
+
+    const res = fakeRes();
+    await captureHandler(ctx)(
+      fakeReq(
+        "POST",
+        JSON.stringify({
+          selectedElements: [{ filePath: raw, line: 139, column: 9, innerText: "x" }],
+        }),
+      ),
+      res,
+    );
+    await flush();
+
+    const [, saved] = mock.setPageContext.mock.calls[0] as [
+      string,
+      { selectedElements: Array<{ filePath: string | null }> },
+    ];
+    expect(saved.selectedElements[0].filePath).toBe(hit);
+  });
+
+  it("POST 相对 filePath 在 cwd 未命中时退到 Vite root 基准", async () => {
+    const { ctx, mock } = makeCtx();
+    const raw = "src/App.tsx";
+    const hit = path.resolve("/virtual/root", raw);
+    vi.spyOn(fs, "existsSync").mockImplementation((candidate) => String(candidate) === hit);
+
+    const res = fakeRes();
+    await captureHandler(ctx)(
+      fakeReq("POST", JSON.stringify({ selectedElements: [{ filePath: raw, innerText: "x" }] })),
+      res,
+    );
+    await flush();
+
+    const [, saved] = mock.setPageContext.mock.calls[0] as [
+      string,
+      { selectedElements: Array<{ filePath: string | null }> },
+    ];
+    expect(saved.selectedElements[0].filePath).toBe(hit);
+  });
+
+  it("POST 依赖真身路径（../.. 逃逸）与绝对路径都保持可解析：前者按基准归一化、后者原样", async () => {
+    const { ctx, mock } = makeCtx();
+    const relative = "../../node_modules/.pnpm/pkg@1_hash/node_modules/pkg/Header.vue";
+    const hit = path.resolve(process.cwd(), relative);
+    vi.spyOn(fs, "existsSync").mockImplementation((candidate) => String(candidate) === hit);
+    const absolute = "/repo/node_modules/.pnpm/pkg@1_hash/node_modules/pkg/Comp.vue";
+
+    const res = fakeRes();
+    await captureHandler(ctx)(
+      fakeReq(
+        "POST",
+        JSON.stringify({
+          selectedElements: [
+            { filePath: relative, line: 65, column: 7, innerText: "a" },
+            { filePath: absolute, line: 1, column: 1, innerText: "b" },
+          ],
+        }),
+      ),
+      res,
+    );
+    await flush();
+
+    const [, saved] = mock.setPageContext.mock.calls[0] as [
+      string,
+      { selectedElements: Array<{ filePath: string | null }> },
+    ];
+    expect(saved.selectedElements[0].filePath).toBe(hit);
+    expect(saved.selectedElements[1].filePath).toBe(absolute);
   });
 
   it("POST 非法 JSON 返回 400 与 Invalid JSON", async () => {

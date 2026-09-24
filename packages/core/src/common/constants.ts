@@ -98,6 +98,21 @@ export const SESSION_ID_KEY = "_aipanel_pk";
  */
 export const AIPANEL_CACHE_DIR = "node_modules/.cache/aipanel";
 
+/** ==================== 源码路径 ==================== */
+
+/**
+ * 依赖安装目录名（判定文件是否来自依赖包的唯一依据）。
+ * 宿主侧上下文归一化与两个 Provider 的注入文案共用，避免各写一份 magic string。
+ */
+export const DEPENDENCY_DIR_NAME = "node_modules";
+
+/**
+ * 依赖内部文件的归属提示（注入给 agent 的上下文文案）。
+ * 两个 Provider 共用同一措辞：agent 拿到 node_modules 路径时最容易顺着它去改第三方实现，
+ * 归属必须显式声明，而不是让「源码文件路径」这行字暗示它是项目源码。
+ */
+export const DEPENDENCY_SOURCE_NOTE = `依赖包内文件（${DEPENDENCY_DIR_NAME}）：通常不应直接修改，页面行为请改项目内源码`;
+
 /** ==================== Chrome DevTools ==================== */
 
 /** Chrome DevTools Protocol 默认端口 */

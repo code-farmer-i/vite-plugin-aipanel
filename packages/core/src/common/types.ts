@@ -82,7 +82,11 @@ export interface LogFileConfig {
 export interface SelectedElement {
   /** 节点唯一 id（`@节点[n<id>]` 引用标记与上下文注入共用；由 ensureNodeId 分配） */
   id?: string;
-  /** 文件路径 */
+  /**
+   * 文件路径（绝对路径）。
+   * 浏览器只上报相对路径（各 Inspector 基准不同），由 Vite 端点按宿主基准归一化后落库，
+   * 消费方（Provider 注入、UI 展示）拿到的恒为绝对路径。
+   */
   filePath: string | null;
   /** 行号 */
   line: number | null;

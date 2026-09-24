@@ -1,5 +1,5 @@
 import { computed, type Ref } from "vue";
-import { truncate } from "@aipanel/core";
+import { fileNameOf, truncate } from "@aipanel/core";
 import type {
   AIPanelRemoveSelectedPayload,
   AIPanelSelectedElement,
@@ -15,7 +15,7 @@ function getElementKey(element: AIPanelSelectedElement, index: number): string {
 }
 
 function getBubbleFileText(element: AIPanelSelectedElement): string {
-  const fileName = element.filePath?.split("/").pop() || "";
+  const fileName = element.filePath ? fileNameOf(element.filePath) : "";
   const lineInfo = element.line
     ? `:${element.line}${element.column ? `:${element.column}` : ""}`
     : "";
@@ -24,7 +24,7 @@ function getBubbleFileText(element: AIPanelSelectedElement): string {
 }
 
 function getPanelFileText(element: AIPanelSelectedElement): string {
-  const fileName = element.filePath?.split("/").pop() || "未知文件";
+  const fileName = (element.filePath && fileNameOf(element.filePath)) || "未知文件";
   const lineInfo = element.line
     ? `:${element.line}${element.column ? `:${element.column}` : ""}`
     : "";

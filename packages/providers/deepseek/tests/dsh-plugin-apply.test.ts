@@ -647,6 +647,37 @@ describe("apply: agent/pre-step 节点上下文注入", () => {
     expect(injected.content?.[0]?.text).toContain("/work/proj/a.ts:2");
   });
 
+  it("依赖内部文件附带源码归属提示，项目源码不带", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: { method?: string }) => {
+      if (init?.method === "DELETE") return { ok: true };
+      return {
+        ok: true,
+        json: async () => ({
+          selectedElements: [
+            {
+              id: "n1",
+              filePath: "/repo/node_modules/.pnpm/pkg@1_hash/node_modules/pkg/site/Header.vue",
+              line: 65,
+              column: 7,
+              description: ".pd-header",
+            },
+            { id: "n2", filePath: "/repo/packages/docs/site/desktop/views/index.vue", line: 139 },
+          ],
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = setup();
+
+    const decision = await handler({}, async () => userDecision("看 @节点[n1] 和 @节点[n2]"));
+    const text = decision.messages[1]?.content?.[0]?.text ?? "";
+
+    expect(text).toContain("源码文件路径：/repo/node_modules/.pnpm/pkg@1_hash/node_modules/pkg");
+    expect(text).toContain("源码归属：依赖包内文件（node_modules）");
+    // 只有依赖文件带归属行：项目源码不应出现
+    expect(text.match(/源码归属：/g)).toHaveLength(1);
+  });
+
   it("无节点标记时原样放行（不访问端点）", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

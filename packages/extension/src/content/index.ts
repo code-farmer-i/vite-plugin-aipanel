@@ -78,6 +78,13 @@ if (win[EXTENSION_INIT_MARKER]) {
       return true;
     }
 
+    // 定位节点：转成窗口消息，交给页面里的选择器挂件跳页面 + 呼吸高亮
+    if (msg.type === EXT_MSG.LOCATE_NODE) {
+      window.postMessage({ type: WIDGET_MSG.LOCATE_NODE, element: msg.element }, "*");
+      sendResponse({ success: true });
+      return true;
+    }
+
     return false;
   });
 

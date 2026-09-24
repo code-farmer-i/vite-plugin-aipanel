@@ -87,7 +87,7 @@ export const INIT_MARKER = "__AIPANEL_INITIALIZED__";
 /** 选中元素存储键 */
 export const SELECTED_ELEMENTS_KEY = "__aipanel_selected_elements__";
 
-/** 页面会话标识键（sessionStorage，跨导航标识同一 Tab 的页面上下文） */
+/** 页内会话标识键（sessionStorage，跨导航标识同一 Tab 的页面上下文） */
 export const SESSION_ID_KEY = "_aipanel_pk";
 
 /** ==================== 缓存目录 ==================== */
@@ -139,6 +139,8 @@ export const EXT_MSG = {
   REQUEST_PAGE_CONTEXT: "REQUEST_PAGE_CONTEXT",
   SELECTION_START: "SELECTION_START",
   SELECTION_STOP: "SELECTION_STOP",
+  /** Side Panel → 目标 Tab：请目标页定位某个已选节点（跳回其页面并呼吸高亮） */
+  LOCATE_NODE: "LOCATE_NODE",
   CS_QUERY_WINDOW: "__CS_QUERY_WINDOW__",
   /** Side Panel → Background：立即轮询一次并回传当前服务信息 */
   FORCE_POLL: "FORCE_POLL",
@@ -171,6 +173,8 @@ export const WIDGET_MSG = {
   FOCUS_SESSION: "AIPANEL_FOCUS_SESSION",
   /** 无 deepLink 能力的 Provider：iframe 确认目标会话已激活且渲染稳定（携带 sessionId） */
   SESSION_READY: "AIPANEL_SESSION_READY",
+  /** iframe → 宿主：点节点 chip 时把该节点交回挂件，跳回它被选中时的页面并闪烁高亮；载荷 { element } */
+  LOCATE_NODE: "AIPANEL_LOCATE_NODE",
 } as const;
 
 /** ==================== API 路径补充 ==================== */

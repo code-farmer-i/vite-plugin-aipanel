@@ -156,6 +156,8 @@ function getTargetElement(e: MouseEvent): Element | null {
 
 export function useInspector(options: UseInspectorOptions) {
   const highlightVisible = ref(false);
+  /** 是否正在"呼吸"（挂件模板据此挂 .breathing 类，跑呼吸灯动画） */
+  const highlightBreathing = ref(false);
   const highlightStyle = ref<Record<string, string>>({
     top: "0px",
     left: "0px",
@@ -168,8 +170,86 @@ export function useInspector(options: UseInspectorOptions) {
   const tooltipContent = ref({ description: "", fileInfo: "" });
 
   let inspectorCheckTimer: number | null = null;
+  let breathTimer: number | null = null;
+  /** 呼吸期间跟随滚动的目标（null = 不在跟随） */
+  let followTarget: Element | null = null;
   let currentPrimary = "#4176e6";
   let currentPrimaryBg = "rgba(65, 118, 230, 0.1)";
+
+  /** 把选择高亮框定位到目标元素上（复用选择模式的高亮框与品牌强调色） */
+  function positionHighlight(target: Element): void {
+    const widget = document.querySelector(".aipanel-widget");
+    if (widget) {
+      const style = getComputedStyle(widget);
+      // 选择高亮用品牌强调色（deepseek 蓝），不用主操作 CTA 色
+      currentPrimary = style.getPropertyValue("--ap-accent").trim() || currentPrimary;
+      currentPrimaryBg = style.getPropertyValue("--ap-accent-bg").trim() || currentPrimaryBg;
+    }
+
+    const rect = target.getBoundingClientRect();
+    const next: Record<string, string> = {
+      top: `${rect.top}px`,
+      left: `${rect.left}px`,
+      width: `${rect.width}px`,
+      height: `${rect.height}px`,
+      border: `2px solid ${currentPrimary}`,
+      background: currentPrimaryBg,
+    };
+    const current = highlightStyle.value;
+    const moved =
+      current.top !== next.top ||
+      current.left !== next.left ||
+      current.width !== next.width ||
+      current.height !== next.height ||
+      current.border !== next.border;
+    if (!moved) return;
+    highlightStyle.value = next;
+  }
+
+  /**
+   * 呼吸期间跟随滚动/尺寸变化重定位。
+   * 高亮框是 fixed 定位、坐标在开始时算一次，用户滚动页面就会错位——所以呼吸期间监听
+   * scroll/resize 重新定位（positionHighlight 对未变化会早退，开销可忽略）。
+   */
+  function handleViewportChange() {
+    if (followTarget) positionHighlight(followTarget);
+  }
+
+  function startFollowing(target: Element) {
+    stopFollowing();
+    followTarget = target;
+    window.addEventListener("scroll", handleViewportChange, { passive: true, capture: true });
+    window.addEventListener("resize", handleViewportChange, { passive: true });
+  }
+
+  function stopFollowing() {
+    if (followTarget) {
+      window.removeEventListener("scroll", handleViewportChange, true);
+      window.removeEventListener("resize", handleViewportChange);
+    }
+    followTarget = null;
+  }
+
+  /**
+   * 复用选择高亮框"呼吸"定位目标元素（点已选节点 / dsh 里的 chip 时用）。
+   * 先滚到视口中央再定位：高亮框是 fixed 定位，滚动结束后位置才对得上，故用瞬时滚动；
+   * 呼吸期间跟随用户的滚动，避免错位。呼吸 2 下（CSS 动画，见挂件样式的 .breathing）后收起。
+   */
+  function flashElement(target: Element): void {
+    target.scrollIntoView({ block: "center" });
+    positionHighlight(target);
+    highlightVisible.value = true;
+    highlightBreathing.value = true;
+    startFollowing(target);
+
+    if (breathTimer !== null) window.clearTimeout(breathTimer);
+    breathTimer = window.setTimeout(() => {
+      breathTimer = null;
+      stopFollowing();
+      highlightBreathing.value = false;
+      highlightVisible.value = false;
+    }, 4000); // 与样式里 2 × 2s 的呼吸动画同步
+  }
 
   function setPointerEventsNone(elements: (Element | null)[]) {
     elements.forEach((el) => {
@@ -200,13 +280,7 @@ export function useInspector(options: UseInspectorOptions) {
     setPointerEventsAuto(uiElements);
 
     if (elementToHighlight) {
-      const widget = document.querySelector(".aipanel-widget");
-      if (widget) {
-        const style = getComputedStyle(widget);
-        // 选择高亮用品牌强调色（deepseek 蓝），不用主操作 CTA 色
-        currentPrimary = style.getPropertyValue("--ap-accent").trim() || currentPrimary;
-        currentPrimaryBg = style.getPropertyValue("--ap-accent-bg").trim() || currentPrimaryBg;
-      }
+      positionHighlight(elementToHighlight);
 
       const description = getElementDescription(elementToHighlight);
       const fileName = fileInfo?.file ? fileNameOf(fileInfo.file) : "";
@@ -224,29 +298,6 @@ export function useInspector(options: UseInspectorOptions) {
         fileInfo: fileInfoText,
       };
 
-      const rect = elementToHighlight.getBoundingClientRect();
-
-      const newTop = `${rect.top}px`;
-      const newLeft = `${rect.left}px`;
-      const newWidth = `${rect.width}px`;
-      const newHeight = `${rect.height}px`;
-
-      if (
-        highlightStyle.value.top !== newTop ||
-        highlightStyle.value.left !== newLeft ||
-        highlightStyle.value.width !== newWidth ||
-        highlightStyle.value.height !== newHeight
-      ) {
-        highlightStyle.value = {
-          top: newTop,
-          left: newLeft,
-          width: newWidth,
-          height: newHeight,
-          border: `2px solid ${currentPrimary}`,
-          background: currentPrimaryBg,
-        };
-      }
-
       // 标记 highlight 可见
       highlightVisible.value = true;
       tooltipVisible.value = true;
@@ -261,6 +312,7 @@ export function useInspector(options: UseInspectorOptions) {
         const tooltipHeight = tooltipEl.offsetHeight;
         if (tooltipWidth === 0 || tooltipHeight === 0) return;
 
+        const rect = elementToHighlight.getBoundingClientRect();
         const margin = 10;
         const gap = 4;
 
@@ -417,6 +469,8 @@ export function useInspector(options: UseInspectorOptions) {
     resolveInspectorAdapter()?.setEnabled(newVal);
 
     if (newVal) {
+      // 进入选择模式后由 mousemove 接管高亮，停止呼吸跟随以免互相抢坐标
+      stopFollowing();
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("keydown", handleKeydown, true);
     } else {
@@ -443,15 +497,22 @@ export function useInspector(options: UseInspectorOptions) {
     if (inspectorCheckTimer) {
       window.clearInterval(inspectorCheckTimer);
     }
+    if (breathTimer !== null) {
+      window.clearTimeout(breathTimer);
+      breathTimer = null;
+    }
+    stopFollowing();
     document.removeEventListener("mousemove", handleMouseMove);
     document.removeEventListener("keydown", handleKeydown, true);
   });
 
   return {
     highlightVisible,
+    highlightBreathing,
     highlightStyle,
     tooltipVisible,
     tooltipStyle,
     tooltipContent,
+    flashElement,
   };
 }

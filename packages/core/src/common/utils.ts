@@ -35,6 +35,23 @@ export function isDependencyPath(filePath: string): boolean {
 }
 
 /**
+ * 拼「路径:行:列」形式的源码位置（形如 `/proj/src/App.vue:53:11`）。
+ * 节点上下文注入（两个 Provider）与编辑器跳转（launch-editor 的位置格式）共用同一形态。
+ * @param filePath - 文件路径
+ * @param line - 行号（缺省时只返回路径）
+ * @param column - 列号（缺省时只到行）
+ * @returns 源码位置字符串
+ */
+export function formatSourceLocation(
+  filePath: string,
+  line?: number | null,
+  column?: number | null,
+): string {
+  if (!line) return filePath;
+  return column ? `${filePath}:${line}:${column}` : `${filePath}:${line}`;
+}
+
+/**
  * 取（或生成）元素的节点唯一 id：优先复用已赋值的 id，否则生成随机 id 并写回元素。
  * 同一引用在会话标记（`@节点[n<id>]`）与上下文注入里使用同一个 id；
  * 不同包（client / dsh-client / context 端点）共用此实现，保证 id 体系一致。

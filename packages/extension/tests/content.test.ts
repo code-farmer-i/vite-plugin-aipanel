@@ -106,6 +106,19 @@ describe("content script 消息中继", () => {
 
     postSpy.mockRestore();
   });
+
+  it("LOCATE_NODE 把节点转发成页面窗口消息（供页面挂件定位 + 呼吸高亮）", () => {
+    const postSpy = vi.spyOn(window, "postMessage");
+    const listener = chromeStub.runtime.onMessage.listeners[0];
+    const sendResponse = vi.fn();
+    const element = { id: "n1", description: ".hero-title", previewPageUrl: location.href };
+
+    expect(listener({ type: EXT_MSG.LOCATE_NODE, element }, {}, sendResponse)).toBe(true);
+    expect(postSpy).toHaveBeenCalledWith({ type: WIDGET_MSG.LOCATE_NODE, element }, "*");
+    expect(sendResponse).toHaveBeenCalledWith({ success: true });
+
+    postSpy.mockRestore();
+  });
 });
 
 describe("content script 页面选择结果转发", () => {

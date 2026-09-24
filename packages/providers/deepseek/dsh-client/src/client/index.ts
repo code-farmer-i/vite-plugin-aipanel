@@ -21,7 +21,7 @@ import type {
   InputTriggerSource,
   ReferenceInsert,
 } from "@deepseek-ai/dsh-client-ui-input-trigger/client";
-import { ensureNodeId, toNodeMention, widgetEnvelope, WIDGET_MSG } from "@aipanel/core";
+import { ensureNodeId, widgetEnvelope, WIDGET_MSG } from "@aipanel/core";
 import type { AIPanelSelectedElement, AIPanelWidgetTheme } from "@aipanel/core";
 import type { ISessions, SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
 // 仅取声明合并：SessionReferenceSourceMap.mainView 由 ui-session 扩展而来
@@ -37,6 +37,7 @@ import type {
 import type { ThemePreference, ThemeRuntime } from "@deepseek-ai/dsh-client-ui-theme/client";
 import { registerDiagnosticsView } from "./diagnostics-view";
 import { buildLayoutOverridesCss, LAYOUT_STYLE_ID } from "./layout-overrides";
+import { parseElementRef, serializeElementRef } from "./node-reference";
 
 const MSG = WIDGET_MSG;
 
@@ -82,17 +83,6 @@ function elementContextRef(e: AIPanelSelectedElement): string {
   return JSON.stringify(e);
 }
 
-/** 构造 model 可见的引用文本：只带节点 id（`@节点[n<id>]`）。完整上下文由 host 端按 id 反查注入。 */
-function serializeElement(ref: string): string {
-  try {
-    const e = JSON.parse(ref) as AIPanelSelectedElement;
-    if (!e || typeof e !== "object") throw new Error("not an element payload");
-    return toNodeMention(ensureNodeId(e));
-  } catch {
-    return `@${ref}`;
-  }
-}
-
 /** 把选中元素铸成 ReferenceInsert（label/clipboardText 规则与官方 input-trigger 一致） */
 function toReference(e: AIPanelSelectedElement): ReferenceInsert {
   const mark = `节点[${ensureNodeId(e)}]`;
@@ -103,6 +93,29 @@ function toReference(e: AIPanelSelectedElement): ReferenceInsert {
     appearance: "file",
     clipboardText: `@${mark}`,
   };
+}
+
+/**
+ * 已插入 chip 的节点（节点 id → 元素）。
+ * chip 发送后就只剩序列化文本 `@节点[id]`，点击时拿不到元素 JSON，
+ * 因此按 id 反查这里；同时作为 source 的 lexicon（文本引用的认领/装饰依据）。
+ */
+const elementRegistry = new Map<string, AIPanelSelectedElement>();
+
+/** lexicon 名录变化通知（input-trigger 用它重拉名录，保证新插入的节点也能被认领/装饰） */
+const lexiconListeners = new Set<() => void>();
+function notifyLexicon(): void {
+  for (const listener of lexiconListeners) listener();
+}
+
+/** 本 source 的节点名录（`@` 之后的部分，如 `节点[n1d5fdd63]`） */
+function nodeLexicon(): string[] {
+  return [...elementRegistry.keys()].map((id) => `节点[${id}]`);
+}
+
+/** 从引用文本里取节点 id（`@节点[n<id>]` / `节点[n<id>]` 两种写法都认） */
+function nodeIdOfRef(ref: string): string | null {
+  return /n[0-9a-z]+/.exec(ref)?.[0] ?? null;
 }
 
 /** 是否嵌入在父文档（AIPanel 挂件 iframe）中：仅嵌入式才做 AIPanel 专属 UI 行为 */
@@ -405,6 +418,11 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
       }
       if (!inputFor) return;
       const reference = toReference(element);
+      // 记住节点 id → 元素：发送后的 chip 只剩 `@节点[id]` 文本，
+      // 需要据此反查元素才能定位（lexicon 认领 + openReference 兜底）。
+      const nodeId = ensureNodeId(element);
+      elementRegistry.set(nodeId, element);
+      notifyLexicon();
 
       const attempt = (left: number) => {
         let applied = false;
@@ -483,9 +501,28 @@ export function apply(ctx: Context, config: AipanelClientPluginConfig = {}) {
     name: "aipanel",
     candidates: async () => [],
     onPick: () => undefined,
+    /**
+     * 点 chip：把节点交回父窗（AIPanel 挂件），由挂件跳回它被选中时的页面并呼吸高亮。
+     * composer 里的 chip，`ref` 是元素 JSON；发送后只剩 `@节点[id]` 标记，按 id 反查元素表。
+     * 独立打开 dsh（非嵌入式）时没有可交的宿主，返回 false 保留编辑器原有手势。
+     */
+    openReference(_session, reference) {
+      const nodeId = nodeIdOfRef(reference.ref);
+      const element =
+        parseElementRef(reference.ref) ?? (nodeId ? (elementRegistry.get(nodeId) ?? null) : null);
+      if (!element || !isEmbedded()) return false;
+      postToHost(MSG.LOCATE_NODE, { element });
+      return true;
+    },
     codec: {
       clipboardText: (ref) => ref,
-      serialize: async (ref) => serializeElement(ref),
+      serialize: async (ref) => serializeElementRef(ref),
+    },
+    /** @ 之后的名录：让发送后剩下的 `@节点[id]` 文本也能被本 source 认领/装饰 */
+    lexicon: () => nodeLexicon(),
+    subscribeLexicon: (_session, listener) => {
+      lexiconListeners.add(listener);
+      return () => lexiconListeners.delete(listener);
     },
   };
 

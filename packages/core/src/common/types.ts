@@ -364,6 +364,8 @@ export type AIPanelWidgetEmits = {
   (e: "select-session", session: AIPanelWidgetSession): void;
   (e: "delete-session", session: AIPanelWidgetSession): void;
   (e: "click-selected-node", element: AIPanelSelectedElement): void;
+  /** 宿主无法在本地定位（扩展模式下页面不在本上下文）：把节点交给宿主转发到目标页 */
+  (e: "locate-node", element: AIPanelSelectedElement): void;
   (e: "remove-selected-node", payload: AIPanelRemoveSelectedPayload): void;
   (e: "clear-selected-nodes"): void;
   (e: "empty-action"): void;

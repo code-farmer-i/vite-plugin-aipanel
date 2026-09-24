@@ -294,4 +294,80 @@ describe("useInspector", () => {
     await unmountAll();
     expect(clearSpy).toHaveBeenCalledWith(timerId);
   });
+
+  it("flashElement：呼吸期间跟随滚动重定位，结束后停止跟随", () => {
+    const s = setup();
+    const widget = appendEl(document.createElement("div"));
+    widget.className = "aipanel-widget";
+    const el = appendEl(document.createElement("div"));
+    el.scrollIntoView = vi.fn();
+    const rect = mockRect(el, { top: 100, left: 10, width: 50, height: 20 });
+
+    vi.useFakeTimers();
+    s.api.flashElement(el);
+    expect(s.api.highlightStyle.value.top).toBe("100px");
+
+    // 用户滚动：元素相对视口上移 → 高亮框（fixed 定位）跟随重定位
+    rect.mockReturnValue({
+      top: 40,
+      left: 10,
+      width: 50,
+      height: 20,
+      right: 60,
+      bottom: 60,
+      x: 10,
+      y: 40,
+      toJSON: () => ({}),
+    } as DOMRect);
+    window.dispatchEvent(new Event("scroll"));
+    expect(s.api.highlightStyle.value.top).toBe("40px");
+
+    // 呼吸结束 → 摘掉跟随监听，再滚动不再改坐标
+    vi.advanceTimersByTime(4000);
+    rect.mockReturnValue({
+      top: 0,
+      left: 10,
+      width: 50,
+      height: 20,
+      right: 60,
+      bottom: 20,
+      x: 10,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    window.dispatchEvent(new Event("scroll"));
+    expect(s.api.highlightStyle.value.top).toBe("40px");
+  });
+
+  it("flashElement：复用选择高亮框定位，呼吸 2 下后收起", () => {
+    const s = setup();
+    const widget = appendEl(document.createElement("div"));
+    widget.className = "aipanel-widget";
+    const el = appendEl(document.createElement("div"));
+    const scrollIntoView = vi.fn();
+    el.scrollIntoView = scrollIntoView;
+    mockRect(el, { top: 10, left: 20, width: 100, height: 30 });
+
+    vi.useFakeTimers();
+    s.api.flashElement(el);
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+    expect(s.api.highlightVisible.value).toBe(true);
+    expect(s.api.highlightBreathing.value).toBe(true);
+    expect(s.api.highlightStyle.value).toMatchObject({
+      top: "10px",
+      left: "20px",
+      width: "100px",
+      height: "30px",
+    });
+
+    // 呼吸由 CSS 动画承担（2 × 2s），到时统一收起
+    vi.advanceTimersByTime(3999);
+    expect(s.api.highlightVisible.value).toBe(true);
+    expect(s.api.highlightBreathing.value).toBe(true);
+
+    vi.advanceTimersByTime(1);
+    expect(s.api.highlightVisible.value).toBe(false);
+    expect(s.api.highlightBreathing.value).toBe(false);
+  });
 });

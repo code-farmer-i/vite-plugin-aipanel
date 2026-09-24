@@ -79,6 +79,8 @@ const ext = {
   broadcastTheme: null as ((theme: AIPanelWidgetTheme) => void) | null,
   notifySelectionResult: null as ((element: AIPanelSelectedElement) => void) | null,
   notifySelectModeChange: null as ((val: boolean) => void) | null,
+  /** 扩展模式：把节点定位请求转给目标页（页面不在侧栏上下文里） */
+  locateNode: null as ((element: AIPanelSelectedElement) => void) | null,
 };
 
 const showNotification = (
@@ -484,6 +486,14 @@ const handleClearSelected = () => {
   showNotification("已清除所有选中元素");
 };
 
+/**
+ * 侧栏无法在本地定位（页面不在侧栏上下文）：把节点转给目标 Tab，
+ * 由 content script 转成窗口消息后交给页面里的选择器挂件（跳页面 + 呼吸高亮）。
+ */
+const handleLocateNode = (element: AIPanelSelectedElement) => {
+  ext.locateNode?.(element);
+};
+
 const handleSelectModeChange = (val: boolean) => {
   if (selectMode.value === val) return;
   selectMode.value = val;
@@ -520,6 +530,7 @@ if (isExtensionMode) {
   });
   ext.onSelectModeChange = result.onSelectModeChange;
   ext.broadcastTheme = result.broadcastTheme;
+  ext.locateNode = result.locateNode;
 }
 if (isExtensionSelectorMode) {
   const result = useExtensionSelectorMode({ onSelectModeChange: handleSelectModeChange, serviceInstanceId });
@@ -593,6 +604,7 @@ const handleFrameLoaded = () => {
     @delete-session="deleteSession"
     @select-session="selectSession"
     @click-selected-node="handleSelectNode"
+    @locate-node="handleLocateNode"
     @clear-selected-nodes="handleClearSelected"
     @remove-selected-node="handleRemoveSelectedNode"
     @empty-action="createSession"

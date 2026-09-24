@@ -100,5 +100,26 @@ export function useExtensionMode(options: UseExtensionModeOptions) {
     chrome.runtime.sendMessage({ type: EXT_MSG.THEME_CHANGE, theme }).catch(() => {});
   }
 
-  return { onSelectModeChange, broadcastTheme };
+  /**
+   * 请求目标页定位节点（跳回其页面并呼吸高亮）。
+   * 优先发给 URL 匹配的 Tab（用户可能已切走），否则发给当前活跃 Tab；
+   * 该消息经 content script 转成窗口消息，由页面里的选择器挂件执行定位。
+   */
+  async function locateNode(element: AIPanelSelectedElement) {
+    const pageUrl = element.previewPageUrl;
+    try {
+      const tabs = await chrome.tabs.query({});
+      const target = pageUrl
+        ? tabs.find((tab) => tab.url && tab.url.split("#")[0] === pageUrl.split("#")[0])
+        : undefined;
+      const fallback = target ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+      if (fallback?.id) {
+        await chrome.tabs.sendMessage(fallback.id, { type: EXT_MSG.LOCATE_NODE, element });
+      }
+    } catch {
+      // chrome API 仅在扩展上下文可用
+    }
+  }
+
+  return { onSelectModeChange, broadcastTheme, locateNode };
 }

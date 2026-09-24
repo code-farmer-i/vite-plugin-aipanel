@@ -52,6 +52,7 @@ import type { AIPanelDiagnosticEntry, SelectedElement } from "@aipanel/core";
 import {
   DEPENDENCY_SOURCE_NOTE,
   MUTATING_TOOLS,
+  formatSourceLocation,
   isDependencyPath,
   parseNodeMentions,
 } from "@aipanel/core";
@@ -112,10 +113,9 @@ export interface AipanelPluginConfig {
 /** 把单个选中元素组织成注入给 agent 的上下文文本块；开头带节点 id 供 agent 与消息标记关联 */
 function buildNodeContext(e: SelectedElement): string {
   const lines: string[] = [`节点 ID：${e.id ?? ""}`];
-  // 行列直接跟在文件路径后（形如 index.vue:53:11），不单独成行
-  const loc = e.line ? (e.column ? `:${e.line}:${e.column}` : `:${e.line}`) : "";
   if (e.filePath) {
-    lines.push(`源码文件路径：${e.filePath}${loc}`);
+    // 行列直接跟在文件路径后（形如 index.vue:53:11），不单独成行
+    lines.push(`源码文件路径：${formatSourceLocation(e.filePath, e.line, e.column)}`);
     // 依赖内部文件显式声明归属：否则「源码文件路径」会暗示它是项目源码，诱导 agent 去改 node_modules
     if (isDependencyPath(e.filePath)) lines.push(`源码归属：${DEPENDENCY_SOURCE_NOTE}`);
   }

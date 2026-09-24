@@ -12,7 +12,7 @@ import { useSplitMode } from "../composables/use-split";
 import type { AIPanelWidgetEmits, AIPanelWidgetProps } from "./types";
 import { provideAIPanelWidgetContext } from "./context";
 import type { FloatingBubbleOffset } from "./components/FloatingBubble/types";
-import { NOTIFICATION_DURATION, WIDGET_MSG } from "@aipanel/core";
+import { NOTIFICATION_DURATION, WIDGET_MSG, type AIPanelSelectedElement } from "@aipanel/core";
 
 defineOptions({
   name: "AIPanelWidget",
@@ -233,11 +233,32 @@ const { sessionItems, handleCreateSession, handleDeleteSession, handleSelectSess
 });
 
 const {
+  highlightVisible,
+  highlightBreathing,
+  highlightStyle,
+  tooltipVisible,
+  tooltipStyle,
+  tooltipContent,
+  flashElement,
+} = useInspector({
+  selectMode: toRef(props, "selectMode"),
+  onAddSelectedNode: (element) => {
+    emit("click-selected-node", element);
+  },
+  onExitSelectMode: () => {
+    emit("update:selectMode", false);
+    emit("toggle-select-mode", false);
+  },
+});
+
+const {
   bubbleVisible,
   hasSelectedElements,
   selectedElementItems,
+  consumePendingLocate,
   handleClearSelectedNodes,
   handleClickSelectedNode,
+  handleLocateSelectedElement,
   handleRemoveSelectedNode,
   handleToggleSelectMode,
 } = useSelection({
@@ -258,19 +279,11 @@ const {
     emit("update:selectedElements", []);
   },
   showConfirmDialog,
+  // 点已选节点时复用选择模式的高亮框闪烁；扩展模式下挂件在侧栏，不操作页面
+  flashHighlight: flashElement,
+  locateInPage: () => !isExtensionMode.value,
+  notify: (message) => showNotification(message),
 });
-
-const { highlightVisible, highlightStyle, tooltipVisible, tooltipStyle, tooltipContent } =
-  useInspector({
-    selectMode: toRef(props, "selectMode"),
-    onAddSelectedNode: (element) => {
-      emit("click-selected-node", element);
-    },
-    onExitSelectMode: () => {
-      emit("update:selectMode", false);
-      emit("toggle-select-mode", false);
-    },
-  });
 
 const bubbleOffset = ref<FloatingBubbleOffset | undefined>(undefined);
 
@@ -422,6 +435,16 @@ const handleIframeMessage = (event: MessageEvent) => {
       }
     }
   }
+  if (event.data?.type === WIDGET_MSG.LOCATE_NODE && event.data.element) {
+    // chip 点击：跳回该节点被选中时的页面并呼吸高亮（高亮复用选择模式的高亮框）
+    const element = event.data.element as AIPanelSelectedElement;
+    if (localDisplayMode.value === "extension") {
+      // 侧栏宿主：页面不在本上下文，交给宿主转发到目标 Tab，由页面挂件定位
+      emit("locate-node", element);
+    } else {
+      handleLocateSelectedElement(element);
+    }
+  }
 };
 
 onMounted(() => {
@@ -429,6 +452,8 @@ onMounted(() => {
     window.addEventListener("resize", handleWindowResize);
     window.addEventListener("message", handleIframeMessage);
   }
+  // 跨页面跳转前暂存的待定位节点：挂载后消费，闪烁高亮它
+  void consumePendingLocate();
 });
 
 onUnmounted(() => {
@@ -746,6 +771,7 @@ defineExpose({
     <div
       v-show="highlightVisible"
       class="aipanel-element-highlight"
+      :class="{ breathing: highlightBreathing }"
       :style="highlightStyle"
     />
 
@@ -1222,6 +1248,24 @@ defineExpose({
   border-radius: 4px;
 }
 
+/* 点已选节点 / dsh chip 时的"呼吸灯"：2 次缓慢明暗（每下 2s），不硬切显示 */
+.aipanel-element-highlight.breathing {
+  animation: aipanel-highlight-breath 2s ease-in-out 2;
+}
+
+@keyframes aipanel-highlight-breath {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.01);
+  }
+}
+
 #vue-inspector-container {
   display: none !important;
 }
@@ -1250,31 +1294,6 @@ defineExpose({
   font-size: 11px;
   color: var(--ap-text-placeholder);
   word-break: break-all;
-}
-
-.aipanel-element-highlight-temp {
-  position: absolute;
-  pointer-events: none;
-  z-index: 999998;
-  border-radius: 4px;
-  animation: highlight-pulse 2s ease-out forwards;
-}
-
-@keyframes highlight-pulse {
-  0% {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 0.8;
-    transform: scale(1.02);
-  }
-
-  100% {
-    opacity: 0;
-    transform: scale(1);
-  }
 }
 
 @media (max-width: 768px) {

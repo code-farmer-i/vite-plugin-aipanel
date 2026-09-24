@@ -253,6 +253,67 @@ describe("useExtensionMode", () => {
     wrapper.unmount();
   });
 
+  it("locateNode 优先发给 URL 匹配的 Tab（用户可能已切走）", async () => {
+    const element: AIPanelSelectedElement = {
+      filePath: "/p/a.vue",
+      line: 3,
+      column: 1,
+      innerText: "x",
+      description: "div.a",
+      previewPageUrl: "http://localhost:5173/#/index",
+    };
+    chromeStub.tabs.query.mockImplementation(async (query?: { active?: boolean }) =>
+      query?.active
+        ? [{ id: 5, index: 0, url: "http://localhost:3000/" }]
+        : [
+            { id: 7, index: 1, url: "http://localhost:5173/#/index" },
+            { id: 5, index: 0, url: "http://localhost:3000/" },
+          ],
+    );
+    const { wrapper, api } = mountComposable(() =>
+      useExtensionMode({
+        selectMode: ref(false),
+        serviceInstanceId: "inst-1",
+        onElementSelected: vi.fn(),
+      }),
+    );
+
+    await api.locateNode(element);
+
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(7, {
+      type: EXT_MSG.LOCATE_NODE,
+      element,
+    });
+    wrapper.unmount();
+  });
+
+  it("locateNode 无匹配 Tab 时回退当前活跃 Tab", async () => {
+    const element: AIPanelSelectedElement = {
+      filePath: null,
+      line: null,
+      column: null,
+      innerText: "x",
+      description: "div.a",
+      previewPageUrl: "http://localhost:9999/#/app",
+    };
+    const { wrapper, api } = mountComposable(() =>
+      useExtensionMode({
+        selectMode: ref(false),
+        serviceInstanceId: "inst-1",
+        onElementSelected: vi.fn(),
+      }),
+    );
+
+    await api.locateNode(element);
+
+    expect(chromeStub.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true });
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(5, {
+      type: EXT_MSG.LOCATE_NODE,
+      element,
+    });
+    wrapper.unmount();
+  });
+
   it("broadcastTheme 通过 runtime.sendMessage 广播主题", async () => {
     const selectMode = ref(false);
     const { wrapper, api } = mountComposable(() =>

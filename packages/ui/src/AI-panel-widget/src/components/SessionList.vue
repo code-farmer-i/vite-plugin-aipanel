@@ -337,6 +337,8 @@ function isSessionCompleted(sessionId: string): boolean {
 }
 
 /* 会话行：对齐 DS sessionRow（height:32px / padding:0 8px / radius:8px）。
+   行必须 flex:none：父容器 .aipanel-session-list-content 是可滚动的 flex 列，
+   默认 flex-shrink:1 会让行被压到内容高度（32px → 20px），会话一多既压扁又不触发容器滚动。
    文字色 alias-label-primary：--ap-text-primary 已按主题取值（light=bluish-1000 / dark=bluish-50），无需再按主题覆盖。 */
 .aipanel-session-item {
   position: relative;
@@ -344,6 +346,7 @@ function isSessionCompleted(sessionId: string): boolean {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: none;
   height: 32px;
   padding: 0 8px;
   border-radius: 8px;

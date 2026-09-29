@@ -1,5 +1,171 @@
 # 更新日志
 
+## v1.3.9
+
+`2026-09-24`
+
+### vite-plugin
+
+#### ✨ 新增
+
+- **选中元素的源码路径统一归一化为绝对路径**：浏览器只能上报相对路径，而基准因来源而异——unplugin-vue-inspector 相对 Vite 进程 cwd、react-dev-inspector 兼容属性相对 Vite root、code-inspector 相对 git 仓库根，AI 的工作目录又是第四种；相对路径被下游一拼，常常落到工作区之外（沙箱下直接读不到，甚至静默指向别的文件）。现在在上下文落库前按 `cwd → root → git 仓库根` 顺序探测真实文件，注入给 AI 的恒为绝对路径；文件已删除或 HMR 后失效时也回退为绝对路径（可能不存在），不再把「基准不可知」的问题推给下游
+
+### ui
+
+#### ✨ 新增
+
+- **点击已选节点可跳回原页面并高亮**：点右侧「已选节点」列表、页面上的气泡，或 dsh 对话框里的节点 chip，会跳回该元素被选中时的页面，并以呼吸灯效果高亮它——元素在别的路由或页面也能找回来。同页直接定位；hash 路由不重建页面，就地等渲染后定位；整页导航则先记下目标选择器，由落地页挂件挂载时消费；呼吸期间跟着页面滚动重定位，2 秒内找不到元素会提示「页面可能已变化」
+
+#### 🐛 修复
+
+- 修复**会话列表项被压扁**：列表项在可滚动的 flex 列里会被压到约 20px，现在固定不收缩、保持 32px 高度，会话一多也能正常滚动
+
+### core
+
+#### ⚡ 改进
+
+- 新增源码路径工具并作为单一来源：路径分隔符归一化、兼容两种分隔符取文件名、依赖目录判定、`路径:行:列` 位置拼装；挂件气泡、节点卡片与进程日志不再各写一份 `split("/").pop()`，Windows 下带 `\` 的绝对路径也不会把整条路径当成文件名
+
+### deepseek
+
+#### ✨ 新增
+
+- 节点 chip 的引用载荷解析与序列化收敛为一处共用实现：插入时序列化进 chip、提交时还原成会话里的 `@节点[id]` 标记、点击时按 id 反查元素——点击 chip 也能定位回原页面
+
+#### ⚡ 改进
+
+- 节点上下文对依赖包内文件（`node_modules`）补一行「源码归属」提示：AI 拿到这类路径时不会顺着它去改第三方实现，而是回到项目内源码
+
+### opencode
+
+#### ⚡ 改进
+
+- 桥接脚本同步对依赖包内文件声明源码归属，措辞与判定依据和 dsh 侧完全一致（同一份单一来源）
+
+### docs
+
+#### ⚡ 改进
+
+- 使用指南补充「点击已选节点跳回页面并高亮」的用法；新增 ADR 记录「源码路径归一化收口在宿主」的决策
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.3.9/packages/extension/aipanel-assistant.zip)
+
+## v1.3.8
+
+`2026-09-23`
+
+### core
+
+#### 🐛 修复
+
+- 修复**编辑后「没有问题」也照样刷一条通知**：这一步的命令成功退出、且没有任何结构化发现时，不再注入诊断上下文，不会每个 step 都插一条「没有发现问题」；手动调 `run_diagnostics` 仍照旧给出完整输出
+
+### docs
+
+#### ⚡ 改进
+
+- 配置文档补充「编辑后无发现不注入」的说明，与 ADR 对齐
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.3.8/packages/extension/aipanel-assistant.zip)
+
+## v1.3.7
+
+`2026-09-23`
+
+### core
+
+#### ✨ 新增
+
+- 诊断检查新增 `targets` 配置：可按目标形态（`edited` 编辑后 / `file` 单文件 / `project` 全量）限定某个检查何时执行。例如给「项目全量检查」标 `targets: ["project"]`，就只在 `run_diagnostics` 不传文件时触发，不会被编辑后诊断白白拉起
+
+### docs
+
+#### ⚡ 改进
+
+- 配置文档补充 `targets` 字段说明与示例
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.3.7/packages/extension/aipanel-assistant.zip)
+
+## v1.3.6
+
+`2026-09-23`
+
+### vite-plugin
+
+#### 🐛 修复
+
+- 修复**React 等未装 vue 的项目启动即报 `Failed to resolve import "vue"`**：Vue 的 Inspector 会向 `index.html` 注入依赖 `vue` 的运行时，此前它会被注册进所有项目；现在改为在 Vite 解析插件列表时（`apply`）按框架门控——只有识别为 Vue 的项目才注册，React 与未识别框架的项目不再注入，插件原有的「仅 dev 生效」门控也保留（生产构建同样不注入）
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.3.6/packages/extension/aipanel-assistant.zip)
+
+## v1.3.5
+
+`2026-09-23`
+
+### core
+
+#### ✨ 新增
+
+- **诊断配置收拢到一处**（`providerOptions.diagnostics`），两个引擎语义一致：
+  - `checks`：有序检查列表，不写 = 内置 ESLint + oxlint + 类型检查（项目装了什么跑什么，没装的自动跳过）；内置 linter 只是「预设」，展开后与自定义检查走完全相同的执行与适配逻辑，也可局部覆盖参数
+  - 新增 stylelint 内置预设（默认只在 `.css` / `.scss` / `.less` 上跑）
+  - 自研工具可按同形接入：`bin` / `command` + `args`（支持 `{file}` 逐文件、`{files}` 一次传全部）+ 输出 `format` 或自定义 `adapter`
+  - `auto`（编辑后自动诊断）、`exposeTool`（是否把 `run_diagnostics` 暴露给模型）、`severity`（`error` 只报错误 / `warning` 错误与警告都报）、`maxFindingsPerSection`、`maxMessageChars` 均可配
+- 内置 ESLint / oxlint / stylelint 均输出结构化诊断，诊断卡片与严重级别门槛对它们同样生效
+
+#### 🐛 修复
+
+- 修复**被忽略的文件「假装已检查」**：ESLint 对「被显式传入、但不在配置范围内」的文件只回一条忽略提示，以前这条提示会被当成一条诊断发现、每个 step 都刷出来；现在它不再算发现——编辑后阶段静默，手动诊断时另给一行「该文件不在 ESLint 配置范围内，未检查」，不会让人误以为查过了
+- 修复**命令输出解析失败时看不出原因**：错误信息现在带上原始输出摘要
+- 修复 `{files}` 占位符展开：作为独立参数时正确展开成多个 argv 项，不再挤成一个字符串传给工具
+- 项目外文件的诊断展示改用绝对路径；空分区不再出现在结果里
+
+### deepseek
+
+#### ⚡ 改进
+
+- 移除 `enableDiagnostics`、`autoDiagnose` 旧开关，统一改用 `diagnostics` 配置；默认值从 core 取，行为与默认保持一致
+
+### opencode
+
+#### ⚡ 改进
+
+- 移除 `enableLsp` 旧开关，统一改用 `diagnostics` 配置，与 DeepSeek 侧共用同一套策略契约与默认值
+
+### docs
+
+#### ⚡ 改进
+
+- 配置文档新增完整的「诊断配置」说明（检查字段、内置预设、自定义命令与适配器；排除规则仍交给底层工具自己）；新增 ADR 记录诊断用户配置契约
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.3.5/packages/extension/aipanel-assistant.zip)
+
+## v1.3.4
+
+`2026-09-23`
+
+### deepseek
+
+#### ⚡ 改进
+
+- 适配新版 dsh 的消息格式：插件产生的上下文消息来源 `kind` 由共用的 `plugin` 改为插件自有的 `aipanel`——dsh 会话格式 v4 起要求来源由生产者自己声明，旧的 `plugin` 会在写入/读取时被直接拒绝；节点上下文与编辑后诊断两条消息都走这一处
+- 读取工作区快照时一并解析新增的 `pinnedSessionIds`：该集合不参与会话可见性，只是随官方 baseline 结构一起取出
+- 同步升级 dsh 相关依赖至 0.1.7-alpha.2（含 `@deepseek-ai/cordis` 至 ~4.0.4）
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.3.4/packages/extension/aipanel-assistant.zip)
+
 ## v1.3.3
 
 `2026-09-21`

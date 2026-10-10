@@ -15,8 +15,11 @@ import { DEFAULT_DIAGNOSTICS_POLICY, resolveDiagnosticsPolicy } from "@aipanel/c
 import { createLogger } from "@aipanel/core/node";
 import type { DeepSeekBusyEnter, DeepSeekPermissionPreset, DeepSeekResolvedOptions } from "./types";
 import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/types";
-import { DEFAULT_DEEPSEEK_PROVIDER_OPTIONS } from "./constants";
-import { DSH_LOOPBACK_HOST } from "./constants";
+import {
+  DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
+  DSH_DEFAULT_PROFILE,
+  DSH_LOOPBACK_HOST,
+} from "./constants";
 import { DeepSeekAPI } from "./api";
 import { LaunchToken, startDeepSeekWeb } from "./deepseek-web";
 import { buildDshOverlay, writeDshOverlay } from "./profile";
@@ -130,14 +133,16 @@ Please upgrade:
       port: options.port,
       hostname: DSH_LOOPBACK_HOST,
       cwd: options.cwd,
+      profile: this.opts.profile,
       vitePort: options.vitePort,
     });
-    // 统一官方方案安装 dsh 侧插件（dsh plugin --profile web add）：
+    // 统一官方方案安装 dsh 侧插件（dsh plugin --profile <name> add）：
     //   - dsh-client 浏览器插件（@ 菜单 chip 高亮）
     //   - dsh-plugin 宿主插件（审查工具 / 编辑后自动诊断）
     // dev 装本地目录（改代码 → 重建 → 重启生效）；生产装 npm 包。
     // 未就绪时 overlay 停用对应行，避免 dsh 因无法解析而 fail-loud，仅失去该能力。
-    const profileDir = dshProfileDir(this.opts.home);
+    // profile 由 providerOptions.profile 指定（默认 web，见 DSH_DEFAULT_PROFILE）。
+    const profileDir = dshProfileDir(this.opts.profile, this.opts.home);
 
     // 尽早绑定 launch token 等待源：start 中段有耗时装机（ensureDshPackage），启动早期
     // widget 的会话请求可能在源绑定前到达。提前绑定让其在 ensureAuthenticated 走等待路径而非误报。
@@ -159,6 +164,7 @@ Please upgrade:
       profileDir,
       DSH_CLIENT_PACKAGE,
       clientTarget,
+      this.opts.profile,
       this.opts.home,
       providerVersion,
     );
@@ -178,6 +184,7 @@ Please upgrade:
       profileDir,
       DSH_PLUGIN_PACKAGE,
       pluginTarget,
+      this.opts.profile,
       this.opts.home,
       providerVersion,
     );
@@ -211,6 +218,7 @@ Please upgrade:
       port: options.port,
       hostname: DSH_LOOPBACK_HOST,
       cwd: options.cwd,
+      profile: this.opts.profile,
       patchPath,
       home: this.opts.home,
       verbose: options.verbose,
@@ -340,6 +348,8 @@ function resolveDeepSeekOptions(options?: Record<string, unknown>): DeepSeekReso
   return {
     ...DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
     home: (po.home as string) ?? (options?.home as string | undefined),
+    profile:
+      (po.profile as string) ?? (options?.profile as string | undefined) ?? DSH_DEFAULT_PROFILE,
     agentPreset: (po.agentPreset as string) ?? (options?.agentPreset as string | undefined),
     permissionPreset:
       (po.permissionPreset as DeepSeekPermissionPreset) ??

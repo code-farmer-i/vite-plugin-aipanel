@@ -1,5 +1,6 @@
 import { execa, type ResultPromise } from "execa";
 import { createLogger, getProcessLogBuffer } from "@aipanel/core/node";
+import { DSH_DEFAULT_PROFILE } from "./constants";
 
 const log = createLogger("DeepSeekWeb");
 
@@ -114,6 +115,8 @@ export interface DeepSeekWebOptions {
   hostname: string;
   /** 工作目录 */
   cwd: string;
+  /** dsh profile 名（$DSH_HOME/profiles/<name>），默认 "web" */
+  profile?: string;
   /** cordis overlay 文件路径（--patch 注入 MCP client / aipanel 插件） */
   patchPath?: string;
   /** dsh 数据目录（透传 DSH_HOME；缺省跟随 $DSH_HOME / ~/.dsh） */
@@ -131,11 +134,12 @@ export interface DeepSeekWebOptions {
  */
 export function startDeepSeekWeb(options: DeepSeekWebOptions): ResultPromise {
   const { port, hostname, cwd, patchPath, home, verbose, launchToken } = options;
+  const profile = options.profile ?? DSH_DEFAULT_PROFILE;
 
-  // dsh 0.1.x 的 --patch 是 launcher 级选项：必须放在 --profile web 之后、
+  // dsh 0.1.x 的 --patch 是 launcher 级选项：必须放在 --profile <name> 之后、
   // 转发给 web app 的参数之前（`dsh web --patch` 会被 variadic args 吞进 app 参数，
   // app 不认 --patch 而报 unknown option 退出）。
-  const args = ["--profile", "web"];
+  const args = ["--profile", profile];
   if (patchPath) {
     args.push("--patch", patchPath);
   }

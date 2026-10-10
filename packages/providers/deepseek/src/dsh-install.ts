@@ -1,7 +1,7 @@
 /**
  * dsh 侧插件的安装辅助（client 浏览器插件 / host 宿主插件）。
  *
- * 统一走官方方式：`dsh plugin --profile web add <target>`（该命令把参数转发给
+ * 统一走官方方式：`dsh plugin --profile <profile> add <target>`（该命令把参数转发给
  * profile 目录里的 pnpm 执行安装）。target 取值：
  *   - dev（本仓库 workspace）：本地目录绝对路径（pnpm 支持本地目录，改代码 → 重建 → 重启生效）
  *   - 生产：npm 包名 `@aipanel/dsh-client` / `@aipanel/dsh-plugin`
@@ -49,10 +49,10 @@ export function resolveDevDshPackageSource(
   return null;
 }
 
-/** dsh web profile 目录（固定 --profile web）；home 未指定时回退 $DSH_HOME / ~/.dsh */
-export function dshProfileDir(home?: string): string {
+/** dsh profile 目录（$DSH_HOME/profiles/<profile>）；home 未指定时回退 $DSH_HOME / ~/.dsh */
+export function dshProfileDir(profile: string, home?: string): string {
   const resolved = home || process.env.DSH_HOME || path.join(os.homedir(), ".dsh");
-  return path.join(resolved, "profiles", "web");
+  return path.join(resolved, "profiles", profile);
 }
 
 /** 某 @aipanel/dsh-* 包在 profile 的 node_modules 中是否可解析 */
@@ -91,12 +91,13 @@ export async function ensureDshPackage(
   profileDir: string,
   packageName: string,
   target: string,
+  profile: string,
   home?: string,
   expectedVersion?: string | null,
 ): Promise<boolean> {
   try {
-    log.debug(`installing ${target} into dsh profile via dsh plugin add`);
-    await execa("dsh", ["plugin", "--profile", "web", "add", target], {
+    log.debug(`installing ${target} into dsh profile via dsh plugin add`, { profile });
+    await execa("dsh", ["plugin", "--profile", profile, "add", target], {
       reject: true,
       env: {
         ...process.env,
@@ -116,7 +117,7 @@ export async function ensureDshPackage(
         `${packageName} version ${installed} is out of sync with provider ${expectedVersion}`,
         {
           profileDir,
-          install: `dsh plugin --profile web add ${packageName}@${expectedVersion}`,
+          install: `dsh plugin --profile ${profile} add ${packageName}@${expectedVersion}`,
         },
       );
     }

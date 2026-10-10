@@ -103,7 +103,7 @@ describe("startDeepSeekWeb 启动参数", () => {
     expect(proc).toBe(vi.mocked(execa).mock.results[0].value);
   });
 
-  it("patchPath 作为 launcher 选项插在 --profile web 之后、web app 参数之前（回归）", () => {
+  it("patchPath 作为 launcher 选项插在 --profile <name> 之后、web app 参数之前（回归）", () => {
     startDeepSeekWeb({ port: PORT, hostname: HOST, cwd: "/work/proj", patchPath: "/tmp/o.yml" });
 
     const args = lastExecaCall()[1];
@@ -112,6 +112,23 @@ describe("startDeepSeekWeb 启动参数", () => {
     expect(patchAt).toBeGreaterThan(profileAt);
     expect(patchAt).toBeLessThan(args.indexOf("--port"));
     expect(args[patchAt + 1]).toBe("/tmp/o.yml");
+  });
+
+  it("profile 覆盖默认 web：--profile <name> 生效，--patch 仍排在其后、app 参数之前", () => {
+    startDeepSeekWeb({
+      port: PORT,
+      hostname: HOST,
+      cwd: "/work/proj",
+      profile: "workbench",
+      patchPath: "/tmp/o.yml",
+    });
+
+    const args = lastExecaCall()[1];
+    const profileAt = args.indexOf("--profile");
+    expect(args[profileAt + 1]).toBe("workbench");
+    const patchAt = args.indexOf("--patch");
+    expect(patchAt).toBeGreaterThan(profileAt);
+    expect(patchAt).toBeLessThan(args.indexOf("--port"));
   });
 
   it("含空格的 patchPath 原样作为单个 argv 传递（工作区路径含空格不再拆参数）", () => {

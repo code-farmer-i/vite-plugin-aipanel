@@ -12,6 +12,7 @@ import { startDeepSeekWeb } from "../src/deepseek-web";
 import {
   DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
   DSH_DEFAULT_PORT,
+  DSH_DEFAULT_PROFILE,
   DSH_LOOPBACK_HOST,
 } from "../src/constants";
 
@@ -37,6 +38,7 @@ describe("index.ts 导出面", () => {
     expect(providerEntry.DEFAULT_DEEPSEEK_PROVIDER_OPTIONS).toBe(DEFAULT_DEEPSEEK_PROVIDER_OPTIONS);
     expect(providerEntry.DSH_LOOPBACK_HOST).toBe(DSH_LOOPBACK_HOST);
     expect(providerEntry.DSH_DEFAULT_PORT).toBe(DSH_DEFAULT_PORT);
+    expect(providerEntry.DSH_DEFAULT_PROFILE).toBe(DSH_DEFAULT_PROFILE);
   });
 
   it("导出的实现与各定义模块为同一引用", () => {

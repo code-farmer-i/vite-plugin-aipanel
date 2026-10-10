@@ -9,6 +9,7 @@ import {
   DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
   DSH_API_BASE,
   DSH_DEFAULT_PORT,
+  DSH_DEFAULT_PROFILE,
   DSH_LOOPBACK_HOST,
   DSH_REMOTE_MUX_PATH,
 } from "../src/constants";
@@ -20,15 +21,16 @@ describe("dsh 协议常量", () => {
     expect(DSH_REMOTE_MUX_PATH).toBe(`${DSH_API_BASE}/remote.mux`);
   });
 
-  it("绑定主机为 loopback，默认端口为数值", () => {
+  it("绑定主机为 loopback，默认端口为数值，默认 profile 为 web", () => {
     expect(DSH_LOOPBACK_HOST).toBe("127.0.0.1");
     expect(DSH_DEFAULT_PORT).toBe(3080);
+    expect(DSH_DEFAULT_PROFILE).toBe("web");
   });
 });
 
 describe("DEFAULT_DEEPSEEK_PROVIDER_OPTIONS", () => {
-  it("不含诊断默认值：诊断默认值的单一来源是 @aipanel/core 的 DEFAULT_DIAGNOSTICS_POLICY", () => {
-    expect(DEFAULT_DEEPSEEK_PROVIDER_OPTIONS).toEqual({});
+  it("profile 默认值单一来源 DSH_DEFAULT_PROFILE；不含诊断默认值（其单一来源是 @aipanel/core 的 DEFAULT_DIAGNOSTICS_POLICY）", () => {
+    expect(DEFAULT_DEEPSEEK_PROVIDER_OPTIONS).toEqual({ profile: DSH_DEFAULT_PROFILE });
     expect(DEFAULT_DEEPSEEK_PROVIDER_OPTIONS).not.toHaveProperty("diagnostics");
   });
 });

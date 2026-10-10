@@ -109,6 +109,7 @@ export default defineConfig({
       provider: "deepseek",
       providerOptions: {
         // home: "~/.dsh",                // dsh 数据目录（$DSH_HOME），默认跟随 ~/.dsh
+        // profile: "web",               // dsh profile 名（默认 web）
         // agentPreset: "standard",       // 新建会话的默认 Agent 预设
         // permissionPreset: "read-only", // 默认权限预设
         // busyEnter: "queue",            // 繁忙时 Enter 行为

@@ -105,19 +105,23 @@ describe("resolveDevDshPackageSource", () => {
 });
 
 describe("dshProfileDir", () => {
-  it("显式 home 优先；否则取 $DSH_HOME；再否则回退 ~/.dsh", () => {
-    expect(dshProfileDir("/tmp/custom-home")).toBe(
+  it("按 profile 名拼接目录；显式 home 优先，否则取 $DSH_HOME，再否则回退 ~/.dsh", () => {
+    expect(dshProfileDir("web", "/tmp/custom-home")).toBe(
       path.join("/tmp/custom-home", "profiles", "web"),
+    );
+    // 自定义 profile 名落到对应目录（不再固定 web）
+    expect(dshProfileDir("workbench", "/tmp/custom-home")).toBe(
+      path.join("/tmp/custom-home", "profiles", "workbench"),
     );
 
     const original = process.env.DSH_HOME;
     try {
       process.env.DSH_HOME = "/tmp/env-home";
-      expect(dshProfileDir()).toBe(path.join("/tmp/env-home", "profiles", "web"));
+      expect(dshProfileDir("web")).toBe(path.join("/tmp/env-home", "profiles", "web"));
 
       delete process.env.DSH_HOME;
       vi.spyOn(os, "homedir").mockReturnValue("/home/tester");
-      expect(dshProfileDir()).toBe(path.join("/home/tester", ".dsh", "profiles", "web"));
+      expect(dshProfileDir("web")).toBe(path.join("/home/tester", ".dsh", "profiles", "web"));
     } finally {
       if (original === undefined) delete process.env.DSH_HOME;
       else process.env.DSH_HOME = original;
@@ -169,12 +173,12 @@ describe("ensureDshPackage", () => {
     vi.mocked(execa).mockResolvedValue({} as never);
   });
 
-  it("经 dsh plugin --profile web add 安装，成功且可解析时返回 true", async () => {
+  it("经 dsh plugin --profile <name> add 安装，成功且可解析时返回 true", async () => {
     const profileDir = makeTmpDir();
     installPackage(profileDir, DSH_CLIENT_PACKAGE, "1.2.19");
 
     await expect(
-      ensureDshPackage(profileDir, DSH_CLIENT_PACKAGE, "/dev/dsh-client", "/tmp/home"),
+      ensureDshPackage(profileDir, DSH_CLIENT_PACKAGE, "/dev/dsh-client", "web", "/tmp/home"),
     ).resolves.toBe(true);
 
     expect(execa).toHaveBeenCalledTimes(1);
@@ -190,10 +194,27 @@ describe("ensureDshPackage", () => {
     expect(options.env.DSH_HOME).toBe("/tmp/home");
   });
 
+  it("自定义 profile 时 argv 使用该 profile 名（不再固定 web）", async () => {
+    const profileDir = makeTmpDir();
+    installPackage(profileDir, DSH_CLIENT_PACKAGE, "1.2.19");
+
+    await expect(
+      ensureDshPackage(profileDir, DSH_CLIENT_PACKAGE, "/dev/dsh-client", "workbench"),
+    ).resolves.toBe(true);
+
+    expect(vi.mocked(execa).mock.calls[0][1]).toEqual([
+      "plugin",
+      "--profile",
+      "workbench",
+      "add",
+      "/dev/dsh-client",
+    ]);
+  });
+
   it("安装命令成功但包仍不可解析时降级为 false 并告警", async () => {
     const profileDir = makeTmpDir();
     await expect(
-      ensureDshPackage(profileDir, DSH_CLIENT_PACKAGE, DSH_CLIENT_PACKAGE),
+      ensureDshPackage(profileDir, DSH_CLIENT_PACKAGE, DSH_CLIENT_PACKAGE, "web"),
     ).resolves.toBe(false);
     expect(mocks.logWarn.mock.calls.some((c) => String(c[0]).includes("not resolvable"))).toBe(
       true,
@@ -205,7 +226,14 @@ describe("ensureDshPackage", () => {
     installPackage(profileDir, DSH_PLUGIN_PACKAGE, "1.0.0");
 
     await expect(
-      ensureDshPackage(profileDir, DSH_PLUGIN_PACKAGE, DSH_PLUGIN_PACKAGE, undefined, "1.2.19"),
+      ensureDshPackage(
+        profileDir,
+        DSH_PLUGIN_PACKAGE,
+        DSH_PLUGIN_PACKAGE,
+        "web",
+        undefined,
+        "1.2.19",
+      ),
     ).resolves.toBe(true);
     const mismatch = mocks.logWarn.mock.calls.find((c) =>
       String(c[0]).includes("out of sync with provider"),
@@ -219,7 +247,14 @@ describe("ensureDshPackage", () => {
     mocks.logWarn.mockClear();
     installPackage(profileDir, DSH_PLUGIN_PACKAGE, "1.2.19");
     await expect(
-      ensureDshPackage(profileDir, DSH_PLUGIN_PACKAGE, DSH_PLUGIN_PACKAGE, undefined, "1.2.19"),
+      ensureDshPackage(
+        profileDir,
+        DSH_PLUGIN_PACKAGE,
+        DSH_PLUGIN_PACKAGE,
+        "web",
+        undefined,
+        "1.2.19",
+      ),
     ).resolves.toBe(true);
     expect(mocks.logWarn).not.toHaveBeenCalled();
   });
@@ -229,7 +264,7 @@ describe("ensureDshPackage", () => {
     vi.mocked(execa).mockRejectedValue(new Error("pnpm add failed"));
 
     await expect(
-      ensureDshPackage(profileDir, DSH_CLIENT_PACKAGE, DSH_CLIENT_PACKAGE),
+      ensureDshPackage(profileDir, DSH_CLIENT_PACKAGE, DSH_CLIENT_PACKAGE, "web"),
     ).resolves.toBe(false);
     const warn = mocks.logWarn.mock.calls.find((c) => String(c[0]).includes("failed to install"));
     expect(warn?.[1]).toMatchObject({ error: "pnpm add failed" });

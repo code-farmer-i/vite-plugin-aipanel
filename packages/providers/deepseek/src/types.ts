@@ -20,6 +20,8 @@ export type DeepSeekBusyEnter = BusyEnterBehavior;
 export type DeepSeekProviderOptions = {
   /** dsh 数据目录（$DSH_HOME），默认跟随系统（~/.dsh） */
   home?: string;
+  /** dsh profile 名（$DSH_HOME/profiles/<name>），默认 "web"；AIPanel 侧插件与 web 进程都指向该 profile */
+  profile?: string;
   /** 默认 Agent 预设（dsh settings agent-presets.default，如 code/standard；新建会话的默认模式） */
   agentPreset?: string;
   /** 默认权限预设（dsh settings permission.defaultPreset） */
@@ -38,7 +40,8 @@ export type DeepSeekProviderOptions = {
   [key: string]: unknown;
 };
 
-/** 归一化后的 Provider 选项：诊断策略一定是完整的（Partial 已在 provider 内解析） */
+/** 归一化后的 Provider 选项：诊断策略一定是完整的（Partial 已在 provider 内解析），profile 一定落到默认值 */
 export type DeepSeekResolvedOptions = DeepSeekProviderOptions & {
+  profile: string;
   diagnostics: DiagnosticsPolicy;
 };

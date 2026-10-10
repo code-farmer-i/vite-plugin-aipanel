@@ -280,6 +280,7 @@ aipanelAssistant({
   provider: "deepseek",
   providerOptions: {
     home: "~/.dsh", // dsh 数据目录（$DSH_HOME），默认跟随系统 ~/.dsh
+    profile: "web", // dsh profile 名（$DSH_HOME/profiles/<name>），默认 web
     agentPreset: "standard", // 新建会话的默认 Agent 预设
     permissionPreset: "read-only", // 默认权限预设：read-only | workspace-write | danger-full-access
     busyEnter: "queue", // 繁忙时 Enter 行为：queue | steer
@@ -301,10 +302,13 @@ aipanelAssistant({
 | 配置项                             | 类型     | 默认值   | 说明                                   |
 | ---------------------------------- | -------- | -------- | -------------------------------------- |
 | `providerOptions.home`             | `string` | `~/.dsh` | dsh 数据目录（`$DSH_HOME`）            |
+| `providerOptions.profile`          | `string` | `web`    | dsh profile 名（`$DSH_HOME/profiles/<name>`），AIPanel 插件与 Web 进程都指向该 profile |
 | `providerOptions.agentPreset`      | `string` | -        | 新建会话的默认 Agent 预设              |
 | `providerOptions.permissionPreset` | `string` | -        | 默认权限预设                           |
 | `providerOptions.busyEnter`        | `string` | -        | 繁忙时 Enter 行为（`queue` / `steer`） |
 | `providerOptions.diagnostics`      | `object` | -        | 诊断配置（见下）                       |
+
+> `providerOptions.profile` 仅支持仍启动 Web UI 的 profile（其 `dsh.profile.bundles` 含 `@deepseek-ai/dsh-web-app`，如 `web`、`workbench`）；纯终端类 profile（如 `tui`）不适用。
 
 ### 诊断配置（`providerOptions.diagnostics`，两个引擎通用）
 

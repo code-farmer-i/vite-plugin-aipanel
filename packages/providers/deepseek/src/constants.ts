@@ -23,6 +23,9 @@ export const DSH_LOOPBACK_HOST = "127.0.0.1";
 /** dsh web 默认端口（未显式指定时） */
 export const DSH_DEFAULT_PORT = 3080;
 
+/** dsh 默认 profile（$DSH_HOME/profiles/<name>）；用户可经 providerOptions.profile 覆盖 */
+export const DSH_DEFAULT_PROFILE = "web";
+
 /** ==================== Provider 专属配置默认值 ==================== */
 
 /**
@@ -30,4 +33,6 @@ export const DSH_DEFAULT_PORT = 3080;
  * 诊断的默认值不在本包复刻：单一来源是 @aipanel/core 的 DEFAULT_DIAGNOSTICS_POLICY，
  * 由 resolveDeepSeekOptions 归一化时注入。
  */
-export const DEFAULT_DEEPSEEK_PROVIDER_OPTIONS: DeepSeekProviderOptions = {};
+export const DEFAULT_DEEPSEEK_PROVIDER_OPTIONS: DeepSeekProviderOptions = {
+  profile: DSH_DEFAULT_PROFILE,
+};

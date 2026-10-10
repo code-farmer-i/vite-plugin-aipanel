@@ -25,6 +25,7 @@ export {
   DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
   DSH_LOOPBACK_HOST,
   DSH_DEFAULT_PORT,
+  DSH_DEFAULT_PROFILE,
 } from "./constants";
 export type { DeepSeekProviderOptions, DeepSeekPermissionPreset, DeepSeekBusyEnter } from "./types";
 export type { ClientRequest, RpcMessage, ServerResponse } from "@deepseek-ai/dsh-client-connection";

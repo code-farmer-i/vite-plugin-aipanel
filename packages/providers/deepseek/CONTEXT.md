@@ -17,7 +17,7 @@ _Avoid_: token（太泛）
 _Avoid_: patch 文件、overlay 配置
 
 **dsh profile**:
-dsh 安装插件的位置；AIPanel 统一装进 `web` profile。
+dsh 安装插件的位置（`$DSH_HOME/profiles/<name>`）；AIPanel 默认装进 `web` profile，可经 `providerOptions.profile` 指定其他仍启动 Web UI 的 profile。
 
 **dsh 侧插件（host / client）**:
 随 dsh 启动装载的两半——宿主插件（审查工具、编辑后自动诊断、事件中继、设置下发）与浏览器插件（`@` 菜单 chip、会话聚焦、主题与布局）。

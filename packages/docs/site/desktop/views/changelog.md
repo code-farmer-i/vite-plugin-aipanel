@@ -1,5 +1,25 @@
 # 更新日志
 
+## v1.3.10
+
+`2026-10-10`
+
+### deepseek
+
+#### ✨ 新增
+
+- **支持自定义 dsh profile**：此前 AIPanel 固定把插件装进 `web` profile、并以 `dsh --profile web` 启动，用户自建的 profile（如 `workbench`、`codexlab`）无法与 AIPanel 共存。现在新增 `providerOptions.profile`（默认 `web`），插件安装（`dsh plugin --profile <name> add`）与 Web 进程启动（`--profile <name>`）统一指向该 profile。仅支持仍启动 Web UI 的 profile（其 `dsh.profile.bundles` 含 `@deepseek-ai/dsh-web-app`），纯终端类 profile（如 `tui`）不适用
+
+### docs
+
+#### ⚡ 改进
+
+- 配置文档与快速开始补充 `providerOptions.profile` 的说明与用法；CONTEXT 明确 dsh profile 默认 `web`、可配置
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.3.10/packages/extension/aipanel-assistant.zip)
+
 ## v1.3.9
 
 `2026-09-24`

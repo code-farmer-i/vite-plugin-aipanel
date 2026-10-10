@@ -15,11 +15,7 @@ import { DEFAULT_DIAGNOSTICS_POLICY, resolveDiagnosticsPolicy } from "@aipanel/c
 import { createLogger } from "@aipanel/core/node";
 import type { DeepSeekBusyEnter, DeepSeekPermissionPreset, DeepSeekResolvedOptions } from "./types";
 import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/types";
-import {
-  DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
-  DSH_DEFAULT_PROFILE,
-  DSH_LOOPBACK_HOST,
-} from "./constants";
+import { DEFAULT_DEEPSEEK_PROVIDER_OPTIONS, DSH_DEFAULT_PROFILE, DSH_LOOPBACK_HOST } from "./constants";
 import { DeepSeekAPI } from "./api";
 import { LaunchToken, startDeepSeekWeb } from "./deepseek-web";
 import { buildDshOverlay, writeDshOverlay } from "./profile";
@@ -348,8 +344,7 @@ function resolveDeepSeekOptions(options?: Record<string, unknown>): DeepSeekReso
   return {
     ...DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
     home: (po.home as string) ?? (options?.home as string | undefined),
-    profile:
-      (po.profile as string) ?? (options?.profile as string | undefined) ?? DSH_DEFAULT_PROFILE,
+    profile: (po.profile as string) ?? (options?.profile as string | undefined) ?? DSH_DEFAULT_PROFILE,
     agentPreset: (po.agentPreset as string) ?? (options?.agentPreset as string | undefined),
     permissionPreset:
       (po.permissionPreset as DeepSeekPermissionPreset) ??

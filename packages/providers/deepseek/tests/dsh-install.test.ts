@@ -226,14 +226,7 @@ describe("ensureDshPackage", () => {
     installPackage(profileDir, DSH_PLUGIN_PACKAGE, "1.0.0");
 
     await expect(
-      ensureDshPackage(
-        profileDir,
-        DSH_PLUGIN_PACKAGE,
-        DSH_PLUGIN_PACKAGE,
-        "web",
-        undefined,
-        "1.2.19",
-      ),
+      ensureDshPackage(profileDir, DSH_PLUGIN_PACKAGE, DSH_PLUGIN_PACKAGE, "web", undefined, "1.2.19"),
     ).resolves.toBe(true);
     const mismatch = mocks.logWarn.mock.calls.find((c) =>
       String(c[0]).includes("out of sync with provider"),
@@ -247,14 +240,7 @@ describe("ensureDshPackage", () => {
     mocks.logWarn.mockClear();
     installPackage(profileDir, DSH_PLUGIN_PACKAGE, "1.2.19");
     await expect(
-      ensureDshPackage(
-        profileDir,
-        DSH_PLUGIN_PACKAGE,
-        DSH_PLUGIN_PACKAGE,
-        "web",
-        undefined,
-        "1.2.19",
-      ),
+      ensureDshPackage(profileDir, DSH_PLUGIN_PACKAGE, DSH_PLUGIN_PACKAGE, "web", undefined, "1.2.19"),
     ).resolves.toBe(true);
     expect(mocks.logWarn).not.toHaveBeenCalled();
   });

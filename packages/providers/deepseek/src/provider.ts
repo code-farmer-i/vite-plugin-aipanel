@@ -19,6 +19,7 @@ import { DEFAULT_DEEPSEEK_PROVIDER_OPTIONS, DSH_DEFAULT_PROFILE, DSH_LOOPBACK_HO
 import { DeepSeekAPI } from "./api";
 import { LaunchToken, startDeepSeekWeb } from "./deepseek-web";
 import { buildDshOverlay, writeDshOverlay } from "./profile";
+import { describeDshProfile, inspectDshProfile, profileProblemText } from "./profile-check";
 import {
   checkDeepSeekInstalled,
   getDeepSeekVersion,
@@ -145,6 +146,20 @@ Please upgrade:
     const launchToken = new LaunchToken();
     this.launchToken = launchToken;
     this.api.setLaunchTokenSource(() => launchToken.wait());
+    // 超时诊断上下文：profile 在哪、声明了哪些 bundle（stdout/stderr 尾部由 LaunchToken 自己回填）
+    launchToken.attachContext(() => describeDshProfile(profileDir, this.opts.profile));
+
+    // profile 预检必须排在 ensureDshPackage **之前**：
+    // `dsh plugin --profile <名> add …` 在 profile 缺失时会自己初始化一个空壳（只有 dsh-base），
+    // 那一步一旦发生，后面只会表现为"启动超时"，而且机器上会留下一个看起来存在的 profile。
+    // 判据只用 dsh 自己的 profile 契约（目录在不在、bundles 里有没有 web 应用），不认识任何具体插件。
+    const profileCheck = inspectDshProfile(profileDir);
+    if (!profileCheck.ok) {
+      const reason = profileProblemText(profileCheck, profileDir, this.opts.profile);
+      log.error(reason);
+      launchToken.fail(new Error(reason));
+      throw new Error(reason);
+    }
 
     const devClientDir = resolveDevDshPackageSource(import.meta.url, "dsh-client", "lib/client.js");
     // 与插件保持同步的基准版本 = 当前 provider 版本（dsh-client/plugin 与其锁步发布）

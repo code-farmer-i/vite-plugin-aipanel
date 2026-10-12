@@ -309,6 +309,10 @@ aipanelAssistant({
 | `providerOptions.diagnostics`      | `object` | -        | 诊断配置（见下）                       |
 
 > `providerOptions.profile` 仅支持仍启动 Web UI 的 profile（其 `dsh.profile.bundles` 含 `@deepseek-ai/dsh-web-app`，如 `web`、`workbench`）；纯终端类 profile（如 `tui`）不适用。
+>
+> ⚠️ **目标 profile 必须已经建好**。写一个还不存在的 profile 名不会让 AIPanel 替你建对：dsh 的 `plugin` 子命令在 profile 目录缺失时会自己初始化一个**只有 `@deepseek-ai/dsh-base`** 的空壳（无 Web 应用），于是启动只会表现为"等 launch token 超时"，看不出根因。启动前会做预检：profile 目录不在、或 `dsh.profile.bundles` 里没有 `@deepseek-ai/dsh-web-app` 时当场拒绝并说明怎么修（在此之前不会执行任何 `dsh plugin add`，也不会留下空壳 profile）。
+>
+> 所以自建 profile（`workbench`、`codexlab` 等）要**先用它自己的安装流程建好**再填进这里 —— 例如工作台：`npx --yes @dsh-workbench/core@latest setup`。
 
 ### 诊断配置（`providerOptions.diagnostics`，两个引擎通用）
 

@@ -20,7 +20,13 @@ export type DeepSeekBusyEnter = BusyEnterBehavior;
 export type DeepSeekProviderOptions = {
   /** dsh 数据目录（$DSH_HOME），默认跟随系统（~/.dsh） */
   home?: string;
-  /** dsh profile 名（$DSH_HOME/profiles/<name>），默认 "web"；AIPanel 侧插件与 web 进程都指向该 profile */
+  /**
+   * dsh profile 名（$DSH_HOME/profiles/<name>），默认 "web"；AIPanel 侧插件与 web 进程都指向该 profile。
+   *
+   * ⚠️ 该 profile 必须**先建好**：其 `dsh.profile.bundles` 里要有 `@deepseek-ai/dsh-web-app`。
+   * 缺失时 dsh 的 `plugin` 子命令会自己建出一个只有 `@deepseek-ai/dsh-base` 的空壳，
+   * 于是启动只会表现为"等 launch token 超时"（见 profile-check.ts 的预检与说明）。
+   */
   profile?: string;
   /** 默认 Agent 预设（dsh settings agent-presets.default，如 code/standard；新建会话的默认模式） */
   agentPreset?: string;

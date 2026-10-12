@@ -293,6 +293,29 @@ describe("LaunchToken 捕获语义", () => {
     await expect(lt.wait()).rejects.toThrow(/stopped before launch token/);
   });
 
+  it("attachContext：超时错误带上「这次起的是哪个 profile」（否则症状只有启动超时）", async () => {
+    vi.useFakeTimers();
+    const lt = new LaunchToken(1000);
+    lt.attachContext(
+      () => "profile: workbench (/home/u/.dsh/profiles/workbench)\nbundles: @deepseek-ai/dsh-base",
+    );
+    const waiting = lt.wait();
+    lt.arm();
+    vi.advanceTimersByTime(1000);
+    await expect(waiting).rejects.toThrow(/profile: workbench/);
+    await expect(waiting).rejects.toThrow(/@deepseek-ai\/dsh-base/);
+  });
+
+  it("attachContext 给空串：错误保持原样，不挂一截空行", async () => {
+    vi.useFakeTimers();
+    const lt = new LaunchToken(1000);
+    lt.attachContext(() => "  ");
+    const waiting = lt.wait();
+    lt.arm();
+    vi.advanceTimersByTime(1000);
+    await expect(waiting).rejects.toThrow(/dsh launch token was not captured/);
+  });
+
   it("已捕获 token 时 fail 不生效：wait 仍解析 token", async () => {
     const lt = new LaunchToken();
     lt.set("tok");

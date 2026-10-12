@@ -73,12 +73,26 @@ export class LaunchToken {
   /** 窗口到点：输出 dsh web 启动原始日志辅助诊断，再按未捕获 token 判定本次启动失败 */
   private expire(): void {
     this.printStartupOutput();
+    const context = this.context?.();
+    const base = `dsh launch token was not captured from stdout within ${this.timeoutMs}ms (dsh >= 0.1.2 should print the "dsh web: http://127.0.0.1:<port>/?token=..." URL)`;
     this.fail(
       new Error(
-        `dsh launch token was not captured from stdout within ${this.timeoutMs}ms (dsh >= 0.1.2 should print the "dsh web: http://127.0.0.1:<port>/?token=..." URL)`,
+        context === undefined || context.trim() === ""
+          ? base
+          : `${base}\n${context}\n（这个 profile 起不了 Web UI 时就是这个症状：先确认它建好了）`,
       ),
     );
   }
+
+  /**
+   * 附上"这次起的是哪个 profile"的上下文（provider 起进程前调用）。
+   * 只加在这里、不进 printStartupOutput：超时的那条错误要能自己说清 profile 与它的 bundle 列表，
+   * 否则症状永远只是"启动超时"（见 profile-check 的注释）。
+   */
+  attachContext(provider: () => string): void {
+    this.context = provider;
+  }
+  private context?: () => string;
 
   /** 报错时把 dsh web 启动的原始日志作为一条日志整体输出（幂等：每实例只打一次） */
   private printed = false;

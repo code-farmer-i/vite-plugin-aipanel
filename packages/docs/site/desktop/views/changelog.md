@@ -1,5 +1,30 @@
 # 更新日志
 
+## v1.3.11
+
+`2026-10-12`
+
+### deepseek
+
+#### 🐛 修复
+
+- **目标 profile 还没建好时，不再只报「启动超时」**：`providerOptions.profile` 指向一个尚未建好的 profile（自建的 `workbench`、`codexlab` 等，或机器上从没跑过它自己那套安装流程）时，`dsh plugin --profile <name> add` 会**自己初始化**一个只有 `@deepseek-ai/dsh-base` 的空壳——它没有 Web 应用 bundle，于是 `dsh --profile <name>` 起不了界面、stdout 永远不打印 launch token，20 秒后只表现为"启动超时"，而机器上还留下一个看起来存在的 profile。现在启动前先按 dsh 自己的 profile 契约做预检（目录在不在、`dsh.profile.bundles` 里有没有 `@deepseek-ai/dsh-web-app`），不过就**当场拒绝并说清怎么修**（给出 profile 绝对路径、现有 bundles，以及建 profile 的办法）。预检排在插件安装**之前**，因此不会再执行任何 `dsh plugin add`，也不会留下空壳 profile
+- 预检只认 dsh 的 profile 契约，不认识任何具体插件——profile 里装了哪些插件与它无关
+
+#### ⚡ 改进
+
+- launch token 超时的错误现在带上"这次起的是哪个 profile"与它声明的 bundles（原始 stdout/stderr 尾部照旧回填），把"profile 没配好"和"页面真起不来"两种失败分开；以前两者都只有一句「没抓到 token」
+
+### docs
+
+#### ⚡ 改进
+
+- 配置文档的 `providerOptions.profile` 补上前置条件与失败症状：目标 profile 必须已经建好（`dsh.profile.bundles` 含 `@deepseek-ai/dsh-web-app`），自建 profile 要先跑它自己的安装流程再填进来
+
+### 📦 产物
+
+- [Chrome 插件下载](https://github.com/code-farmer-i/vite-plugin-aipanel/raw/v1.3.11/packages/extension/aipanel-assistant.zip)
+
 ## v1.3.10
 
 `2026-10-10`

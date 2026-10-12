@@ -1,5 +1,27 @@
 # 更新日志
 
+## v1.3.12
+
+`2026-10-12`
+
+### deepseek
+
+#### ✨ 新增
+
+- **自建 profile 默认继承 `web` 的机器级设置**：dsh 的组合层只有 `bundle → profile → home → --patch`，**没有 profile 继承 profile**；所以把 `providerOptions.profile` 换成自建 profile（`workbench`、`codexlab` 等）之后，在 `dsh web` 里配过的模型供应商 / 搜索源 / MCP 不会跟过去，只会用建 profile 那一刻的快照（实测：同一台机器上 web 已改成 `huoyong`，自建 profile 还停在 `shichuang`）。现在默认把默认 profile（`web`）的那层配置作为一条额外的 `--patch` 叠上来，**默认就生效，不用配**；`providerOptions.settingsFrom` 只在想换来源或想关掉（`false`）时才写
+- 每个界面**自己的偏好**（如主题）**不继承**：`--patch` 是最高的层，会盖掉目标 profile 自己那份，而主题这类行被盖住会把界面锁死（在工作台里切浅色会被 web 的深色顶回去，实测过）。两份 patch 的行 id 交集只有 `agent-default-model` / `ui-settings-general` / `ui-theme`，只有最后一个属于这一类
+
+#### ⚡ 改进
+
+- 叠层顺序固定为「来源 profile 的配置在前、AIPanel 自己的 overlay 在后」：AIPanel 插的插件行仍然压过来源 profile（有回归测试钉住）
+- 来源 profile 不存在或读不动时**静默跳过**（退回老行为），不阻断启动
+
+### docs
+
+#### ⚡ 改进
+
+- 配置文档新增 `providerOptions.settingsFrom`，并说明默认继承、不继承哪些、以及怎么关掉
+
 ## v1.3.11
 
 `2026-10-12`

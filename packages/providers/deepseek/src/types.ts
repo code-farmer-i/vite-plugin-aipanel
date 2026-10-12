@@ -28,6 +28,17 @@ export type DeepSeekProviderOptions = {
    * 于是启动只会表现为"等 launch token 超时"（见 profile-check.ts 的预检与说明）。
    */
   profile?: string;
+  /**
+   * 机器级设置（模型供应商 / 搜索源 / MCP）从哪个 profile 继承，作为一层 `--patch` 叠在目标 profile 之上。
+   *
+   * 默认 `web`（即 `providerOptions.profile` 的默认值）：**默认就叠，用户不需要配**。dsh 没有
+   * "profile 继承 profile"，不叠的话自建 profile 只会用建 profile 那一刻的快照，于是"我在 web 里
+   * 配过的东西这里看不到"。目标 profile 就是来源时自动跳过（等于不叠）。
+   *
+   * `false` = 不叠（只保留目标 profile 自己的配置）。每个界面自己的偏好（主题等）**永远不继承** ——
+   * 那类行跟着来源走会把界面锁死（见 settings-layer.ts）。
+   */
+  settingsFrom?: string | false;
   /** 默认 Agent 预设（dsh settings agent-presets.default，如 code/standard；新建会话的默认模式） */
   agentPreset?: string;
   /** 默认权限预设（dsh settings permission.defaultPreset） */
@@ -46,8 +57,9 @@ export type DeepSeekProviderOptions = {
   [key: string]: unknown;
 };
 
-/** 归一化后的 Provider 选项：诊断策略一定是完整的（Partial 已在 provider 内解析），profile 一定落到默认值 */
+/** 归一化后的 Provider 选项：诊断策略一定是完整的（Partial 已在 provider 内解析），profile / settingsFrom 一定落到默认值 */
 export type DeepSeekResolvedOptions = DeepSeekProviderOptions & {
   profile: string;
+  settingsFrom: string | false;
   diagnostics: DiagnosticsPolicy;
 };

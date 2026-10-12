@@ -299,20 +299,26 @@ aipanelAssistant({
 
 ### DeepSeek (dsh) 配置项速查
 
-| 配置项                             | 类型     | 默认值   | 说明                                   |
-| ---------------------------------- | -------- | -------- | -------------------------------------- |
-| `providerOptions.home`             | `string` | `~/.dsh` | dsh 数据目录（`$DSH_HOME`）            |
-| `providerOptions.profile`          | `string` | `web`    | dsh profile 名（`$DSH_HOME/profiles/<name>`），AIPanel 插件与 Web 进程都指向该 profile |
-| `providerOptions.agentPreset`      | `string` | -        | 新建会话的默认 Agent 预设              |
-| `providerOptions.permissionPreset` | `string` | -        | 默认权限预设                           |
-| `providerOptions.busyEnter`        | `string` | -        | 繁忙时 Enter 行为（`queue` / `steer`） |
-| `providerOptions.diagnostics`      | `object` | -        | 诊断配置（见下）                       |
+| 配置项                             | 类型              | 默认值   | 说明                                                                                   |
+| ---------------------------------- | ----------------- | -------- | -------------------------------------------------------------------------------------- |
+| `providerOptions.home`             | `string`          | `~/.dsh` | dsh 数据目录（`$DSH_HOME`）                                                            |
+| `providerOptions.profile`          | `string`          | `web`    | dsh profile 名（`$DSH_HOME/profiles/<name>`），AIPanel 插件与 Web 进程都指向该 profile |
+| `providerOptions.settingsFrom`     | `string \| false` | `web`    | 机器级设置（供应商 / 搜索源 / MCP）从哪个 profile 继承；**默认就继承**，不用配         |
+| `providerOptions.agentPreset`      | `string`          | -        | 新建会话的默认 Agent 预设                                                              |
+| `providerOptions.permissionPreset` | `string`          | -        | 默认权限预设                                                                           |
+| `providerOptions.busyEnter`        | `string`          | -        | 繁忙时 Enter 行为（`queue` / `steer`）                                                 |
+| `providerOptions.diagnostics`      | `object`          | -        | 诊断配置（见下）                                                                       |
 
 > `providerOptions.profile` 仅支持仍启动 Web UI 的 profile（其 `dsh.profile.bundles` 含 `@deepseek-ai/dsh-web-app`，如 `web`、`workbench`）；纯终端类 profile（如 `tui`）不适用。
 >
 > ⚠️ **目标 profile 必须已经建好**。写一个还不存在的 profile 名不会让 AIPanel 替你建对：dsh 的 `plugin` 子命令在 profile 目录缺失时会自己初始化一个**只有 `@deepseek-ai/dsh-base`** 的空壳（无 Web 应用），于是启动只会表现为"等 launch token 超时"，看不出根因。启动前会做预检：profile 目录不在、或 `dsh.profile.bundles` 里没有 `@deepseek-ai/dsh-web-app` 时当场拒绝并说明怎么修（在此之前不会执行任何 `dsh plugin add`，也不会留下空壳 profile）。
 >
 > 所以自建 profile（`workbench`、`codexlab` 等）要**先用它自己的安装流程建好**再填进这里 —— 例如工作台：`npx --yes @dsh-workbench/core@latest setup`。
+>
+> **关于 `providerOptions.settingsFrom`（默认 `web`，不用配）**：dsh 的组合层只有 `bundle → profile → home → --patch`，**没有 profile 继承 profile**。所以一旦把 `profile` 换成自建 profile，你在 `dsh web` 里配过的模型供应商 / 搜索源 / MCP 本来是不会跟过去的 —— 会用建 profile 那一刻的快照。现在默认把默认 profile（`web`）的配置作为一层 `--patch` 叠上去：**两边同源，改一处两边都生效**（`profile` 仍填 `web` 时这层等于没有，行为不变）。
+>
+> - 每个界面**自己的偏好**（如主题）永远不继承 —— 那类行跟着来源走会把界面锁死（比如在工作台里切浅色会被 web 的深色顶回去）。
+> - 想只保留目标 profile 自己的配置：`settingsFrom: false`。想换来源 profile：填它的名字。
 
 ### 诊断配置（`providerOptions.diagnostics`，两个引擎通用）
 

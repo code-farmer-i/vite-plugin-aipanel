@@ -133,6 +133,11 @@ export interface DeepSeekWebOptions {
   profile?: string;
   /** cordis overlay 文件路径（--patch 注入 MCP client / aipanel 插件） */
   patchPath?: string;
+  /**
+   * 继承层路径（--patch 叠来源 profile 的配置，见 settings-layer.ts）。
+   * 必须排在 `patchPath` **之前**：`--patch` 越靠后越赢，AIPanel 自己插的插件行要压过来源 profile。
+   */
+  settingsPatchPath?: string;
   /** dsh 数据目录（透传 DSH_HOME；缺省跟随 $DSH_HOME / ~/.dsh） */
   home?: string;
   /** 启用 verbose 模式 */
@@ -147,13 +152,17 @@ export interface DeepSeekWebOptions {
  * 也无需 API key 即可启动 UI 壳。
  */
 export function startDeepSeekWeb(options: DeepSeekWebOptions): ResultPromise {
-  const { port, hostname, cwd, patchPath, home, verbose, launchToken } = options;
+  const { port, hostname, cwd, patchPath, settingsPatchPath, home, verbose, launchToken } = options;
   const profile = options.profile ?? DSH_DEFAULT_PROFILE;
 
   // dsh 0.1.x 的 --patch 是 launcher 级选项：必须放在 --profile <name> 之后、
   // 转发给 web app 的参数之前（`dsh web --patch` 会被 variadic args 吞进 app 参数，
   // app 不认 --patch 而报 unknown option 退出）。
+  // 顺序：来源 profile 的配置在前、AIPanel 自己的 overlay 在后 —— 后者要能压过前者。
   const args = ["--profile", profile];
+  if (settingsPatchPath) {
+    args.push("--patch", settingsPatchPath);
+  }
   if (patchPath) {
     args.push("--patch", patchPath);
   }

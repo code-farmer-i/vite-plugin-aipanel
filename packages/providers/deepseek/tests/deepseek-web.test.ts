@@ -131,6 +131,40 @@ describe("startDeepSeekWeb 启动参数", () => {
     expect(patchAt).toBeLessThan(args.indexOf("--port"));
   });
 
+  it("两层 --patch 的顺序：来源 profile 的配置在前、AIPanel 自己的 overlay 在后（后者要能压过前者）", () => {
+    startDeepSeekWeb({
+      port: PORT,
+      hostname: HOST,
+      cwd: "/work/proj",
+      profile: "workbench",
+      settingsPatchPath: "/tmp/inherit.yml",
+      patchPath: "/tmp/o.yml",
+    });
+
+    const args = lastExecaCall()[1];
+    expect(args.indexOf("--profile")).toBeLessThan(args.indexOf("--patch"));
+    expect(args.filter((one) => one === "--patch")).toHaveLength(2);
+    const first = args.indexOf("--patch");
+    expect(args[first + 1]).toBe("/tmp/inherit.yml");
+    expect(args[first + 2]).toBe("--patch");
+    expect(args[first + 3]).toBe("/tmp/o.yml");
+    expect(args.lastIndexOf("--patch")).toBeLessThan(args.indexOf("--port"));
+  });
+
+  it("只给继承层时也只多一条 --patch（overlay 缺席不占位）", () => {
+    startDeepSeekWeb({
+      port: PORT,
+      hostname: HOST,
+      cwd: "/work/proj",
+      profile: "workbench",
+      settingsPatchPath: "/tmp/inherit.yml",
+    });
+
+    const args = lastExecaCall()[1];
+    expect(args.filter((one) => one === "--patch")).toHaveLength(1);
+    expect(args[args.indexOf("--patch") + 1]).toBe("/tmp/inherit.yml");
+  });
+
   it("含空格的 patchPath 原样作为单个 argv 传递（工作区路径含空格不再拆参数）", () => {
     startDeepSeekWeb({
       port: PORT,

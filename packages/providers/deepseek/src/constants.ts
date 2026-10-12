@@ -35,4 +35,5 @@ export const DSH_DEFAULT_PROFILE = "web";
  */
 export const DEFAULT_DEEPSEEK_PROVIDER_OPTIONS: DeepSeekProviderOptions = {
   profile: DSH_DEFAULT_PROFILE,
+  settingsFrom: DSH_DEFAULT_PROFILE,
 };

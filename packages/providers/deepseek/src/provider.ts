@@ -15,11 +15,16 @@ import { DEFAULT_DIAGNOSTICS_POLICY, resolveDiagnosticsPolicy } from "@aipanel/c
 import { createLogger } from "@aipanel/core/node";
 import type { DeepSeekBusyEnter, DeepSeekPermissionPreset, DeepSeekResolvedOptions } from "./types";
 import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/types";
-import { DEFAULT_DEEPSEEK_PROVIDER_OPTIONS, DSH_DEFAULT_PROFILE, DSH_LOOPBACK_HOST } from "./constants";
+import {
+  DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
+  DSH_DEFAULT_PROFILE,
+  DSH_LOOPBACK_HOST,
+} from "./constants";
 import { DeepSeekAPI } from "./api";
 import { LaunchToken, startDeepSeekWeb } from "./deepseek-web";
 import { buildDshOverlay, writeDshOverlay } from "./profile";
 import { describeDshProfile, inspectDshProfile, profileProblemText } from "./profile-check";
+import { inheritSourceOf, writeInheritLayer } from "./settings-layer";
 import {
   checkDeepSeekInstalled,
   getDeepSeekVersion,
@@ -224,6 +229,14 @@ Please upgrade:
     });
     const patchPath = writeDshOverlay(options.cwd, overlay);
 
+    // 机器级设置住在默认 profile（`web`）里；目标 profile 是自建的（workbench/codexlab…）时，
+    // 把它那层叠上来 —— 默认就叠（用户不会去改配置），见 settings-layer.ts。来源缺失时返回 null。
+    const inheritSource = inheritSourceOf(this.opts.profile, this.opts.settingsFrom);
+    const settingsPatchPath =
+      inheritSource === null
+        ? null
+        : writeInheritLayer({ cwd: options.cwd, home: this.opts.home, source: inheritSource });
+
     // dsh 服务 schema 只接受 127.0.0.1 / 0.0.0.0，且 CLI 拒绝 0.0.0.0 —— 强制 loopback
     const proc = startDeepSeekWeb({
       port: options.port,
@@ -231,6 +244,7 @@ Please upgrade:
       cwd: options.cwd,
       profile: this.opts.profile,
       patchPath,
+      ...(settingsPatchPath === null ? {} : { settingsPatchPath }),
       home: this.opts.home,
       verbose: options.verbose,
       launchToken,
@@ -359,7 +373,15 @@ function resolveDeepSeekOptions(options?: Record<string, unknown>): DeepSeekReso
   return {
     ...DEFAULT_DEEPSEEK_PROVIDER_OPTIONS,
     home: (po.home as string) ?? (options?.home as string | undefined),
-    profile: (po.profile as string) ?? (options?.profile as string | undefined) ?? DSH_DEFAULT_PROFILE,
+    profile:
+      (po.profile as string) ?? (options?.profile as string | undefined) ?? DSH_DEFAULT_PROFILE,
+    // 默认就叠（见 settings-layer.ts）：用户不会去改配置，机器级设置只配一次是默认预期。
+    settingsFrom:
+      po.settingsFrom === false
+        ? false
+        : typeof po.settingsFrom === "string"
+          ? po.settingsFrom
+          : DSH_DEFAULT_PROFILE,
     agentPreset: (po.agentPreset as string) ?? (options?.agentPreset as string | undefined),
     permissionPreset:
       (po.permissionPreset as DeepSeekPermissionPreset) ??

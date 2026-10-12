@@ -29,6 +29,19 @@ function readUiTheme(p: DeepSeekWebProvider): string {
   return (p as unknown as { uiTheme: string }).uiTheme;
 }
 
+/** 白盒读取归一化后的选项（resolveDeepSeekOptions 未导出，无法直接观测） */
+function readOpts(p: DeepSeekWebProvider): { profile: string; settingsFrom: string | false } {
+  return (p as unknown as { opts: { profile: string; settingsFrom: string | false } }).opts;
+}
+
+function providerWith(options: Record<string, unknown>): DeepSeekWebProvider {
+  return new DeepSeekWebProvider(
+    { hostname: DSH_LOOPBACK_HOST },
+    { getWebPort: () => DSH_DEFAULT_PORT, getProxyPort: () => 6097 },
+    options,
+  );
+}
+
 describe("DeepSeekWebProvider 静态能力面", () => {
   it("暴露 id/displayName 且 capabilities.deepLink=false（SPA 壳式无深链）", () => {
     const p: WebProvider = makeProvider();
@@ -40,6 +53,27 @@ describe("DeepSeekWebProvider 静态能力面", () => {
   it("构造零网络：默认 uiTheme 为 auto", () => {
     const p = makeProvider();
     expect(readUiTheme(p)).toBe("auto");
+  });
+});
+
+describe("settingsFrom 归一化（机器级设置默认跟着 web 走）", () => {
+  it("什么都不配：profile=web、settingsFrom=web（自己继承自己 → 实际不叠）", () => {
+    expect(readOpts(makeProvider())).toMatchObject({ profile: "web", settingsFrom: "web" });
+  });
+
+  it("把 profile 换成自建 profile：settingsFrom 仍是 web —— 默认就叠，用户不用配", () => {
+    const p = providerWith({ providerOptions: { profile: "workbench" } });
+    expect(readOpts(p)).toMatchObject({ profile: "workbench", settingsFrom: "web" });
+  });
+
+  it("显式 false：关掉继承（只留目标 profile 自己的配置）", () => {
+    const p = providerWith({ providerOptions: { profile: "workbench", settingsFrom: false } });
+    expect(readOpts(p).settingsFrom).toBe(false);
+  });
+
+  it("显式指别的来源：用它", () => {
+    const p = providerWith({ providerOptions: { profile: "workbench", settingsFrom: "codexlab" } });
+    expect(readOpts(p).settingsFrom).toBe("codexlab");
   });
 });
 

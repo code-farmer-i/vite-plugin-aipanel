@@ -29,8 +29,11 @@ describe("dsh 协议常量", () => {
 });
 
 describe("DEFAULT_DEEPSEEK_PROVIDER_OPTIONS", () => {
-  it("profile 默认值单一来源 DSH_DEFAULT_PROFILE；不含诊断默认值（其单一来源是 @aipanel/core 的 DEFAULT_DIAGNOSTICS_POLICY）", () => {
-    expect(DEFAULT_DEEPSEEK_PROVIDER_OPTIONS).toEqual({ profile: DSH_DEFAULT_PROFILE });
+  it("profile / settingsFrom 默认值都来自 DSH_DEFAULT_PROFILE；不含诊断默认值（其单一来源是 @aipanel/core 的 DEFAULT_DIAGNOSTICS_POLICY）", () => {
+    expect(DEFAULT_DEEPSEEK_PROVIDER_OPTIONS).toEqual({
+      profile: DSH_DEFAULT_PROFILE,
+      settingsFrom: DSH_DEFAULT_PROFILE,
+    });
     expect(DEFAULT_DEEPSEEK_PROVIDER_OPTIONS).not.toHaveProperty("diagnostics");
   });
 });
